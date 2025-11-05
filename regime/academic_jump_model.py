@@ -479,25 +479,51 @@ class AcademicJumpModel:
         self.theta_ = result['theta']
         self._fit_info_ = result
 
-        # Label states: bull (0) has higher mean return, bear (1) has lower
-        # Use state sequence from fitting to compute cumulative returns
+        # Label states based on BOTH centroid characteristics AND Sortino ratio
+        #
+        # Bull state: Higher Sortino ratio (better risk-adjusted returns)
+        # Bear state: Lower Sortino ratio (worse risk-adjusted returns)
+        #
+        # CRITICAL: Use Sortino as PRIMARY criterion, not downside deviation.
+        # Why? With high lambda, DD alone doesn't distinguish bull/bear well.
+        # Sortino ratio (return/risk) is the fundamental difference between regimes.
+
+        dd_0 = self.theta_[0, 0]  # Downside deviation state 0
+        dd_1 = self.theta_[1, 0]  # Downside deviation state 1
+        sortino20_0 = self.theta_[0, 1]  # Sortino 20d state 0
+        sortino20_1 = self.theta_[1, 1]  # Sortino 20d state 1
+
         state_seq = result['state_sequence']
-        returns = data['Close'].pct_change().dropna().values
+        state_0_count = (state_seq == 0).sum()
+        state_1_count = (state_seq == 1).sum()
 
-        # Align returns with feature index (features drop NaN)
-        returns_aligned = returns[-len(state_seq):]
+        if verbose:
+            print(f"\nPre-swap analysis:")
+            print(f"  State 0: DD={dd_0:.4f}, S20={sortino20_0:.2f}, Count={state_0_count} ({state_0_count/len(state_seq):.1%})")
+            print(f"  State 1: DD={dd_1:.4f}, S20={sortino20_1:.2f}, Count={state_1_count} ({state_1_count/len(state_seq):.1%})")
 
-        cum_return_0 = np.sum(returns_aligned[state_seq == 0])
-        cum_return_1 = np.sum(returns_aligned[state_seq == 1])
+        # Primary criterion: Higher Sortino ratio = bull market
+        # Secondary check: If Sortinos are very close, use frequency (dominant state = bull)
+        sortino_diff = abs(sortino20_0 - sortino20_1)
 
-        if cum_return_0 < cum_return_1:
-            # Need to swap labels
-            self.theta_ = self.theta_[[1, 0], :]
+        if sortino_diff > 0.05:  # Clear Sortino difference
+            state_0_is_bull = (sortino20_0 > sortino20_1)
+            criterion = "Sortino ratio"
+        else:  # Degenerate case: use frequency
+            state_0_is_bull = (state_0_count > state_1_count)
+            criterion = "frequency"
+
+        # CRITICAL: Don't swap theta_! Just swap the label mapping.
+        # theta_ must stay aligned with what DP algorithm found during optimization.
+        # We only change how we INTERPRET the numeric states (0 vs 1).
+        if state_0_is_bull:
             self.state_labels_ = {0: 'bull', 1: 'bear'}
             if verbose:
-                print("Swapped state labels (state 1 had higher returns)")
+                print(f"State 0 -> bull, State 1 -> bear (criterion: {criterion})")
         else:
-            self.state_labels_ = {0: 'bull', 1: 'bear'}
+            self.state_labels_ = {0: 'bear', 1: 'bull'}  # Swap labels, NOT centroids
+            if verbose:
+                print(f"State 0 -> bear, State 1 -> bull (criterion: {criterion})")
 
         self.is_fitted_ = True
 
@@ -629,3 +655,287 @@ class AcademicJumpModel:
             raise ValueError("Model must be fitted first. Call fit().")
 
         return self._fit_info_
+
+
+def simulate_01_strategy(
+    regime_sequence: pd.Series,
+    returns: pd.Series,
+    delay_days: int = 1,
+    transaction_cost_bps: float = 10.0,
+    risk_free_rate: float = 0.03
+) -> dict:
+    """
+    Simulate 0/1 strategy performance with regime signals.
+
+    Strategy logic:
+        - Bull regime: 100% invested in asset
+        - Bear regime: 100% cash (risk-free rate)
+        - 1-day signal delay (realistic trading latency)
+        - 10 bps transaction costs per one-way trade
+
+    Args:
+        regime_sequence: Series of regime labels ('bull' or 'bear')
+        returns: Series of asset returns (same index as regime_sequence)
+        delay_days: Signal delay in days (default: 1)
+        transaction_cost_bps: One-way transaction cost in basis points (default: 10)
+        risk_free_rate: Annual risk-free rate (default: 0.03)
+
+    Returns:
+        Dictionary with:
+            - sharpe_ratio: Sharpe ratio of strategy returns
+            - total_return: Cumulative return
+            - annual_return: Annualized return
+            - annual_volatility: Annualized volatility
+            - n_trades: Number of trades (regime switches)
+            - strategy_returns: Series of daily strategy returns
+
+    Reference:
+        Section 3.4.3, Shu et al., Princeton 2024
+        "A one-way transaction cost of 10 basis points is applied"
+        "This sequence is applied to trading with a one-day delay"
+
+    Example:
+        >>> regime = pd.Series(['bull', 'bull', 'bear', 'bear'], index=pd.date_range('2020-01-01', periods=4))
+        >>> returns = pd.Series([0.01, 0.02, -0.01, -0.02], index=regime.index)
+        >>> result = simulate_01_strategy(regime, returns)
+        >>> print(f"Sharpe: {result['sharpe_ratio']:.2f}, Trades: {result['n_trades']}")
+    """
+    # Align indices
+    common_index = regime_sequence.index.intersection(returns.index)
+    regime = regime_sequence.loc[common_index]
+    rets = returns.loc[common_index]
+
+    # Apply delay to signals
+    # Position today is based on regime signal from delay_days ago
+    regime_delayed = regime.shift(delay_days)
+
+    # Convert regime to position (1 = invested, 0 = cash)
+    positions = (regime_delayed == 'bull').astype(int)
+
+    # Calculate daily risk-free rate
+    rf_daily = (1 + risk_free_rate) ** (1/252) - 1
+
+    # Calculate strategy returns
+    # When invested (position=1): get asset return - transaction costs when switching
+    # When cash (position=0): get risk-free rate - transaction costs when switching
+    strategy_rets = pd.Series(0.0, index=positions.index)
+
+    # Identify regime switches (trades)
+    position_changes = positions.diff().fillna(0)
+    trades = (position_changes != 0)
+
+    # Transaction cost per trade (applied symmetrically)
+    tc_rate = transaction_cost_bps / 10000.0  # Convert bps to decimal
+
+    for i in range(len(positions)):
+        if pd.isna(positions.iloc[i]):
+            # During warm-up period, stay in cash
+            strategy_rets.iloc[i] = rf_daily
+        elif positions.iloc[i] == 1:
+            # Invested: get asset return
+            strategy_rets.iloc[i] = rets.iloc[i]
+            # Subtract transaction cost if we just switched into this position
+            if trades.iloc[i]:
+                strategy_rets.iloc[i] -= tc_rate
+        else:
+            # Cash: get risk-free rate
+            strategy_rets.iloc[i] = rf_daily
+            # Subtract transaction cost if we just switched into this position
+            if trades.iloc[i]:
+                strategy_rets.iloc[i] -= tc_rate
+
+    # Drop NaN rows from delay period
+    strategy_rets = strategy_rets.dropna()
+
+    if len(strategy_rets) == 0:
+        return {
+            'sharpe_ratio': 0.0,
+            'total_return': 0.0,
+            'annual_return': 0.0,
+            'annual_volatility': 0.0,
+            'n_trades': 0,
+            'strategy_returns': strategy_rets
+        }
+
+    # Calculate performance metrics
+    total_return = (1 + strategy_rets).prod() - 1
+    n_days = len(strategy_rets)
+    annual_return = (1 + total_return) ** (252 / n_days) - 1
+    annual_volatility = strategy_rets.std() * np.sqrt(252)
+
+    # Sharpe ratio: (return - rf) / volatility
+    if annual_volatility > 0:
+        sharpe_ratio = (annual_return - risk_free_rate) / annual_volatility
+    else:
+        sharpe_ratio = 0.0
+
+    # Count actual trades (exclude initial position)
+    n_trades = trades.sum()
+
+    return {
+        'sharpe_ratio': sharpe_ratio,
+        'total_return': total_return,
+        'annual_return': annual_return,
+        'annual_volatility': annual_volatility,
+        'n_trades': int(n_trades),
+        'strategy_returns': strategy_rets
+    }
+
+
+def cross_validate_lambda(
+    data: pd.DataFrame,
+    lambda_candidates: list = None,
+    validation_window_days: int = 2016,  # 8 years * 252 trading days
+    update_frequency_days: int = 21,  # Monthly updates (~21 trading days)
+    lookback_window_days: int = 3000,  # For online inference
+    risk_free_rate: float = 0.03,
+    n_starts: int = 10,  # Multi-start optimization runs
+    verbose: bool = False
+) -> pd.DataFrame:
+    """
+    Cross-validate lambda parameter selection using rolling 8-year window.
+
+    Implements the time-series cross-validation approach from Section 3.4.3:
+    "At the beginning of each month during the out-of-sample testing period,
+    for each candidate jump penalty, we generate the online inferred regime
+    sequence over an 8-year lookback validation window...We then select the
+    value lambda that yields the highest Sharpe ratio during this validation
+    period and use this value for the following month."
+
+    Workflow:
+        For each update period (monthly):
+            1. For each lambda candidate:
+                a. Fit model on lookback_window_days
+                b. Generate online regime inference over validation_window_days
+                c. Simulate 0/1 strategy with 1-day delay
+                d. Calculate Sharpe ratio
+            2. Select lambda with highest Sharpe
+            3. Apply selected lambda to next month (with 1-day delay)
+
+    Args:
+        data: OHLC DataFrame with 'Close' column (10+ years recommended)
+        lambda_candidates: List of lambda values to test (default: [5, 15, 35, 50, 70, 100, 150])
+        validation_window_days: Validation window in trading days (default: 2016 = 8 years)
+        update_frequency_days: How often to update lambda (default: 21 = monthly)
+        lookback_window_days: Training window for model fitting (default: 3000)
+        risk_free_rate: Annual risk-free rate (default: 0.03)
+        n_starts: Number of random initializations for model fitting (default: 10)
+        verbose: Print progress
+
+    Returns:
+        DataFrame with columns:
+            - date: Update date
+            - selected_lambda: Lambda selected for this period
+            - sharpe_ratio: Best Sharpe ratio achieved
+            - n_trades: Number of trades in validation period
+            - lambda_sharpes: Dict of {lambda: sharpe} for all candidates
+
+    Reference:
+        Section 3.4.3 "Optimal Jump Penalty Selection"
+        Shu et al., Princeton 2024
+
+    Example:
+        >>> from data.alpaca import fetch_alpaca_data
+        >>> spy_data = fetch_alpaca_data('SPY', timeframe='1D', period_days=3650)  # 10 years
+        >>> cv_results = cross_validate_lambda(spy_data, verbose=True)
+        >>> print(cv_results[['date', 'selected_lambda', 'sharpe_ratio']])
+    """
+    if lambda_candidates is None:
+        lambda_candidates = [5, 15, 35, 50, 70, 100, 150]
+
+    if verbose:
+        print(f"Cross-validating lambda selection...")
+        print(f"Lambda candidates: {lambda_candidates}")
+        print(f"Validation window: {validation_window_days} days ({validation_window_days/252:.1f} years)")
+        print(f"Update frequency: {update_frequency_days} days")
+
+    # Calculate returns for strategy simulation
+    returns = data['Close'].pct_change()
+
+    # Determine update dates (monthly starting after warmup period)
+    min_required_days = lookback_window_days + validation_window_days
+    if len(data) < min_required_days:
+        raise ValueError(
+            f"Insufficient data: {len(data)} days < {min_required_days} required "
+            f"(lookback={lookback_window_days} + validation={validation_window_days})"
+        )
+
+    # Start cross-validation after warmup period
+    start_idx = min_required_days
+    update_indices = range(start_idx, len(data), update_frequency_days)
+
+    results = []
+
+    for update_idx in update_indices:
+        update_date = data.index[update_idx]
+
+        if verbose:
+            print(f"\n[{update_date.strftime('%Y-%m-%d')}] Testing {len(lambda_candidates)} lambdas...")
+
+        # Validation window: previous validation_window_days
+        val_start_idx = update_idx - validation_window_days
+        val_end_idx = update_idx
+        validation_data = data.iloc[val_start_idx:val_end_idx]
+
+        # For model fitting, use lookback window before validation period
+        fit_start_idx = val_start_idx - lookback_window_days
+        fit_end_idx = val_start_idx
+        fit_data = data.iloc[fit_start_idx:fit_end_idx]
+
+        best_lambda = None
+        best_sharpe = -np.inf
+        best_n_trades = 0
+        lambda_sharpes = {}
+
+        for lambda_val in lambda_candidates:
+            # Fit model on lookback window
+            model = AcademicJumpModel(lambda_penalty=lambda_val)
+            model.fit(fit_data, n_starts=n_starts, verbose=False)
+
+            # Generate online regime inference over validation window
+            regime_sequence = model.predict(validation_data)
+
+            # Simulate 0/1 strategy with 1-day delay
+            val_returns = returns.loc[validation_data.index]
+            strategy_result = simulate_01_strategy(
+                regime_sequence=regime_sequence,
+                returns=val_returns,
+                delay_days=1,
+                transaction_cost_bps=10.0,
+                risk_free_rate=risk_free_rate
+            )
+
+            sharpe = strategy_result['sharpe_ratio']
+            n_trades = strategy_result['n_trades']
+            lambda_sharpes[lambda_val] = sharpe
+
+            if verbose:
+                print(f"  Lambda={lambda_val:3d}: Sharpe={sharpe:6.3f}, Trades={n_trades}")
+
+            # Track best lambda
+            if sharpe > best_sharpe:
+                best_sharpe = sharpe
+                best_lambda = lambda_val
+                best_n_trades = n_trades
+
+        if verbose:
+            print(f"  Selected: Lambda={best_lambda} (Sharpe={best_sharpe:.3f})")
+
+        results.append({
+            'date': update_date,
+            'selected_lambda': best_lambda,
+            'sharpe_ratio': best_sharpe,
+            'n_trades': best_n_trades,
+            'lambda_sharpes': lambda_sharpes
+        })
+
+    results_df = pd.DataFrame(results)
+
+    if verbose:
+        print(f"\nCross-validation complete!")
+        print(f"Lambda selection frequency:")
+        print(results_df['selected_lambda'].value_counts().sort_index())
+        print(f"\nMean Sharpe: {results_df['sharpe_ratio'].mean():.3f}")
+        print(f"Median Lambda: {results_df['selected_lambda'].median():.0f}")
+
+    return results_df
