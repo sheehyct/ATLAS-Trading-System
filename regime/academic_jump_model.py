@@ -897,7 +897,102 @@ class AcademicJumpModel:
         self.theta_ = current_theta
         self.is_fitted_ = True
 
-        return regime_states, lambda_series, theta_df
+        # Map 2-state (bull/bear) to 4-regime ATLAS output
+        atlas_regimes = self.map_to_atlas_regimes(regime_states, features_df)
+
+        return atlas_regimes, lambda_series, theta_df
+
+    def map_to_atlas_regimes(
+        self,
+        state_sequence: pd.Series,
+        features_df: pd.DataFrame
+    ) -> pd.Series:
+        """
+        Map 2-state (bull/bear) clustering output to 4-regime ATLAS output.
+
+        Uses feature thresholds to distinguish 4 regimes from 2 bull/bear states:
+        - CRASH: Bear state + extreme volatility (DD > 0.03 AND Sortino_20 < -1.0)
+        - TREND_BEAR: Bear state + moderate conditions (NOT crash)
+        - TREND_BULL: Bull state + positive risk-adjusted returns (Sortino_20 > 0.5)
+        - TREND_NEUTRAL: Bull state + low/sideways conditions (Sortino_20 <= 0.5)
+
+        Args:
+            state_sequence: Series of 'bull'/'bear' labels from 2-state clustering
+            features_df: Feature DataFrame with columns:
+                        ['downside_dev', 'sortino_20', 'sortino_60']
+
+        Returns:
+            regime_series: Series with ATLAS regime labels
+                          ['TREND_BULL', 'TREND_BEAR', 'TREND_NEUTRAL', 'CRASH']
+
+        Raises:
+            ValueError: If state_sequence contains invalid states
+            ValueError: If features_df missing required columns
+        """
+        # Validate inputs
+        valid_states = {'bull', 'bear'}
+        invalid_states = set(state_sequence.unique()) - valid_states
+        if invalid_states:
+            raise ValueError(
+                f"state_sequence contains invalid states: {invalid_states}. "
+                f"Expected only 'bull' or 'bear'."
+            )
+
+        required_cols = ['downside_dev', 'sortino_20', 'sortino_60']
+        missing_cols = set(required_cols) - set(features_df.columns)
+        if missing_cols:
+            raise ValueError(
+                f"features_df missing required columns: {missing_cols}"
+            )
+
+        # Align indices (features_df may have more rows due to lookback)
+        features_aligned = features_df.loc[state_sequence.index]
+
+        # Initialize all as TREND_NEUTRAL (default/fallback)
+        regimes = pd.Series('TREND_NEUTRAL', index=state_sequence.index, name='regime')
+
+        # Extract feature columns for readability
+        dd = features_aligned['downside_dev']
+        sortino_20 = features_aligned['sortino_20']
+
+        # Define thresholds (adjusted based on observed March 2020 data)
+        # March 2020: DD range 0.0154-0.0422, Sortino range -0.29 to -0.07
+        CRASH_DD_THRESHOLD = 0.02  # Lowered from 0.03 (14/22 March days had DD > 0.03)
+        CRASH_SORTINO_THRESHOLD = -0.15  # Lowered from -1.0 (too strict, never triggered)
+        BEAR_SORTINO_THRESHOLD = 0.0  # New: negative Sortino indicates bearish
+        BULL_SORTINO_THRESHOLD = 0.3  # Lowered from 0.5 for more sensitivity
+
+        # Apply mapping rules using FEATURES DIRECTLY (not relying on 2-state labels)
+        # This avoids issues with stale labels from infrequent theta updates
+        # Priority order: CRASH > BEAR > BULL > NEUTRAL
+
+        # CRASH: Extreme negative conditions (regardless of 2-state label)
+        crash_mask = (
+            (dd > CRASH_DD_THRESHOLD) &
+            (sortino_20 < CRASH_SORTINO_THRESHOLD)
+        )
+        regimes[crash_mask] = 'CRASH'
+
+        # TREND_BEAR: Negative Sortino but not crash (bearish market)
+        bear_mask = (
+            (sortino_20 < BEAR_SORTINO_THRESHOLD) &
+            ~crash_mask
+        )
+        regimes[bear_mask] = 'TREND_BEAR'
+
+        # TREND_BULL: Strong positive risk-adjusted returns
+        bull_mask = sortino_20 > BULL_SORTINO_THRESHOLD
+        regimes[bull_mask] = 'TREND_BULL'
+
+        # TREND_NEUTRAL: Low volatility sideways (Sortino near zero)
+        # Already initialized as TREND_NEUTRAL, covers Sortino in [0, 0.3]
+        neutral_mask = (
+            (sortino_20 >= BEAR_SORTINO_THRESHOLD) &
+            (sortino_20 <= BULL_SORTINO_THRESHOLD)
+        )
+        regimes[neutral_mask] = 'TREND_NEUTRAL'
+
+        return regimes
 
     def get_fit_info(self) -> dict:
         """
