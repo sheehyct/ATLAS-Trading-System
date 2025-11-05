@@ -1,9 +1,9 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 4, 2025 (Session 16 - Phase B Label Swapping FIXED)
+**Last Updated:** November 5, 2025 (Session 18 - Phase D Label Mapping Bug FIXED)
 **Current Branch:** `main`
-**Phase:** ATLAS v2.0 - Academic Statistical Jump Model Phases B+C Complete
-**Status:** Phase B FIXED (6/6 tests passing), Phase C complete, 121/121 tests passing, ready for Phase D
+**Phase:** ATLAS v2.0 - Academic Statistical Jump Model Phase D Implementation
+**Status:** Phase D COMPLETE - March 2020 detection FIXED (0% -> 100% bear detection!)
 
 ---
 
@@ -73,9 +73,163 @@ User: "What is the Academic Jump Model implementation plan?"
 
 ---
 
-## Current State (Session 16 Complete - Nov 4, 2025)
+## Current State (Session 18 Complete - Nov 5, 2025)
 
-### Session 16: Phase B Label Swapping Bug Fix - ALL TESTS PASSING
+### Session 18: Phase D Label Mapping Bug Fix - CRITICAL BUG FIXED
+
+**Objective:** Debug and fix 0% March 2020 crash detection in Phase D online inference.
+
+**Status: COMPLETE - March 2020 detection improved from 0% to 100% bear days!**
+
+**Root Cause Identified:**
+Label mapping bug in `online_inference()` caused retroactive remapping of historical states when labels changed during parameter updates.
+
+**The Bug:**
+1. `_update_theta_online()` updates `self.state_labels_` during parameter updates (every 126 days)
+2. Labels changed 6 times during inference run (flipping between {0:'bull',1:'bear'} and {0:'bear',1:'bull'})
+3. Line 906 (before fix): Applied FINAL `state_labels_` to ALL historical states retroactively
+4. **Impact:** March states inferred correctly as state 0 ('bear'), but remapped to 'bull' using final labels
+
+**The Fix (3 lines changed):**
+```python
+# Line 824: Store labels at inference time
+state_label_sequence = []  # NEW: Track labels as we go
+
+# Line 893: Append current label (not just numeric state)
+state_label_sequence.append(self.state_labels_[current_state])  # FIXED
+
+# Lines 907-910: Use stored labels (not retroactive mapping)
+state_labels = state_label_sequence  # FIXED (was: [self.state_labels_[s] for s in state_sequence])
+```
+
+**Files Modified:**
+- `regime/academic_jump_model.py`: Lines 824, 893, 907-910
+
+**Test Results:**
+- **Before fix:** March 2020 detection = 0% bear (0/22 days) - FAIL
+- **After fix:** March 2020 detection = 100% bear (22/22 days) - PASS (exceeds 50% target!)
+
+**Evidence from Diagnostics:**
+- Confirmed labels changed 6 times during 1522-day inference run
+- Initial labels: {0:'bear', 1:'bull'}
+- Final labels sometimes differed, causing retroactive remapping
+- Fix ensures labels stored at inference time are preserved
+
+**Git Status:** Ready to commit
+
+**Query OpenMemory for details:**
+```
+mcp__openmemory__openmemory_query("Session 18 label mapping bug fix March 2020")
+```
+
+---
+
+## Previous State (Session 17 Partial - Nov 5, 2025)
+
+### Session 17: Phase D Online Inference Implementation - CRITICAL FAILURE FOUND
+
+**Objective:** Implement Phase D online inference with rolling parameter updates for real-time regime detection.
+
+**Implementation Status: CODE COMPLETE, VALIDATION FAILED**
+
+### What Was Implemented (280+ lines):
+
+**Files Modified:**
+1. `regime/academic_jump_model.py` (+280 lines):
+   - `_update_theta_online()` - Refit centroids every 6 months (126 days)
+   - `_update_lambda_online()` - Reselect lambda every month (21 days) via cross-validation
+   - `_infer_state_online()` - Single-step inference with temporal penalty
+   - `online_inference()` - Enhanced method with rolling parameter updates
+
+2. `tests/test_regime/test_online_inference.py` (NEW, 400+ lines):
+   - 7 comprehensive tests created
+   - Test 1: Basic functionality - PASSING (26 seconds runtime)
+   - Test 3: March 2020 crash detection - **FAILING (0% vs >50% target)**
+   - Tests 2,4,5,6,7: Not yet run
+
+**Implementation Details:**
+
+```python
+def online_inference(
+    self,
+    data: pd.DataFrame,
+    lookback: int = 1500,           # Adapted from 3000 (data constraint)
+    theta_update_freq: int = 126,   # 6 months
+    lambda_update_freq: int = 21,   # 1 month
+    default_lambda: float = 15.0,   # Trading mode (vs 50 academic)
+    lambda_candidates: List[float] = None
+) -> Tuple[pd.Series, pd.Series, pd.DataFrame]:
+    """Returns: (regime_states, lambda_history, theta_history)"""
+```
+
+### CRITICAL FAILURE: March 2020 Crash Detection
+
+**Test Results:**
+- **Lambda=15**: 0 bear days out of 22 March 2020 days (0.0%)
+- **Target**: >50% bear detection (>11 days)
+- **Status**: FAILED PRIMARY SUCCESS CRITERION
+
+**Test Configuration:**
+- Lookback: 750 days (3 years) - reduced from 1500 to include March 2020
+- Data: 2271 days (2016-10-24 to 2025-11-04)
+- March 2020 position: Index 842 (needs lookback <842 to test)
+
+**Why This Is Critical:**
+- March 2020 crash detection was THE validation target for Academic Jump Model
+- 0% detection suggests fundamental algorithmic issue
+- Not a simple bug - requires deep investigation
+
+### Lookback Period Adaptation Documented
+
+**Discovery:** March 2020 at index ~842 in 2271-day dataset
+- Original plan: lookback=1500 (5.95 years)
+- March 2020 requirement: lookback <842
+- Test adaptation: lookback=750 (3 years)
+- **Stored in OpenMemory:** "Phase D Implementation - Lookback Period Adaptation"
+
+**Trade-offs:**
+- Shorter lookback (750): Can test March 2020, less stable parameters
+- Longer lookback (1500): More stable, but March 2020 in lookback window
+- Production recommendation: 1500-2000 days (after debugging)
+
+### Additional Fixes Made:
+
+**Column Name Compatibility:**
+- Fixed `fit()`, `predict()`, `online_inference()` to handle both 'Close' and 'close'
+- Alpaca returns lowercase columns, Phase A-C tests used uppercase
+- Now supports both formats
+
+### Next Session (18) Priority Actions:
+
+**MANDATORY DEBUGGING (Fresh Context Required):**
+
+1. **Investigate March 2020 Failure Root Cause:**
+   - Try lambda=5 (more responsive)
+   - Try lookback=500 (shorter window, different data)
+   - Inspect theta parameter evolution during Feb-Mar 2020
+   - Check feature calculations during crash (DD, Sortino)
+   - Compare online inference vs static fit on same period
+
+2. **Hypothesis Testing:**
+   - Degenerate solution with lambda=15? (Expected with lambda=50, not 15)
+   - Feature calculations broken during extreme volatility?
+   - Label swapping logic failing in online context?
+   - Parameter update timing causing lag?
+
+3. **Alternative Approaches if Debugging Fails:**
+   - Simplify online inference (remove lambda updates, fixed lambda=5)
+   - Use static fit on expanding window instead of rolling updates
+   - Increase update frequency (daily theta updates during volatility)
+   - Consider obtaining longer historical data (12+ years for 3000-day lookback)
+
+4. **Complete Remaining Tests:**
+   - Test 2: Parameter update schedule
+   - Test 4: Lambda sensitivity
+   - Test 5: Lookback variations
+   - Test 6: Edge cases
+   - Test 7: Determinism
+
+### Session 16: Phase B Label Swapping Bug Fix - ALL TESTS PASSING (Completed Nov 4)
 
 **Objective:** Fix label swapping logic in Academic Jump Model to correctly identify bull/bear states.
 

@@ -32,7 +32,7 @@ Implementation Reference:
     GitHub: Yizhan-Oliver-Shu/jump-models (reference implementation)
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -449,8 +449,10 @@ class AcademicJumpModel:
             print(f"Fitting Academic Jump Model (lambda={self.lambda_penalty})...")
 
         # Calculate features using Phase A
+        # Handle both 'Close' and 'close' column names
+        close_col = 'Close' if 'Close' in data.columns else 'close'
         features_df = calculate_features(
-            close=data['Close'],
+            close=data[close_col],
             risk_free_rate=0.03,  # 3% annual risk-free rate
             standardize=False  # Use raw features per reference implementation
         )
@@ -562,8 +564,10 @@ class AcademicJumpModel:
             raise ValueError("Model must be fitted before prediction. Call fit() first.")
 
         # Calculate features
+        # Handle both 'Close' and 'close' column names
+        close_col = 'Close' if 'Close' in data.columns else 'close'
         features_df = calculate_features(
-            close=data['Close'],
+            close=data[close_col],
             risk_free_rate=0.03,
             standardize=False
         )
@@ -585,57 +589,315 @@ class AcademicJumpModel:
         # Return Series with original index
         return pd.Series(state_labels, index=features_df.index, name='regime')
 
+    def _update_theta_online(
+        self,
+        features: pd.DataFrame,
+        lambda_value: float,
+        n_starts: int = 10
+    ) -> np.ndarray:
+        """
+        Refit theta centroids using lookback window.
+
+        Uses coordinate descent from Phase B with current lambda value.
+        Applies label swapping (Sortino ratio criterion from Session 16 fix).
+
+        Args:
+            features: Feature DataFrame for lookback window
+            lambda_value: Current lambda penalty value
+            n_starts: Number of random initializations (default: 10)
+
+        Returns:
+            theta: (K=2, D=3) updated centroids
+        """
+        # Run multi-start optimization on features window
+        result = fit_jump_model_multi_start(
+            features=features.values,
+            lambda_penalty=lambda_value,
+            n_starts=n_starts,
+            max_iter=100,
+            random_seed=42,
+            verbose=False
+        )
+
+        theta = result['theta']
+        state_seq = result['state_sequence']
+
+        # Apply label swapping logic (same as fit() method)
+        sortino20_0 = theta[0, 1]
+        sortino20_1 = theta[1, 1]
+        state_0_count = (state_seq == 0).sum()
+        state_1_count = (state_seq == 1).sum()
+
+        sortino_diff = abs(sortino20_0 - sortino20_1)
+
+        if sortino_diff > 0.05:
+            state_0_is_bull = (sortino20_0 > sortino20_1)
+        else:
+            state_0_is_bull = (state_0_count > state_1_count)
+
+        # Update state_labels_ to maintain consistency
+        if state_0_is_bull:
+            self.state_labels_ = {0: 'bull', 1: 'bear'}
+        else:
+            self.state_labels_ = {0: 'bear', 1: 'bull'}
+
+        return theta
+
+    def _update_lambda_online(
+        self,
+        data_window: pd.DataFrame,
+        features_window: pd.DataFrame,
+        lambda_candidates: List[float],
+        validation_days: int = 2016
+    ) -> float:
+        """
+        Reselect optimal lambda using cross-validation.
+
+        Uses 8-year validation window with Sharpe ratio maximization criterion.
+
+        Args:
+            data_window: OHLC data for validation
+            features_window: Features for validation
+            lambda_candidates: Lambda values to test
+            validation_days: Validation window size (default: 2016 = 8 years)
+
+        Returns:
+            optimal_lambda: Lambda value with highest Sharpe ratio
+        """
+        # Calculate returns for strategy simulation
+        # Handle both 'Close' and 'close' column names
+        close_col = 'Close' if 'Close' in data_window.columns else 'close'
+        returns = data_window[close_col].pct_change()
+
+        best_lambda = lambda_candidates[0]
+        best_sharpe = -np.inf
+
+        # Take validation window from end of data
+        if len(data_window) < validation_days:
+            validation_days = len(data_window)
+
+        validation_data = data_window.iloc[-validation_days:]
+        validation_features = features_window.iloc[-validation_days:]
+
+        for lambda_val in lambda_candidates:
+            # Create temporary model with specific lambda
+            temp_model = AcademicJumpModel(lambda_penalty=lambda_val)
+
+            # Fit model on validation window (full fit, not using current theta)
+            # This is correct per cross-validation specification
+            temp_model.fit(validation_data, n_starts=3, verbose=False)  # Use fewer starts for speed
+
+            # Generate regime sequence on same data
+            regime_sequence = temp_model.predict(validation_data)
+
+            # Simulate 0/1 strategy
+            val_returns = returns.loc[validation_data.index]
+            strategy_result = simulate_01_strategy(
+                regime_sequence=regime_sequence,
+                returns=val_returns,
+                delay_days=1,
+                transaction_cost_bps=10.0,
+                risk_free_rate=0.03
+            )
+
+            sharpe = strategy_result['sharpe_ratio']
+
+            if sharpe > best_sharpe:
+                best_sharpe = sharpe
+                best_lambda = lambda_val
+
+        return best_lambda
+
+    def _infer_state_online(
+        self,
+        features_t: np.ndarray,
+        theta: np.ndarray,
+        lambda_val: float,
+        prev_state: int
+    ) -> int:
+        """
+        Single-step inference given current parameters and previous state.
+
+        Uses loss function with temporal penalty for switching cost.
+
+        Args:
+            features_t: Feature vector at time t (D=3,)
+            theta: Current centroids (K=2, D=3)
+            lambda_val: Current lambda penalty
+            prev_state: Previous state (0 or 1)
+
+        Returns:
+            state_t: Optimal state at time t (0 or 1)
+        """
+        # Compute loss for each state
+        loss_0 = 0.5 * np.sum((features_t - theta[0]) ** 2)
+        loss_1 = 0.5 * np.sum((features_t - theta[1]) ** 2)
+
+        # Add switching penalty if changing from previous state
+        if prev_state == 0:
+            loss_1 += lambda_val
+        else:
+            loss_0 += lambda_val
+
+        # Select state with minimum loss
+        if loss_0 <= loss_1:
+            return 0
+        else:
+            return 1
+
     def online_inference(
         self,
         data: pd.DataFrame,
-        lookback_window: int = 3000
-    ) -> str:
+        lookback: int = 1500,
+        theta_update_freq: int = 126,
+        lambda_update_freq: int = 21,
+        default_lambda: float = 15.0,
+        lambda_candidates: List[float] = None
+    ) -> Tuple[pd.Series, pd.Series, pd.DataFrame]:
         """
-        Online inference with lookback window (Section 3.4.2).
+        Online inference with rolling parameter updates (Phase D).
 
-        Uses the last lookback_window days to run DP and extracts the
-        final state s_T as the current regime. This mimics real-time
-        inference with limited historical data.
+        Implements real-time regime detection with:
+        - Configurable lookback window for parameter estimation
+        - Theta updates every 6 months (126 trading days)
+        - Lambda updates every 1 month (21 trading days)
+        - Single-step inference with temporal penalty
 
-        Latency: Expected ~15 days per paper (tradeoff with accuracy)
+        Lookback Adaptation:
+            Academic paper specifies 3000 days (11.9 years). We adapt based on:
+            - Data availability: Alpaca provides ~9 years (2271 days)
+            - Validation needs: March 2020 testing requires lookback < 1760 days
+            - Statistical stability: 1500 days captures 6-year market cycle
+
+        Recommended Lookback Values:
+            - Testing (with March 2020): 1500 days (default)
+            - Production (maximum stability): 2000-2500 days
+            - Academic replication: 3000 days (requires 12-year dataset)
 
         Args:
-            data: OHLC DataFrame (at least lookback_window days)
-            lookback_window: Days to use for inference (default: 3000 per paper)
+            data: OHLC DataFrame with 'Close' column
+            lookback: Parameter estimation window (default: 1500 days = 5.95 years)
+            theta_update_freq: Refit centroids every N days (default: 126 = 6 months)
+            lambda_update_freq: Reselect lambda every N days (default: 21 = 1 month)
+            default_lambda: Initial lambda value (default: 15 for trading)
+            lambda_candidates: Lambda values to test (default: [5,15,35,50,70,100,150])
 
         Returns:
-            Current regime: 'bull' or 'bear'
+            regime_states: Series of 'bull'/'bear' regime labels with date index
+            lambda_history: Series of lambda values used over time
+            theta_history: DataFrame of theta centroids [date, state, feature]
 
         Raises:
-            ValueError: If model not fitted or insufficient data
+            ValueError: If insufficient data
 
         Reference:
             Section 3.4.2 "Online Inference", Shu et al., Princeton 2024
-            "We incorporate a lookback window...with l=3000...and run the
-            dynamic programming algorithm...We then extract the last state
-            s_t from the optimal state sequence as the online inferred
-            prevailing regime."
 
         Example:
-            >>> current_regime = model.online_inference(recent_data, lookback_window=3000)
-            >>> print(f"Current market regime: {current_regime}")
+            >>> model = AcademicJumpModel()
+            >>> regimes, lambdas, thetas = model.online_inference(spy_data, lookback=1500)
+            >>> print(f"March 2020 bear days: {(regimes.loc['2020-03'] == 'bear').sum()}")
         """
-        if not self.is_fitted_:
-            raise ValueError("Model must be fitted before inference. Call fit() first.")
+        if lambda_candidates is None:
+            lambda_candidates = [5, 15, 35, 50, 70, 100, 150]
 
-        # Take last lookback_window days
-        if len(data) < lookback_window:
+        # Calculate features for full dataset
+        # Handle both 'Close' and 'close' column names
+        close_col = 'Close' if 'Close' in data.columns else 'close'
+        features_df = calculate_features(
+            close=data[close_col],
+            risk_free_rate=0.03,
+            standardize=False
+        ).dropna()
+
+        features = features_df.values
+        T = len(features_df)
+
+        # Validate sufficient data
+        if T < lookback:
             raise ValueError(
-                f"Insufficient data: {len(data)} days < {lookback_window} required"
+                f"Insufficient data: {T} days < {lookback} required for lookback window"
             )
 
-        lookback_data = data.iloc[-lookback_window:]
+        # Initialize result arrays
+        state_sequence = np.zeros(T - lookback, dtype=int)
+        state_label_sequence = []  # Store labels at time of inference (fix for label mapping bug)
+        lambda_history = np.zeros(T - lookback)
+        theta_history = []
 
-        # Run predict on lookback window
-        regime_series = self.predict(lookback_data)
+        # Initialize parameters using first lookback window
+        init_features = features_df.iloc[:lookback]
+        current_theta = self._update_theta_online(init_features, default_lambda)
+        current_lambda = default_lambda
+        prev_state = 0  # Start in bull market
 
-        # Return last state
-        return regime_series.iloc[-1]
+        # Rolling inference from lookback to end
+        for t in range(lookback, T):
+            relative_t = t - lookback  # Index in result arrays
+
+            # Check if theta update needed (every 126 days)
+            if relative_t > 0 and relative_t % theta_update_freq == 0:
+                # Use last lookback days to refit theta
+                theta_window_start = t - lookback
+                theta_window_end = t
+                theta_features = features_df.iloc[theta_window_start:theta_window_end]
+                current_theta = self._update_theta_online(theta_features, current_lambda)
+
+            # Check if lambda update needed (every 21 days)
+            if relative_t > 0 and relative_t % lambda_update_freq == 0:
+                # Use last lookback days for validation
+                lambda_window_start = max(0, t - lookback)
+                lambda_window_end = t
+                lambda_data = data.iloc[lambda_window_start:lambda_window_end]
+                lambda_features = features_df.iloc[lambda_window_start:lambda_window_end]
+                current_lambda = self._update_lambda_online(
+                    lambda_data,
+                    lambda_features,
+                    lambda_candidates,
+                    validation_days=min(2016, len(lambda_features))
+                )
+
+            # Perform single-step inference for day t
+            features_t = features[t]
+            current_state = self._infer_state_online(
+                features_t,
+                current_theta,
+                current_lambda,
+                prev_state
+            )
+
+            # Store results
+            state_sequence[relative_t] = current_state
+            state_label_sequence.append(self.state_labels_[current_state])  # Store label at time of inference
+            lambda_history[relative_t] = current_lambda
+            theta_history.append({
+                'date': features_df.index[t],
+                'state_0_dd': current_theta[0, 0],
+                'state_0_s20': current_theta[0, 1],
+                'state_0_s60': current_theta[0, 2],
+                'state_1_dd': current_theta[1, 0],
+                'state_1_s20': current_theta[1, 1],
+                'state_1_s60': current_theta[1, 2]
+            })
+
+            prev_state = current_state
+
+        # Use labels stored at time of inference (not retroactive mapping)
+        # This fixes bug where label changes during parameter updates would
+        # retroactively remap all historical states incorrectly
+        state_labels = state_label_sequence
+
+        # Create result Series with proper index
+        result_index = features_df.index[lookback:]
+        regime_states = pd.Series(state_labels, index=result_index, name='regime')
+        lambda_series = pd.Series(lambda_history, index=result_index, name='lambda')
+        theta_df = pd.DataFrame(theta_history).set_index('date')
+
+        # Store fitted state
+        self.theta_ = current_theta
+        self.is_fitted_ = True
+
+        return regime_states, lambda_series, theta_df
 
     def get_fit_info(self) -> dict:
         """
