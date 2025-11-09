@@ -1,9 +1,11 @@
 ## Directory Structure
 
+**NOTE (Session 20)**: This directory structure describes ATLAS (Layer 1) components only. Directory structure will expand significantly when STRAT (Layer 2) integration begins in Sessions 22-27. Expected additions: `strat/` directory for bar classification and pattern detection components.
+
 ```
 atlas-trading-system/
 |
-+-- strategies/                    # Strategy implementations
++-- strategies/                    # ATLAS equity strategy implementations
 |   +-- __init__.py
 |   +-- base_strategy.py          # Abstract base class
 |   +-- high_momentum_52w.py      # NEW: 52-week high momentum
@@ -13,10 +15,12 @@ atlas-trading-system/
 |   +-- orb.py                    # Opening Range Breakout (EXISTS)
 |   +-- bear_protection.py        # NEW: Bear market allocation logic
 |
-+-- regime/                        # NEW: Regime detection
++-- regime/                        # ATLAS regime detection (Layer 1 output)
 |   +-- __init__.py
-|   +-- jump_model.py             # Jump Model implementation
-|   +-- regime_allocator.py       # Regime-based capital allocation
+|   +-- academic_jump_model.py    # Academic Jump Model (Phases A-E COMPLETE)
+|   +-- academic_features.py      # Feature calculation for Jump Model
+|   +-- base_regime_detector.py   # Abstract base class
+|   +-- regime_allocator.py       # Regime-based capital allocation (PENDING)
 |
 +-- core/                          # Core system components
 |   +-- __init__.py

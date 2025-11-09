@@ -545,6 +545,202 @@ When reaching implementation of strategies requiring shorts or spreads:
 
 **Reference:** HANDOFF.md Session 7 brainstorming, MCP_SETUP.md for Playwright usage
 
+## STRAT Integration Development Rules (Added Session 20)
+
+**Context:** ATLAS (Layer 1) + STRAT (Layer 2) + Options (Layer 3) unified architecture defined in Session 20.
+
+### Lessons from Old STRAT System Failure
+
+**Location:** `C:\STRAT-Algorithmic-Trading-System-V3`
+
+**What Worked (Keep):**
+- Bar classification logic with governing range tracking (CORRECT implementation)
+- Pattern detection for 3-1-2, 2-1-2, 2-2 reversals (CORRECT logic)
+- Timeframe continuity concept (43.3% high-confidence alignment measured)
+
+**What Failed (Must Fix in New Implementation):**
+- Superficial VBT integration (used vbt.Portfolio.from_signals without custom indicators)
+- Index calculation bugs in entry/stop/target price calculation (lines 437-572 in old system)
+- No VBT verification workflow (guessed VBT behavior, caused 90% of bugs)
+- Trial-and-error debugging without minimal testing (wasted 3 iterations)
+
+**Root Cause:** Lack of VBT Pro advanced features (MCP server, 5-step workflow, custom indicators, run_code() testing)
+
+**NEW IMPLEMENTATION REQUIREMENTS:**
+
+1. **MANDATORY: Use VBT Pro Custom Indicators**
+   - Bar classification MUST be VBT IndicatorFactory custom indicator
+   - Pattern detection MUST be VBT custom indicator
+   - NO manual loops processing DataFrames (use VBT vectorized operations)
+   - Test with run_code() before full implementation
+
+2. **MANDATORY: Follow 5-Step VBT Workflow**
+   - Even for STRAT components (bar classifier, pattern detector)
+   - SEARCH VBT docs for similar indicator examples
+   - VERIFY methods exist with resolve_refnames()
+   - FIND real-world usage with find()
+   - TEST minimal example with run_code()
+   - IMPLEMENT only after Steps 1-4 pass
+
+3. **MANDATORY: Index Calculation Verification**
+   - Old STRAT system had index bugs (lines 437-572 trading/strat_signals.py)
+   - ALWAYS verify index alignment: entry bar, stop bar, target bar
+   - Export CSV and manually verify prices match expected levels
+   - Test against known patterns with hand-calculated expected values
+
+### Multi-Layer Architecture Principles
+
+**Layer Separation:**
+
+```
+Layer 1 (ATLAS): Regime Detection
+- Input: SPY/market daily OHLCV
+- Output: Regime string ('TREND_BULL', 'TREND_BEAR', 'TREND_NEUTRAL', 'CRASH')
+- Interface: atlas_model.online_inference(data, date) -> pd.Series
+- NO direct trading decisions, only regime classification
+
+Layer 2 (STRAT): Pattern Recognition
+- Input: Individual stock/ETF intraday + daily OHLCV
+- Output: Pattern signals with entry/stop/target prices
+- Interface: strat_detector.run(data) -> dict{'entry': float, 'stop': float, 'target': float, 'pattern': str}
+- NO regime awareness inside STRAT (stays pure pattern detector)
+
+Layer 3 (Execution): Capital-Aware Trading
+- Input: ATLAS regime + STRAT signals
+- Output: Executed trades (options or equities based on capital)
+- Integration logic in THIS layer only (not in Layer 1 or 2)
+- Capital constraints handled here ($3k -> options, $10k+ -> equities)
+```
+
+**Integration Testing Requirements:**
+
+```python
+# Test Layer 1 (ATLAS) independently:
+def test_atlas_regime_detection():
+    regime = atlas_model.online_inference(spy_data, date='2020-03-15')
+    assert regime == 'CRASH'  # Known crash date
+
+# Test Layer 2 (STRAT) independently:
+def test_strat_pattern_detection():
+    pattern = strat_detector.run(spy_data)
+    assert pattern['pattern'] == '3-1-2-up'
+    assert pattern['entry'] == 148.01  # Inside bar high + $0.01
+
+# Test Layer 3 (Integration) with both:
+def test_unified_signal_generation():
+    regime = atlas_model.online_inference(spy_data, date='2024-01-15')
+    pattern = strat_detector.run(spy_data)
+    signal = generate_unified_signal(regime, pattern)
+
+    if regime == 'TREND_BULL' and pattern['direction'] == 'bullish':
+        assert signal['quality'] == 'HIGH'
+        assert signal['execute'] == True
+    elif regime == 'CRASH':
+        assert signal['execute'] == False  # Risk-off override
+```
+
+### Capital-Aware Development Rules
+
+**ALWAYS document capital requirements for every strategy:**
+
+```python
+# WRONG (no capital documentation):
+class NewStrategy(BaseStrategy):
+    def generate_signals(self, data):
+        return {'long_entries': entries}
+
+# CORRECT (capital requirements explicit):
+class NewStrategy(BaseStrategy):
+    """
+    CAPITAL REQUIREMENTS:
+    - Minimum Viable: $10,000 (full position sizing)
+    - Undercapitalized: $3,000-$9,999 (capital constrained, sub-optimal)
+    - Optimal: $25,000+ (no constraints)
+
+    With $3,000: Use options variant instead (Layer 3 execution decision)
+    """
+    def generate_signals(self, data):
+        return {'long_entries': entries}
+```
+
+**Testing with Multiple Capital Levels:**
+
+```python
+# Test strategy performance at different capital levels:
+def test_strategy_capital_sensitivity():
+    for capital in [3000, 5000, 10000, 25000]:
+        pf = strategy.backtest(data, initial_capital=capital)
+
+        # Document actual risk vs target risk
+        actual_risk_pct = pf.trades.records['risk'].mean() / capital
+        target_risk_pct = strategy.config.risk_per_trade
+
+        print(f"Capital: ${capital:,}")
+        print(f"  Target risk: {target_risk_pct:.2%}")
+        print(f"  Actual risk: {actual_risk_pct:.2%}")
+        print(f"  Capital constrained: {actual_risk_pct < target_risk_pct}")
+
+        # FAIL test if capital too low for strategy design
+        if capital < 10000:
+            assert actual_risk_pct < target_risk_pct, \
+                f"Strategy undercapitalized at ${capital:,}"
+```
+
+### STRAT-Specific VBT Requirements
+
+**Bar Classification Custom Indicator:**
+
+```python
+# MANDATORY: Use IndicatorFactory, not manual loops
+@njit
+def classify_bars_nb(high, low):
+    """Numba-compiled bar classification with governing range."""
+    # Implementation with governing range tracking
+    return classifications
+
+StratBarClassifier = vbt.IF(
+    class_name='StratBarClassifier',
+    input_names=['high', 'low'],
+    output_names=['classification'],
+).with_apply_func(classify_bars_nb)
+
+# Register for use across project:
+vbt.IF.register_custom_indicator(StratBarClassifier, "StratBars")
+```
+
+**Pattern Detection Custom Indicator:**
+
+```python
+# MANDATORY: Vectorized pattern detection
+@njit
+def detect_patterns_nb(classifications, high, low):
+    """Detect 3-1-2, 2-1-2, 2-2 patterns with magnitude targets."""
+    # Vectorized pattern matching
+    return entries, exits, targets
+
+StratPatternDetector = vbt.IF(
+    class_name='StratPatternDetector',
+    input_names=['classifications', 'high', 'low'],
+    output_names=['entries', 'exits', 'targets'],
+).with_apply_func(detect_patterns_nb)
+```
+
+**Integration Verification:**
+
+Before claiming STRAT integration works:
+1. Test bar classifier on SPY, export CSV, compare to TradingView (95%+ accuracy)
+2. Test pattern detector on known patterns, verify entry/stop/target prices manually
+3. Backtest on 2020-2024 data, compare to buy-and-hold benchmark
+4. Test with ATLAS regime filter, verify signals only fire in aligned regimes
+5. Paper trade for 30 days minimum before live deployment
+
+**Zero Tolerance Items for STRAT:**
+- NO manual DataFrame loops (use VBT custom indicators)
+- NO index bugs (verify entry/stop/target bar alignment)
+- NO capital-blind position sizing (test at $3k, $10k, $25k)
+- NO integration without independent layer testing
+- NO deployment without TradingView CSV verification
+
 ## DO NOT
 
 1. Create new dashboard files (VBT native plotting sufficient)

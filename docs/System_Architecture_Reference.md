@@ -1,12 +1,29 @@
-# ATLAS System Architecture Reference
+# ATLAS System Architecture Reference (Layer 1)
 ## Development Guide for Implementation
 
-**Document Purpose**: This is the definitive reference for the ATLAS (Adaptive Trading with Layered Asset System) architecture. All development work should align with the patterns, structures, and requirements defined in this document.
+**Document Purpose**: This is the definitive reference for ATLAS as Layer 1 in a multi-layer trading architecture. ATLAS provides regime detection and equity strategy execution. This is ONE component in a larger unified system (ATLAS + STRAT + Options).
+
+**CRITICAL CONTEXT - Multi-Layer Architecture (Session 20)**:
+- **Layer 1 (ATLAS)**: Regime detection + equity strategies (THIS DOCUMENT)
+- **Layer 2 (STRAT)**: Pattern recognition for precise entry/exit levels (PENDING - Sessions 22-27)
+- **Layer 3 (Execution)**: Capital-aware deployment - options ($3k optimal) OR equities ($10k+ optimal)
+
+**Integration Status**: Layer 1 (ATLAS) nearing completion (Phase F validation next). Layers 2-3 implementation begins after Phase F completes.
+
+**Capital Requirements for ATLAS (Layer 1)**:
+- Minimum Viable Capital: $10,000 (full position sizing capability)
+- With $3,000: CAPITAL CONSTRAINED, sub-optimal performance
+- Recommendation: Paper trade ATLAS with $10k simulated, deploy STRAT+Options live with $3k
 
 **Target Audience**: Development Team (Quantitative Developers)
-**Version**: 1.0
-**Last Updated**: October 2025
+**Version**: 2.0 (Layer 1 Implementation)
+**Last Updated**: November 2025 (Updated Session 20)
 **System**: ATLAS Algorithmic Trading System
+
+**Related Documentation**:
+- See HANDOFF.md "Multi-Layer Integration Architecture" for integration approach
+- See CLAUDE.md "STRAT Integration Development Rules" for Layer 2 development guidelines
+- See Claude Desktop Layer Proposals for STRAT implementation details
 
 ---
 

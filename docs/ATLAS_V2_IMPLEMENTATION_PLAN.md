@@ -1,14 +1,33 @@
-# ATLAS v2.0 Implementation Plan
+# ATLAS v2.0 Implementation Plan (Layer 1)
 
 **Created**: October 26, 2025
-**Status**: Ready to begin Phase 1
+**Updated**: November 2025 (Session 20 - Multi-Layer Architecture Context)
+**Status**: Layer 1 (ATLAS) nearing completion - Phase F validation next
 **Architecture Source**: docs/SYSTEM_ARCHITECTURE/
+
+**CRITICAL CONTEXT - Multi-Layer Architecture (Session 20)**:
+- **Layer 1 (ATLAS)**: Regime detection + equity strategies (THIS DOCUMENT)
+- **Layer 2 (STRAT)**: Pattern recognition (Sessions 22-27, PENDING)
+- **Layer 3 (Execution)**: Capital-aware deployment - options ($3k optimal) OR equities ($10k+ optimal)
+
+**Implementation Status**:
+- Academic Jump Model (Layer 1): Phases A-E COMPLETE, Phase F validation next (Session 21)
+- ATLAS equity strategies: PENDING (will implement after Phase F OR defer for STRAT priority)
+- STRAT integration: PENDING (begins Session 22 after Phase F completes)
+
+**Capital Requirements for Layer 1 (ATLAS)**:
+- Minimum Viable Capital: $10,000 (equity strategies require full position sizing)
+- With $3,000: CAPITAL CONSTRAINED (0.06% actual vs 2% target risk)
+- User Decision: $3,000 starting capital (risk management, not undercapitalization)
+- Deployment Plan: Paper trade ATLAS ($10k sim) + Live trade STRAT options ($3k real)
 
 ---
 
 ## Implementation Overview
 
-This plan implements the ATLAS v2.0 architecture as specified in the SYSTEM_ARCHITECTURE documents. The implementation follows a phased approach, with each phase validated before proceeding to the next.
+This plan implements ATLAS v2.0 as Layer 1 in a multi-layer trading architecture. ATLAS provides regime detection (COMPLETE via Academic Jump Model) and optional equity strategy execution (PENDING).
+
+**UPDATED PRIORITY (Session 20)**: Focus on completing Phase F validation for Academic Jump Model (Layer 1 regime detection), then prioritize STRAT integration (Layer 2) over ATLAS equity strategies due to $3,000 capital constraint making STRAT + Options the optimal deployment path.
 
 **Key Principle**: Validate each component before building dependencies. No strategy proceeds to Phase 2 until Phase 1 foundations are proven.
 

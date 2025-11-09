@@ -1,11 +1,23 @@
-# ATLAS System Architecture v2.0 - Proposed Implementation
+# ATLAS System Architecture v2.0 - Layer 1 (Regime Detection)
 ## Evidence-Based Multi-Strategy Trading System
 
-**Document Purpose**: This document proposes a refined system architecture incorporating evidence-based strategy selection, regime-aware capital allocation, and institutional-grade bear market protection.
+**Document Purpose**: This document describes ATLAS as Layer 1 in a multi-layer trading architecture. ATLAS provides regime detection and equity strategy execution. This is ONE component in a larger unified system (ATLAS + STRAT + Options).
 
-**Target Audience**: Development Team (Quantitative Developers)  
-**Version**: 2.0 (Proposed)  
-**Date**: October 26, 2025  
+**CRITICAL CONTEXT - Multi-Layer Architecture**:
+- **Layer 1 (ATLAS)**: Regime detection + equity strategies (THIS DOCUMENT)
+- **Layer 2 (STRAT)**: Pattern recognition for precise entry/exit levels (Sessions 22-27, PENDING)
+- **Layer 3 (Execution)**: Capital-aware deployment - options ($3k optimal) OR equities ($10k+ optimal)
+
+**Integration Status**: Layer 1 (ATLAS) nearing completion (Phase F validation next). Layers 2-3 implementation begins after Phase F completes.
+
+**Capital Requirements for Layer 1 (ATLAS Equity Strategies)**:
+- Minimum Viable Capital: $10,000 (full position sizing capability)
+- With $3,000: CAPITAL CONSTRAINED, sub-optimal performance (0.06% actual risk vs 2% target)
+- Recommendation: Paper trade ATLAS with $10k simulated while building capital, deploy STRAT+Options live with $3k
+
+**Target Audience**: Development Team (Quantitative Developers)
+**Version**: 2.0 (Layer 1 Implementation)
+**Date**: November 2025 (Updated Session 20)
 **System**: ATLAS (Adaptive Trading with Layered Asset System)
 
 **Key Changes from v1.0**:
@@ -738,5 +750,57 @@ Is Jump Model confident in bear market? (>70%)
 - pytest for unit tests
 - pytest-cov for coverage analysis
 - Target: >80% code coverage
+
+---
+
+## Multi-Layer Integration Architecture (Session 20 Context)
+
+### How ATLAS Fits Into the Unified System
+
+**ATLAS = Layer 1 (Macro Filter)**:
+- Provides regime classification: TREND_BULL, TREND_BEAR, TREND_NEUTRAL, CRASH
+- Equity strategies within ATLAS are OPTIONAL (can use just regime detection)
+- Primary output: Market regime signal for downstream layers
+
+**Integration with Layer 2 (STRAT - PENDING)**:
+```python
+# Example integration logic (Layer 3 Execution)
+def generate_unified_signal(symbol, date):
+    # Layer 1: ATLAS regime detection
+    regime = atlas_model.online_inference(market_data, date)
+
+    # Layer 2: STRAT pattern recognition (PENDING implementation)
+    strat_pattern = StratPatternDetector.run(symbol_data, date)
+
+    # Integration logic (confluence model)
+    if regime == 'TREND_BULL' and strat_pattern.direction == 'bullish':
+        signal_quality = 'HIGH'  # Both layers agree
+        execute = True
+    elif regime == 'CRASH':
+        signal_quality = 'REJECT'  # Risk-off override
+        execute = False  # ATLAS veto regardless of STRAT signal
+    else:
+        signal_quality = 'MEDIUM'
+        execute = check_other_conditions()
+
+    return signal_quality, execute
+```
+
+**Capital-Aware Deployment (Layer 3 - PENDING)**:
+- **$3,000 capital**: Use STRAT + Options (27x capital efficiency)
+- **$10,000+ capital**: Use ATLAS equities OR STRAT options (both viable)
+- **Mixed deployment**: Paper trade ATLAS ($10k sim) + Live trade STRAT options ($3k real)
+
+**Development Sequence (Post-Phase F)**:
+1. Complete ATLAS Phase F validation (Session 21)
+2. Implement STRAT bar classification (Sessions 22-24)
+3. Implement STRAT pattern detection (Sessions 25-27)
+4. Build unified execution layer (Sessions 28-30)
+5. Paper trade integrated system (3 months minimum)
+
+**Critical Decision from Session 20**:
+User has $3,000 available capital (risk management choice, not undercapitalization). This capital level makes STRAT + Options the PRIMARY deployment path, with ATLAS serving as regime filter rather than standalone trading system.
+
+See HANDOFF.md "Multi-Layer Integration Architecture" section for detailed integration approach and capital efficiency analysis.
 
 ---

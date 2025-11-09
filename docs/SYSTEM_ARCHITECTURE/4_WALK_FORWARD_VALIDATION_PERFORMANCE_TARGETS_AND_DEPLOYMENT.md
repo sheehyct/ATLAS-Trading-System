@@ -502,9 +502,9 @@ def backtest_by_regime(
 
 ## Conclusion
 
-This v2.0 architecture represents a fundamental evolution from v1.0:
+This v2.0 architecture represents ATLAS as Layer 1 in a multi-layer trading system:
 
-**Key Improvements**:
+**Key Improvements (ATLAS Layer 1)**:
 1. Eliminated leveraged ETFs (evidence showed failure)
 2. Added foundation strategies (52-Week High, Quality-Momentum)
 3. Replaced weak strategies with proven alternatives (IBS > 5-Day Washout)
@@ -512,23 +512,36 @@ This v2.0 architecture represents a fundamental evolution from v1.0:
 5. Added tiered bear market protection
 6. Refined expectations to match empirical research
 
-**Expected Portfolio Characteristics**:
+**Expected Portfolio Characteristics (ATLAS Equity Strategies)**:
 - Sharpe Ratio: 1.0-1.8 (vs 2.5+ unrealistic target in v1.0)
 - Max Drawdown: -20% to -25% (vs -10% unrealistic in v1.0)
 - CAGR: 12-25% (realistic range)
 - Deployed Capital: 60-90% depending on regime
+- **MINIMUM CAPITAL**: $10,000 (capital constrained below this level)
 
-**Next Steps**:
-1. Review this proposal
-2. Begin Phase 1 implementation
-3. Follow validation protocol rigorously
-4. Scale conservatively
+**Multi-Layer Integration Context (Session 20)**:
+- **Layer 1 (ATLAS)**: Regime detection (THIS DOCUMENT) - Phase F validation next
+- **Layer 2 (STRAT)**: Pattern recognition for entry/exit - Sessions 22-27 (PENDING)
+- **Layer 3 (Execution)**: Capital-aware deployment - Sessions 28-30 (PENDING)
 
-**Remember**: The goal is a system that survives long-term, not one that looks perfect in backtests.
+**Deployment Strategy (Updated Session 20)**:
+1. **WITH $3,000 capital**: Paper trade ATLAS ($10k simulated) + Live trade STRAT options ($3k real)
+2. **WITH $10,000+ capital**: Deploy ATLAS equities OR STRAT options (both viable)
+3. **Recommendation**: Build both layers, use ATLAS as regime filter for STRAT signals
+
+**Next Steps (Immediate)**:
+1. Complete ATLAS Phase F validation (Session 21)
+2. Paper trade ATLAS with $10k simulated capital (validate regime detection)
+3. Begin STRAT integration (Sessions 22-27, bar classification + pattern detection)
+4. Build unified execution layer (Session 28-30, capital-aware routing)
+5. Paper trade integrated system (3 months minimum, 60% probability of regime change for validation)
+
+**Remember**: The goal is a system that survives long-term, not one that looks perfect in backtests. ATLAS provides the regime detection foundation; STRAT provides capital-efficient execution.
 
 ---
 
-**Document Status**: Proposed Architecture (v2.0)  
-**Review Required**: YES  
-**Implementation Priority**: Phase 1 strategies first  
-**Questions**: Refer to project knowledge or consult team
+**Document Status**: Layer 1 (ATLAS) Architecture (v2.0)
+**Multi-Layer Status**: Layer 1 nearing completion (Phase F next), Layers 2-3 pending
+**Review Required**: YES
+**Implementation Priority**: Complete Phase F validation, then proceed to STRAT integration
+**Questions**: Refer to HANDOFF.md "Multi-Layer Integration Architecture" section

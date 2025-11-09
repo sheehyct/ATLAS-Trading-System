@@ -1,6 +1,23 @@
 
 ## Core Components
 
+**NOTE (Session 20)**: These components describe ATLAS (Layer 1) risk management. Multi-layer integration will add capital-aware execution logic in Layer 3 to route between equity execution (optimal $10k+) and options execution (optimal $3k).
+
+### Capital Requirements for ATLAS Components
+
+**CRITICAL CONSTRAINT IDENTIFIED (Session 20)**:
+- ATLAS equity strategies require MINIMUM $10,000 for proper position sizing
+- With $3,000 capital: Capital constrained to 0.06% actual risk vs 2% target risk
+- Root cause: ATR-based position sizing calculation uses `min(risk_based_size, capital_constrained_size)`
+- Impact: Cannot maintain 2-3 concurrent positions, systematic underperformance
+
+**Deployment Recommendation**:
+- **$3,000 capital**: Deploy STRAT + Options (Layer 2-3, capital-efficient, 27x better)
+- **$10,000+ capital**: Deploy ATLAS equities (Layer 1, optimal)
+- **Mixed approach**: Paper trade ATLAS with $10k simulated + Live trade STRAT options with $3k
+
+See HANDOFF.md "Capital Requirements Analysis" section for detailed position sizing math and capital efficiency comparison.
+
 ### Portfolio Manager
 
 Orchestrates multiple strategies with regime-based allocation:

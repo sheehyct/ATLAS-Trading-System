@@ -592,27 +592,36 @@ class AcademicJumpModel:
     def _update_theta_online(
         self,
         features: pd.DataFrame,
-        lambda_value: float,
+        lambda_value: float = None,
         n_starts: int = 10
     ) -> np.ndarray:
         """
         Refit theta centroids using lookback window.
 
-        Uses coordinate descent from Phase B with current lambda value.
-        Applies label swapping (Sortino ratio criterion from Session 16 fix).
+        Uses coordinate descent from Phase B with FIXED lambda=15.0 for theta fitting.
+        This ensures theta centroids are independent of user's lambda parameter choice,
+        maintaining consistent bull/bear labels across different lambda sensitivity tests.
+
+        The user's lambda parameter ONLY affects the temporal penalty in inference,
+        NOT the centroid positions. This separation is critical for proper lambda
+        sensitivity analysis.
 
         Args:
             features: Feature DataFrame for lookback window
-            lambda_value: Current lambda penalty value
+            lambda_value: DEPRECATED - ignored, kept for backwards compatibility
             n_starts: Number of random initializations (default: 10)
 
         Returns:
             theta: (K=2, D=3) updated centroids
         """
+        # CRITICAL: Use FIXED lambda=15.0 for theta fitting to ensure centroid independence
+        # User's lambda parameter only affects inference temporal penalty, not theta
+        THETA_FITTING_LAMBDA = 15.0
+
         # Run multi-start optimization on features window
         result = fit_jump_model_multi_start(
             features=features.values,
-            lambda_penalty=lambda_value,
+            lambda_penalty=THETA_FITTING_LAMBDA,
             n_starts=n_starts,
             max_iter=100,
             random_seed=42,
@@ -640,6 +649,33 @@ class AcademicJumpModel:
             self.state_labels_ = {0: 'bull', 1: 'bear'}
         else:
             self.state_labels_ = {0: 'bear', 1: 'bull'}
+
+        return theta
+
+    def _normalize_theta_orientation(self, theta: np.ndarray) -> np.ndarray:
+        """
+        Normalize theta orientation to ensure state 0 is always 'bull'.
+
+        K-means clustering produces arbitrary state assignments (0 or 1).
+        This method ensures consistent orientation by making state 0 the
+        bull regime (higher Sortino ratio) throughout the inference run.
+
+        Args:
+            theta: (K=2, D=3) centroid matrix
+
+        Returns:
+            theta: (K=2, D=3) normalized centroid matrix (state 0 = bull)
+        """
+        # Check Sortino_20 values (column index 1)
+        sortino20_0 = theta[0, 1]
+        sortino20_1 = theta[1, 1]
+
+        # If state 1 has higher Sortino (is more bullish), swap rows
+        if sortino20_1 > sortino20_0:
+            theta = theta[[1, 0], :]  # Swap rows
+
+        # Ensure labels match the normalized orientation
+        self.state_labels_ = {0: 'bull', 1: 'bear'}
 
         return theta
 
@@ -752,7 +788,9 @@ class AcademicJumpModel:
         theta_update_freq: int = 126,
         lambda_update_freq: int = 21,
         default_lambda: float = 15.0,
-        lambda_candidates: List[float] = None
+        lambda_candidates: List[float] = None,
+        adaptive_lambda: bool = False,
+        return_raw_states: bool = False
     ) -> Tuple[pd.Series, pd.Series, pd.DataFrame]:
         """
         Online inference with rolling parameter updates (Phase D).
@@ -780,7 +818,12 @@ class AcademicJumpModel:
             theta_update_freq: Refit centroids every N days (default: 126 = 6 months)
             lambda_update_freq: Reselect lambda every N days (default: 21 = 1 month)
             default_lambda: Initial lambda value (default: 15 for trading)
-            lambda_candidates: Lambda values to test (default: [5,15,35,50,70,100,150])
+            lambda_candidates: Lambda values to test if adaptive_lambda=True (default: [5,15,35,50,70,100,150])
+            adaptive_lambda: Enable automatic lambda reselection every lambda_update_freq days (default: False)
+                           If False, uses default_lambda throughout (recommended for testing and parameter sensitivity analysis)
+                           If True, reselects optimal lambda via cross-validation (academic paper behavior)
+            return_raw_states: If True, return 2-state (bull/bear) output without 4-regime mapping (default: False)
+                             Useful for testing lambda parameter sensitivity at clustering level
 
         Returns:
             regime_states: Series of 'bull'/'bear' regime labels with date index
@@ -807,7 +850,7 @@ class AcademicJumpModel:
         features_df = calculate_features(
             close=data[close_col],
             risk_free_rate=0.03,
-            standardize=False
+            standardize=True  # CRITICAL: Standardize to make loss scale comparable to lambda
         ).dropna()
 
         features = features_df.values
@@ -831,6 +874,11 @@ class AcademicJumpModel:
         current_lambda = default_lambda
         prev_state = 0  # Start in bull market
 
+        # CRITICAL: Normalize theta orientation after initial fitting
+        # Ensure state 0 is always "bull" by swapping rows if needed
+        # This prevents label inconsistency during subsequent theta updates
+        current_theta = self._normalize_theta_orientation(current_theta)
+
         # Rolling inference from lookback to end
         for t in range(lookback, T):
             relative_t = t - lookback  # Index in result arrays
@@ -843,8 +891,11 @@ class AcademicJumpModel:
                 theta_features = features_df.iloc[theta_window_start:theta_window_end]
                 current_theta = self._update_theta_online(theta_features, current_lambda)
 
-            # Check if lambda update needed (every 21 days)
-            if relative_t > 0 and relative_t % lambda_update_freq == 0:
+                # Normalize theta orientation to keep state 0 = bull consistently
+                current_theta = self._normalize_theta_orientation(current_theta)
+
+            # Check if lambda update needed (every 21 days, only if adaptive mode enabled)
+            if adaptive_lambda and relative_t > 0 and relative_t % lambda_update_freq == 0:
                 # Use last lookback days for validation
                 lambda_window_start = max(0, t - lookback)
                 lambda_window_end = t
@@ -896,6 +947,10 @@ class AcademicJumpModel:
         # Store fitted state
         self.theta_ = current_theta
         self.is_fitted_ = True
+
+        # Return raw 2-state output if requested (for lambda sensitivity testing)
+        if return_raw_states:
+            return regime_states, lambda_series, theta_df
 
         # Map 2-state (bull/bear) to 4-regime ATLAS output
         atlas_regimes = self.map_to_atlas_regimes(regime_states, features_df)
@@ -959,35 +1014,42 @@ class AcademicJumpModel:
         # March 2020: DD range 0.0154-0.0422, Sortino range -0.29 to -0.07
         CRASH_DD_THRESHOLD = 0.02  # Lowered from 0.03 (14/22 March days had DD > 0.03)
         CRASH_SORTINO_THRESHOLD = -0.15  # Lowered from -1.0 (too strict, never triggered)
-        BEAR_SORTINO_THRESHOLD = 0.0  # New: negative Sortino indicates bearish
         BULL_SORTINO_THRESHOLD = 0.3  # Lowered from 0.5 for more sensitivity
 
-        # Apply mapping rules using FEATURES DIRECTLY (not relying on 2-state labels)
-        # This avoids issues with stale labels from infrequent theta updates
-        # Priority order: CRASH > BEAR > BULL > NEUTRAL
+        # Apply mapping rules using BOTH clustering output AND features
+        # Clustering (bull/bear) provides regime persistence via lambda penalty
+        # Features refine into 4 ATLAS regimes (CRASH, TREND_BEAR, TREND_BULL, TREND_NEUTRAL)
 
-        # CRASH: Extreme negative conditions (regardless of 2-state label)
+        # Get clustering states
+        is_bear_state = (state_sequence == 'bear')
+        is_bull_state = (state_sequence == 'bull')
+
+        # CRASH: Bear state + extreme volatility
         crash_mask = (
+            is_bear_state &
             (dd > CRASH_DD_THRESHOLD) &
             (sortino_20 < CRASH_SORTINO_THRESHOLD)
         )
         regimes[crash_mask] = 'CRASH'
 
-        # TREND_BEAR: Negative Sortino but not crash (bearish market)
+        # TREND_BEAR: Bear state but not crash conditions
         bear_mask = (
-            (sortino_20 < BEAR_SORTINO_THRESHOLD) &
+            is_bear_state &
             ~crash_mask
         )
         regimes[bear_mask] = 'TREND_BEAR'
 
-        # TREND_BULL: Strong positive risk-adjusted returns
-        bull_mask = sortino_20 > BULL_SORTINO_THRESHOLD
+        # TREND_BULL: Bull state + strong positive returns
+        bull_mask = (
+            is_bull_state &
+            (sortino_20 > BULL_SORTINO_THRESHOLD)
+        )
         regimes[bull_mask] = 'TREND_BULL'
 
-        # TREND_NEUTRAL: Low volatility sideways (Sortino near zero)
-        # Already initialized as TREND_NEUTRAL, covers Sortino in [0, 0.3]
+        # TREND_NEUTRAL: Bull state + low/sideways conditions (Sortino <= threshold)
+        # Already initialized as TREND_NEUTRAL, so only need to filter bull states
         neutral_mask = (
-            (sortino_20 >= BEAR_SORTINO_THRESHOLD) &
+            is_bull_state &
             (sortino_20 <= BULL_SORTINO_THRESHOLD)
         )
         regimes[neutral_mask] = 'TREND_NEUTRAL'
