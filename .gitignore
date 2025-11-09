@@ -130,3 +130,31 @@ alpaca-mcp-server/
 alphavantage/
 jupyter-mcp-server/
 matplotlib_mcp/
+
+# Development-Specific Files (not for public repository)
+# Claude Code workspace settings and session state
+.claude/
+.session_startup_prompt.md
+
+# Internal documentation (development guides, handoff notes)
+docs/
+
+# Research and exploratory analysis (not core system)
+strategy_research/
+
+# Planning and proposal documents
+Claude Desktop Layer Proposals/
+
+# Output and report files
+output/
+*.html
+accuracy_test_report.json
+
+# Audio files (transcription utilities)
+*.mp3
+
+# Debug and test scripts (temporary investigation files)
+test_label_bug.py
+test_lambda_*.py
+transcribe*.py
+spy_features_*.csv
