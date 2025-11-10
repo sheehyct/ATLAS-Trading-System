@@ -339,9 +339,11 @@ def test_online_inference_march_2020(spy_data_3000):
     # Use smaller lookback since we only have ~858 days of pre-2020 data
     available_days = len(inference_data)
     lookback = min(800, available_days - 50)  # Leave buffer for features
-    current_regime = model.online_inference(inference_data, lookback_window=lookback)
-    assert current_regime in ['bull', 'bear'], (
-        f"Invalid regime: {current_regime}"
+    regimes, _, _ = model.online_inference(inference_data, lookback=lookback)
+    # Verify regimes are valid 4-regime ATLAS output
+    valid_regimes = {'TREND_BULL', 'TREND_BEAR', 'TREND_NEUTRAL', 'CRASH'}
+    assert all(r in valid_regimes for r in regimes.unique()), (
+        f"Invalid regimes found: {regimes.unique()}"
     )
 
     print("\n[PASS] March 2020 Crash Detection:")

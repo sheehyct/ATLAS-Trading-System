@@ -209,7 +209,7 @@ def test_online_inference_configurable_lambda():
         lookback=1500,
         default_lambda=5.0
     )
-    switches_5 = (regimes_5.diff() != '').sum()
+    switches_5 = (regimes_5 != regimes_5.shift(1)).sum()
     years_5 = len(regimes_5) / 252
     switches_per_year_5 = switches_5 / years_5
 
@@ -218,7 +218,7 @@ def test_online_inference_configurable_lambda():
         data,
         lookback=1500
     )
-    switches_15 = (regimes_15.diff() != '').sum()
+    switches_15 = (regimes_15 != regimes_15.shift(1)).sum()
     years_15 = len(regimes_15) / 252
     switches_per_year_15 = switches_15 / years_15
 
@@ -228,7 +228,7 @@ def test_online_inference_configurable_lambda():
         lookback=1500,
         default_lambda=50.0
     )
-    switches_50 = (regimes_50.diff() != '').sum()
+    switches_50 = (regimes_50 != regimes_50.shift(1)).sum()
     years_50 = len(regimes_50) / 252
     switches_per_year_50 = switches_50 / years_50
 
@@ -316,14 +316,16 @@ def test_online_inference_edge_cases():
 
     print(f"[PASS] Edge case 1: Insufficient data raises ValueError")
 
-    # Test 2: Exactly lookback days -> should work (no inference days though)
-    # This will pass validation but return empty results
-    exact_data = fetch_alpaca_data('SPY', timeframe='1D', period_days=1600)
+    # Test 2: Exactly lookback days -> should work (minimal inference days)
+    # Need enough calendar days for: lookback trading days + feature warmup (60d) + conversion (~70%)
+    # Formula: (1500 + 60) / 0.7 = ~2230 calendar days
+    exact_data = fetch_alpaca_data('SPY', timeframe='1D', period_days=2300)
     regimes, lambdas, thetas = model.online_inference(exact_data, lookback=1500)
-    # Should have very few inference days (just after warm-up period)
-    assert len(regimes) >= 0, "Should handle exact lookback data"
+    # Should have minimal inference days (just after lookback window)
+    assert len(regimes) >= 0, "Should handle minimal data after lookback"
+    assert len(regimes) < 200, "Should have minimal inference days with exact lookback"
 
-    print(f"[PASS] Edge case 2: Exact lookback data handled")
+    print(f"[PASS] Edge case 2: Minimal data after lookback handled ({len(regimes)} inference days)")
 
     # Test 3: Extreme volatility periods (2020) -> no overflow/underflow
     volatile_data = fetch_alpaca_data('SPY', timeframe='1D', period_days=2500)
@@ -398,8 +400,8 @@ def test_online_inference_determinism():
             f"Theta column {col} should be identical"
 
     # Validate regime switching points are identical
-    switches_1 = regimes_1[regimes_1.diff() != ''].index
-    switches_2 = regimes_2[regimes_2.diff() != ''].index
+    switches_1 = regimes_1[regimes_1 != regimes_1.shift(1)].index
+    switches_2 = regimes_2[regimes_2 != regimes_2.shift(1)].index
     assert len(switches_1) == len(switches_2), "Same number of switches"
     assert all(switches_1 == switches_2), "Switches at same dates"
 

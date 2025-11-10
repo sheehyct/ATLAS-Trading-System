@@ -402,7 +402,13 @@ def test_march_2020_crash_timeline(spy_data_march_2020, model_default):
 
     for date in circuit_breaker_dates:
         try:
-            regime = regimes.loc[date]
+            regime_value = regimes.loc[date]
+            # Handle case where loc returns Series (multiple entries) or scalar
+            if isinstance(regime_value, pd.Series):
+                regime = regime_value.iloc[0]
+            else:
+                regime = regime_value
+
             if regime in ['CRASH', 'TREND_BEAR']:
                 circuit_breaker_detected += 1
                 print(f"Circuit breaker {date}: {regime} - DETECTED")
@@ -901,6 +907,250 @@ def test_online_vs_static_consistency(spy_data_full, model_lambda_15):
             f"{regime}: Static {static_pct:.1f}% vs Online {online_pct:.1f}% (diff {diff:.1f}pp, max 20pp)"
 
     print(f"\nConsistency check: Agreement {agreement:.1%}, distribution similar - PASS")
+
+
+# ============================================================================
+# TEST 8: SYNTHETIC BAC VALIDATION (ACADEMIC STANDARD)
+# ============================================================================
+
+def balanced_accuracy(true_states, pred_states):
+    """
+    Calculate Balanced Accuracy (BAC) metric for regime classification.
+
+    Handles class imbalance by averaging per-class accuracies rather than
+    overall accuracy. Prevents bias toward majority class (e.g., TREND_BULL).
+
+    Reference: Nystrup et al. (2021) "Feature Selection in Jump Models"
+               Standard Jump Model achieves 92% BAC, Sparse Jump Model 95% BAC
+
+    Args:
+        true_states: Array or Series of true regime labels
+        pred_states: Array or Series of predicted regime labels
+
+    Returns:
+        float: Balanced accuracy (0.0 to 1.0)
+    """
+    # Get all states (union of true and predicted)
+    states = set(true_states) | set(pred_states)
+
+    # Calculate per-class accuracy (recall)
+    accuracies = []
+    for state in states:
+        # True positives: predicted=state AND actual=state
+        tp = sum((t == state) and (p == state) for t, p in zip(true_states, pred_states))
+        # False negatives: predicted!=state BUT actual=state
+        fn = sum((t == state) and (p != state) for t, p in zip(true_states, pred_states))
+
+        # Recall for this class
+        if tp + fn > 0:
+            class_accuracy = tp / (tp + fn)
+            accuracies.append(class_accuracy)
+
+    # Balanced accuracy = average of per-class accuracies
+    return np.mean(accuracies) if accuracies else 0.0
+
+
+def generate_synthetic_regime_data(n_days=500, noise_level=0.15, random_seed=42):
+    """
+    Generate synthetic market data with KNOWN regime switches for BAC validation.
+
+    Creates realistic price series with 4 distinct market regimes:
+    - Bull market: High Sortino (>0.3), low DD (<0.01)
+    - Bear market: Negative Sortino (<0), moderate DD (0.01-0.02)
+    - Crash: Very negative Sortino (<-0.15), high DD (>0.02)
+    - Neutral: Low Sortino (0-0.3), low-moderate DD (0.005-0.015)
+
+    Adds noise to make classification challenging but achievable.
+
+    Args:
+        n_days: Number of trading days to generate
+        noise_level: Amount of feature noise (0.0-1.0, default 0.15)
+        random_seed: Random seed for reproducibility
+
+    Returns:
+        tuple: (price_df, true_regimes_series)
+    """
+    np.random.seed(random_seed)
+
+    # Define regime periods with known ground truth
+    regimes_true = []
+
+    # Period 1: Bull market (days 0-149)
+    regimes_true.extend(['TREND_BULL'] * 150)
+
+    # Period 2: Crash (days 150-174)
+    regimes_true.extend(['CRASH'] * 25)
+
+    # Period 3: Bear market (days 175-299)
+    regimes_true.extend(['TREND_BEAR'] * 125)
+
+    # Period 4: Neutral recovery (days 300-399)
+    regimes_true.extend(['TREND_NEUTRAL'] * 100)
+
+    # Period 5: Bull resumption (days 400-499)
+    regimes_true.extend(['TREND_BULL'] * 100)
+
+    # Generate price series with regime-appropriate characteristics
+    prices = [100.0]  # Start at $100
+    for i in range(1, n_days):
+        regime = regimes_true[i]
+
+        if regime == 'TREND_BULL':
+            # Bull: steady gains, low volatility
+            drift = 0.001  # +0.1% daily
+            vol = 0.008    # Low volatility
+        elif regime == 'CRASH':
+            # Crash: EXTREME losses and volatility (match March 2020 characteristics)
+            # March 2020: DD reached 6.17 sigma, circuit breakers at -7%, VIX 80+
+            drift = -0.05  # -5.0% daily (circuit breaker territory)
+            vol = 0.06     # 6% daily volatility (extreme panic)
+        elif regime == 'TREND_BEAR':
+            # Bear: moderate losses, moderate volatility
+            drift = -0.005 # -0.5% daily
+            vol = 0.015    # Moderate volatility
+        else:  # TREND_NEUTRAL
+            # Neutral: sideways, low volatility
+            drift = 0.0    # Flat
+            vol = 0.01     # Low-moderate volatility
+
+        # Add noise to make it realistic
+        noise = np.random.randn() * vol
+        ret = drift + noise
+        prices.append(prices[-1] * (1 + ret))
+
+    # Create DataFrame with OHLCV data
+    dates = pd.date_range('2020-01-01', periods=n_days, freq='B')  # Business days
+    df = pd.DataFrame({
+        'Close': prices,
+        'Open': prices,  # Simplified: Open = Close
+        'High': [p * 1.005 for p in prices],  # High slightly above close
+        'Low': [p * 0.995 for p in prices],   # Low slightly below close
+        'Volume': [1000000] * n_days  # Constant volume (not used in regime detection)
+    }, index=dates)
+
+    # Create true regimes Series
+    true_regimes = pd.Series(regimes_true, index=dates, name='true_regime')
+
+    return df, true_regimes
+
+
+def test_synthetic_bac_validation():
+    """
+    Test 8: Synthetic BAC Validation - Academic Standard.
+
+    Validates core algorithm accuracy using synthetic data with KNOWN ground truth.
+    This is the gold standard validation approach from academic literature.
+
+    Reference: Nystrup et al. (2021) "Feature Selection in Jump Models"
+               - Standard Jump Model: 92% BAC
+               - Sparse Jump Model: 95% BAC
+               - Our target: >=85% BAC (reasonable threshold)
+
+    Approach:
+    1. Generate 500 days of synthetic data with known regime switches
+    2. Run Academic Jump Model to predict regimes
+    3. Calculate Balanced Accuracy (BAC) against ground truth
+    4. Assert BAC >= 85%
+
+    Why BAC > overall accuracy:
+    - BAC handles class imbalance (most days TREND_BULL, few CRASH)
+    - Prevents bias toward majority class
+    - Academic papers use BAC as primary metric
+
+    CRITICAL: If this test fails (BAC < 85%), there is a fundamental
+    algorithmic issue that must be debugged before proceeding to Phase 3.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 8: SYNTHETIC BAC VALIDATION (ACADEMIC STANDARD)")
+    print("=" * 70)
+
+    # Generate synthetic data with known regimes
+    synthetic_data, true_regimes = generate_synthetic_regime_data(
+        n_days=500,
+        noise_level=0.15,
+        random_seed=42
+    )
+
+    print(f"\nSynthetic Data Generated:")
+    print(f"  Total days: {len(synthetic_data)}")
+    print(f"  True regime distribution:")
+    for regime, count in true_regimes.value_counts().items():
+        print(f"    {regime}: {count} days ({count/len(true_regimes):.1%})")
+
+    # Run Academic Jump Model prediction
+    model = AcademicJumpModel()
+
+    # Use moderate lookback (200 days = ~40% of data)
+    # Use lambda=5 (responsive - lower values needed for synthetic data to avoid degenerate solutions)
+    # Lambda=10 produces degenerate clustering on short synthetic datasets
+    pred_regimes, _, _ = model.online_inference(
+        synthetic_data,
+        lookback=200,
+        default_lambda=5.0,  # Low lambda for better regime switching sensitivity
+        adaptive_lambda=False  # Fixed lambda for consistent testing
+    )
+
+    print(f"\nPredicted Regime Distribution:")
+    for regime, count in pred_regimes.value_counts().items():
+        print(f"  {regime}: {count} days ({count/len(pred_regimes):.1%})")
+
+    # Align predictions with ground truth
+    # Predictions start after: lookback (200) + feature warmup (60) = 260 days
+    # Calculate actual offset from prediction length
+    total_days = len(synthetic_data)
+    pred_days = len(pred_regimes)
+    offset = total_days - pred_days
+
+    print(f"\nAlignment:")
+    print(f"  Total synthetic days: {total_days}")
+    print(f"  Prediction days: {pred_days}")
+    print(f"  Offset (lookback + warmup): {offset}")
+
+    aligned_true = true_regimes.iloc[offset:]  # Skip lookback + warmup period
+    aligned_pred = pred_regimes
+
+    # Verify alignment
+    assert len(aligned_true) == len(aligned_pred), \
+        f"Alignment error: {len(aligned_true)} true vs {len(aligned_pred)} pred"
+
+    # Calculate Balanced Accuracy
+    bac = balanced_accuracy(aligned_true.values, aligned_pred.values)
+
+    print(f"\n" + "=" * 70)
+    print(f"BALANCED ACCURACY (BAC): {bac:.1%}")
+    print(f"=" * 70)
+
+    # Calculate per-class accuracy for diagnostics
+    print(f"\nPer-Class Accuracy:")
+    states = set(aligned_true.unique()) | set(aligned_pred.unique())
+    for state in sorted(states):
+        tp = sum((t == state) and (p == state) for t, p in zip(aligned_true, aligned_pred))
+        fn = sum((t == state) and (p != state) for t, p in zip(aligned_true, aligned_pred))
+        fp = sum((t != state) and (p == state) for t, p in zip(aligned_true, aligned_pred))
+
+        if tp + fn > 0:
+            recall = tp / (tp + fn)
+            if tp + fp > 0:
+                precision = tp / (tp + fp)
+            else:
+                precision = 0.0
+            print(f"  {state}:")
+            print(f"    Recall (TP/{tp + fn}): {recall:.1%}")
+            print(f"    Precision (TP/{tp + fp}): {precision:.1%}")
+
+    # Academic standard threshold: >=85% BAC
+    # Rationale:
+    # - Nystrup et al. (2021): Standard Jump Model achieves 92% BAC
+    # - Our target 85% is 7% below academic achievement (reasonable gap)
+    # - Below 85% indicates fundamental algorithmic issue
+    assert bac >= 0.85, (
+        f"BAC too low: {bac:.1%} (expected >=85%). "
+        f"This indicates fundamental algorithmic issue requiring investigation. "
+        f"Academic papers achieve 92-95% BAC with Jump Models."
+    )
+
+    print(f"\n[PASS] Synthetic BAC Validation: {bac:.1%} >= 85% threshold")
+    print("Core algorithm validated against academic standard!")
 
 
 # ============================================================================
