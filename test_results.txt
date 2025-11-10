@@ -1,0 +1,62 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.11, pytest-8.4.1, pluggy-1.6.0 -- C:\Strat_Trading_Bot\vectorbt-workspace\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Strat_Trading_Bot\vectorbt-workspace
+configfile: pytest.ini
+plugins: anyio-4.10.0, dash-3.2.0, asyncio-1.2.0, cov-6.3.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 22 items
+
+tests/test_regime/test_online_inference.py::test_online_inference_basic_functionality PASSED [  4%]
+tests/test_regime/test_online_inference.py::test_online_inference_parameter_update_schedule PASSED [  9%]
+tests/test_regime/test_online_inference.py::test_online_inference_march_2020_crash PASSED [ 13%]
+tests/test_regime/test_online_inference.py::test_online_inference_configurable_lambda FAILED [ 18%]
+tests/test_regime/test_online_inference.py::test_online_inference_lookback_variations PASSED [ 22%]
+tests/test_regime/test_online_inference.py::test_online_inference_edge_cases FAILED [ 27%]
+tests/test_regime/test_online_inference.py::test_online_inference_determinism FAILED [ 31%]
+tests/test_regime/test_regime_mapping.py::test_crash_detection_march_2020 PASSED [ 36%]
+tests/test_regime/test_regime_mapping.py::test_trend_bull_2017_2019 FAILED [ 40%]
+tests/test_regime/test_regime_mapping.py::test_regime_distribution_balance PASSED [ 45%]
+tests/test_regime/test_regime_mapping.py::test_feature_threshold_logic FAILED [ 50%]
+tests/test_regime/test_regime_mapping.py::test_index_alignment PASSED    [ 54%]
+tests/test_regime/test_regime_mapping.py::test_nan_handling PASSED       [ 59%]
+tests/test_regime/test_regime_mapping.py::test_invalid_state_handling PASSED [ 63%]
+tests/test_regime/test_regime_mapping.py::test_missing_feature_columns PASSED [ 68%]
+tests/test_regime/test_academic_validation.py::test_march_2020_crash_timeline FAILED [ 72%]
+tests/test_regime/test_academic_validation.py::test_multi_year_regime_distribution FAILED [ 77%]
+tests/test_regime/test_academic_validation.py::test_regime_persistence FAILED [ 81%]
+tests/test_regime/test_academic_validation.py::test_bull_market_detection SKIPPED [ 86%]
+tests/test_regime/test_academic_validation.py::test_feature_regime_correlation PASSED [ 90%]
+tests/test_regime/test_academic_validation.py::test_parameter_sensitivity PASSED [ 95%]
+tests/test_regime/test_academic_validation.py::test_online_vs_static_consistency FAILED [100%]
+
+================================== FAILURES ===================================
+C:\Strat_Trading_Bot\vectorbt-workspace\.venv\Lib\site-packages\pandas\core\algorithms.py:1435: TypeError: unsupported operand type(s) for -: 'str' and 'str'
+C:\Strat_Trading_Bot\vectorbt-workspace\regime\academic_jump_model.py:913: ValueError: Insufficient data: 1040 days < 1500 required for lookback window
+C:\Strat_Trading_Bot\vectorbt-workspace\.venv\Lib\site-packages\pandas\core\algorithms.py:1435: TypeError: unsupported operand type(s) for -: 'str' and 'str'
+C:\Strat_Trading_Bot\vectorbt-workspace\tests\test_regime\test_regime_mapping.py:119: AssertionError: Bull market detection: nan% (expected >40%)
+C:\Strat_Trading_Bot\vectorbt-workspace\tests\test_regime\test_regime_mapping.py:188: AssertionError: Day 0: DD=0.05, Sortino=-2.0 should be CRASH
+C:\Strat_Trading_Bot\vectorbt-workspace\.venv\Lib\site-packages\pandas\core\generic.py:1577: ValueError: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+C:\Strat_Trading_Bot\vectorbt-workspace\tests\test_regime\test_academic_validation.py:478: AssertionError: Missing regimes: {'TREND_BEAR', 'CRASH'} (all 4 should appear)
+C:\Strat_Trading_Bot\vectorbt-workspace\tests\test_regime\test_academic_validation.py:544: AssertionError: Lambda=5: Minimum regime duration too short (1 days, expected >=3)
+C:\Strat_Trading_Bot\vectorbt-workspace\tests\test_regime\test_academic_validation.py:888: AssertionError: Online vs static agreement too low: 46.3% (expected >=60%)
+=========================== short test summary info ===========================
+FAILED tests/test_regime/test_online_inference.py::test_online_inference_configurable_lambda - TypeError: unsupported operand type(s) for -: 'str' and 'str'
+FAILED tests/test_regime/test_online_inference.py::test_online_inference_edge_cases - ValueError: Insufficient data: 1040 days < 1500 required for lookback window
+FAILED tests/test_regime/test_online_inference.py::test_online_inference_determinism - TypeError: unsupported operand type(s) for -: 'str' and 'str'
+FAILED tests/test_regime/test_regime_mapping.py::test_trend_bull_2017_2019 - AssertionError: Bull market detection: nan% (expected >40%)
+assert np.float64(nan) > 0.4
+FAILED tests/test_regime/test_regime_mapping.py::test_feature_threshold_logic - AssertionError: Day 0: DD=0.05, Sortino=-2.0 should be CRASH
+assert 'TREND_BEAR' == 'CRASH'
+  
+  - CRASH
+  + TREND_BEAR
+FAILED tests/test_regime/test_academic_validation.py::test_march_2020_crash_timeline - ValueError: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+FAILED tests/test_regime/test_academic_validation.py::test_multi_year_regime_distribution - AssertionError: Missing regimes: {'TREND_BEAR', 'CRASH'} (all 4 should appear)
+assert 2 == 0
+ +  where 2 = len({'TREND_BEAR', 'CRASH'})
+FAILED tests/test_regime/test_academic_validation.py::test_regime_persistence - AssertionError: Lambda=5: Minimum regime duration too short (1 days, expected >=3)
+assert 1 >= 3
+FAILED tests/test_regime/test_academic_validation.py::test_online_vs_static_consistency - AssertionError: Online vs static agreement too low: 46.3% (expected >=60%)
+assert np.float64(0.4632352941176471) >= 0.6
+======= 9 failed, 12 passed, 1 skipped, 1 warning in 188.91s (0:03:08) ========

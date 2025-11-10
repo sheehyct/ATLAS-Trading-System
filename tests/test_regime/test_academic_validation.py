@@ -47,7 +47,7 @@ def spy_data_march_2020():
     SPY data covering March 2020 crash period with sufficient lookback.
     Ensures March 2020 is available for timeline validation.
     """
-    data = fetch_alpaca_data('SPY', timeframe='1D', period_days=2200)
+    data = fetch_alpaca_data('SPY', timeframe='1D', period_days=3300)
     # Verify March 2020 is present
     if not any('2020-03' in str(d) for d in data.index):
         pytest.skip("March 2020 data not available")
@@ -340,8 +340,7 @@ def test_march_2020_crash_timeline(spy_data_march_2020, model_default):
     # Run online inference
     regimes, _, _ = model_default.online_inference(
         spy_data_march_2020,
-        lookback=lookback,
-        default_lambda=15.0
+        lookback=lookback
     )
 
     # Define timeline periods
@@ -454,8 +453,7 @@ def test_multi_year_regime_distribution(spy_data_full, model_default):
 
     regimes, _, _ = model_default.online_inference(
         spy_data_full,
-        lookback=lookback,
-        default_lambda=15.0
+        lookback=lookback
     )
 
     # Calculate regime distribution
@@ -591,8 +589,7 @@ def test_bull_market_detection(spy_data_full, model_default):
 
     regimes, _, _ = model_default.online_inference(
         spy_data_full,
-        lookback=lookback,
-        default_lambda=15.0
+        lookback=lookback
     )
 
     # Extract 2017-2019 period

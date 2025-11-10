@@ -47,8 +47,7 @@ def test_crash_detection_march_2020(spy_data, model):
     # Run online inference with regime mapping
     atlas_regimes, lambda_history, theta_history = model.online_inference(
         spy_data,
-        lookback=lookback,
-        default_lambda=15.0
+        lookback=lookback
     )
 
     # Extract March 2020 regimes
@@ -98,8 +97,7 @@ def test_trend_bull_2017_2019(spy_data, model):
 
     atlas_regimes, _, _ = model.online_inference(
         spy_data,
-        lookback=lookback,
-        default_lambda=15.0
+        lookback=lookback
     )
 
     # Extract 2017-2019 period (if available in dataset)
@@ -135,8 +133,7 @@ def test_regime_distribution_balance(spy_data, model):
 
     atlas_regimes, _, _ = model.online_inference(
         spy_data,
-        lookback=lookback,
-        default_lambda=15.0
+        lookback=lookback
     )
 
     # Count regime distribution
@@ -228,8 +225,7 @@ def test_index_alignment(spy_data, model):
 
     atlas_regimes, lambda_history, theta_history = model.online_inference(
         spy_data,
-        lookback=lookback,
-        default_lambda=15.0
+        lookback=lookback
     )
 
     # Regime output should start after lookback period

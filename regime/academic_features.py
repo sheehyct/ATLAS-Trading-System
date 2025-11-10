@@ -269,19 +269,22 @@ def calculate_features(
         'sortino_60': sortino_60
     }, index=close.index)
 
-    # Step 5: Optional standardization (NOT used by default)
+    # Step 5: Optional standardization (z-score normalization)
     if standardize:
-        # Z-score: (x - mean) / std
-        # Use expanding window to avoid lookahead bias
+        # Z-score: (x - mean) / std using GLOBAL statistics
+        # Matches reference implementation (StandardScalerPD pattern)
+        # Produces proper z-scores with mean=0, std=1
         features_standardized = features.copy()
         for col in features.columns:
-            mean = features[col].expanding(min_periods=60).mean()
-            std = features[col].expanding(min_periods=60).std()
-            features_standardized[col] = (features[col] - mean) / std
+            # Use global mean/std from full dataset (fit/transform pattern)
+            mean = features[col].mean()
+            std = features[col].std()
 
-        # Replace inf/nan with 0 (can occur in early periods)
-        features_standardized = features_standardized.replace([np.inf, -np.inf], np.nan)
-        features_standardized = features_standardized.fillna(0)
+            # Handle edge case where std=0 (constant feature)
+            if std > 0:
+                features_standardized[col] = (features[col] - mean) / std
+            else:
+                features_standardized[col] = 0.0
 
         return features_standardized
 

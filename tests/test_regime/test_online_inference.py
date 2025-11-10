@@ -30,8 +30,7 @@ def test_online_inference_basic_functionality():
     model = AcademicJumpModel()
     regime_states, lambda_history, theta_history = model.online_inference(
         data,
-        lookback=1500,
-        default_lambda=15.0
+        lookback=1500
     )
 
     # Validate return types
@@ -59,7 +58,7 @@ def test_online_inference_basic_functionality():
     )
 
     # Validate lambda values are from candidates
-    valid_lambdas = [5, 15, 35, 50, 70, 100, 150]
+    valid_lambdas = [5, 10, 15, 35, 50, 70, 100, 150]
     assert all(l in valid_lambdas for l in lambda_history.unique()), "Lambda from candidates"
 
     print(f"[PASS] Basic functionality: {len(regime_states)} days, "
@@ -81,7 +80,8 @@ def test_online_inference_parameter_update_schedule():
         lookback=1500,
         theta_update_freq=126,
         lambda_update_freq=21,
-        default_lambda=15.0
+        default_lambda=15.0,
+        adaptive_lambda=True  # Enable lambda updates for this test
     )
 
     # Track lambda changes (should occur every 21 days)
@@ -138,8 +138,7 @@ def test_online_inference_march_2020_crash():
     model = AcademicJumpModel()
     regime_states, lambda_history, theta_history = model.online_inference(
         data,
-        lookback=750,  # Reduced from 1500 to include March 2020 in results
-        default_lambda=15.0
+        lookback=750  # Reduced from 1500 to include March 2020 in results
     )
 
     # Extract March 2020 states
@@ -155,7 +154,7 @@ def test_online_inference_march_2020_crash():
     total_march_days = len(march_2020_states)
     crash_bear_percentage = crash_bear_total / total_march_days if total_march_days > 0 else 0
 
-    print(f"\nMarch 2020 Crash Detection (lambda=15):")
+    print(f"\nMarch 2020 Crash Detection:")
     print(f"  CRASH days: {crash_days}/{total_march_days} ({crash_days/total_march_days:.1%})")
     print(f"  TREND_BEAR days: {bear_days}/{total_march_days} ({bear_days/total_march_days:.1%})")
     print(f"  CRASH+BEAR total: {crash_bear_total}/{total_march_days} ({crash_bear_percentage:.1%})")
@@ -217,8 +216,7 @@ def test_online_inference_configurable_lambda():
     # Test lambda=15 (balanced)
     regimes_15, _, _ = model.online_inference(
         data,
-        lookback=1500,
-        default_lambda=15.0
+        lookback=1500
     )
     switches_15 = (regimes_15.diff() != '').sum()
     years_15 = len(regimes_15) / 252
@@ -267,24 +265,21 @@ def test_online_inference_lookback_variations():
     # Test lookback=1000 (minimum viable)
     regimes_1000, _, theta_1000 = model.online_inference(
         data,
-        lookback=1000,
-        default_lambda=15.0
+        lookback=1000
     )
     assert len(regimes_1000) > 0, "Lookback=1000 should work"
 
     # Test lookback=1500 (default)
     regimes_1500, _, theta_1500 = model.online_inference(
         data,
-        lookback=1500,
-        default_lambda=15.0
+        lookback=1500
     )
     assert len(regimes_1500) > 0, "Lookback=1500 should work"
 
     # Test lookback=2000 (higher stability)
     regimes_2000, _, theta_2000 = model.online_inference(
         data,
-        lookback=2000,
-        default_lambda=15.0
+        lookback=2000
     )
     assert len(regimes_2000) > 0, "Lookback=2000 should work"
 
@@ -334,8 +329,7 @@ def test_online_inference_edge_cases():
     volatile_data = fetch_alpaca_data('SPY', timeframe='1D', period_days=2500)
     regimes_volatile, lambdas_volatile, thetas_volatile = model.online_inference(
         volatile_data,
-        lookback=1500,
-        default_lambda=15.0
+        lookback=1500
     )
 
     # Validate no inf/nan in results
