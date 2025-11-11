@@ -1081,12 +1081,13 @@ def test_synthetic_bac_validation():
     model = AcademicJumpModel()
 
     # Use moderate lookback (200 days = ~40% of data)
-    # Use lambda=5 (responsive - lower values needed for synthetic data to avoid degenerate solutions)
-    # Lambda=10 produces degenerate clustering on short synthetic datasets
+    # Use lambda=1.5 (recalibrated for z-score features - Session 27)
+    # Lambda must be 0.5-2.0 for z-score standardized features (std=1)
+    # Previous lambda=5 was too high, preventing regime switching
     pred_regimes, _, _ = model.online_inference(
         synthetic_data,
         lookback=200,
-        default_lambda=5.0,  # Low lambda for better regime switching sensitivity
+        default_lambda=1.5,  # Recalibrated for z-scores: allows moderate signal switching
         adaptive_lambda=False  # Fixed lambda for consistent testing
     )
 

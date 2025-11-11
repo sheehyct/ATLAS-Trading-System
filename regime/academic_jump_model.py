@@ -839,7 +839,7 @@ class AcademicJumpModel:
         lookback: int = 1500,
         theta_update_freq: int = 126,
         lambda_update_freq: int = 21,
-        default_lambda: float = 10.0,  # Adjusted for z-score standardization (was 15.0 for raw features)
+        default_lambda: float = 1.5,  # Recalibrated for z-score features (std=1): lambda 1.0-2.0 appropriate for moderate signals
         lambda_candidates: List[float] = None,
         adaptive_lambda: bool = False,
         return_raw_states: bool = False
@@ -894,7 +894,7 @@ class AcademicJumpModel:
             >>> print(f"March 2020 bear days: {(regimes.loc['2020-03'] == 'bear').sum()}")
         """
         if lambda_candidates is None:
-            lambda_candidates = [5, 10, 15, 35, 50, 70, 100, 150]
+            lambda_candidates = [0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]  # Scaled down 10x for z-score features (was [5,10,15,35,50,70,100,150] for raw)
 
         # Calculate features for full dataset (RAW, will standardize per window)
         # Handle both 'Close' and 'close' column names

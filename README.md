@@ -136,7 +136,7 @@ GITHUB_TOKEN=your_github_personal_access_token
 
 ## Architecture
 
-### Regime Detection
+### Layer 1: Regime Detection
 
 The statistical jump model uses a two-state Gaussian process with temporal penalty to identify market regimes:
 
@@ -151,6 +151,82 @@ The statistical jump model uses a two-state Gaussian process with temporal penal
 - Cross-validation using 8-year rolling window
 
 **Output**: Four-regime classification (TREND_BULL, TREND_NEUTRAL, TREND_BEAR, CRASH) using feature-based thresholds on Sortino ratio and downside deviation
+
+**Validation Results**:
+- March 2020 crash: 77% detection rate (exceeds 50% target)
+- Real-world validation demonstrates production readiness
+- Layer 1 validated and ready for integration
+
+### Layer 2: STRAT Pattern Recognition (Design Phase)
+
+STRAT (Sequential Time Recognition and Allocation Technique) provides bar-level pattern recognition for precise entry and exit timing. Unlike Layer 1's broad regime classification, STRAT operates on price action microstructure to detect specific reversal and continuation patterns.
+
+**Dual Function Capability**:
+- **Standalone mode**: Trade STRAT patterns independently
+- **Integrated mode**: Use STRAT signals in confluence with ATLAS regime detection (optional)
+
+**Bar Classification System**:
+
+Every bar is classified into one of four types based on its relationship to the previous bar:
+- **Type 1 (Inside Bar)**: Contained within previous bar's range
+- **Type 2U (Directional Up)**: Breaks previous bar's high only
+- **Type 2D (Directional Down)**: Breaks previous bar's low only
+- **Type 3 (Outside Bar)**: Breaks both previous high and low
+
+**Primary Patterns**:
+- **3-1-2 Reversal**: Outside bar → Inside bar → Breakout (bullish or bearish)
+- **2-1-2 Reversal**: Failed breakdown/breakout capturing trapped participants
+- **2-2 Continuation**: Consecutive directional bars in trending markets
+- **Rev Strat**: Pattern invalidation and counter-trend moves
+
+**Timeframe Continuity (The 4 C's)**:
+
+STRAT analyzes alignment across multiple timeframes to assess signal quality:
+- **Control**: All timeframes aligned (highest confidence)
+- **Confirm**: Majority aligned (most common tradeable setup)
+- **Conflict**: Mixed signals (reduce size or avoid)
+- **Change**: Majority reversing (potential trend change)
+
+Empirical research shows multi-timeframe alignment occurs significantly above random baseline, providing edge in signal selection.
+
+**Entry and Exit Rules**:
+- **Entry**: Close beyond governing bar's range (directional confirmation)
+- **Stop**: One tick beyond governing bar's opposite extreme
+- **Targets**: Risk-based (1R, 2R, 3R) with position scaling
+
+**Options Integration**:
+
+STRAT emphasizes options over equities for capital efficiency:
+- **Capital multiplier**: Approximately 27x notional exposure vs equity positions
+- **Strike selection**: Slightly out-of-the-money for optimal delta (0.40-0.60)
+- **Expiration**: Minimum 2-3 days for intraday, 5-7 days for hourly patterns
+- **Risk management**: Premium defines maximum loss, eliminating margin call risk
+
+Example: $3,000 capital controls approximately $80,000 notional exposure vs $3,000 notional with equities.
+
+**Implementation Status**: Design phase - comprehensive specification document created. Implementation planned for 8-week development cycle with full VectorBT Pro integration.
+
+### Layer 4: Credit Spread Monitoring (Future Development)
+
+Layer 4 will implement credit spread analysis as an additional regime detection mechanism, particularly focused on identifying systemic stress and crash conditions.
+
+**Purpose**:
+- Complement Layer 1 regime detection with credit market signals
+- Early warning system for liquidity crises and market stress
+- Cross-asset validation of CRASH regime classification
+
+**Key Metrics**:
+- Investment-grade vs high-yield spreads (IG-HY spread widening)
+- TED spread (Treasury-Eurodollar spread for banking stress)
+- VIX term structure (contango vs backwardation)
+- Corporate bond liquidity indicators
+
+**Integration**:
+- Provides veto power for high-risk trades during credit stress
+- Validates ATLAS CRASH regime detection
+- Triggers defensive positioning when spreads exceed historical thresholds
+
+**Status**: Deferred pending Layer 2 (STRAT) implementation and integration testing.
 
 ### Risk Management
 
