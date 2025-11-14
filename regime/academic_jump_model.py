@@ -38,6 +38,7 @@ import pandas as pd
 from sklearn.cluster import KMeans
 
 from regime.academic_features import calculate_features
+from regime.vix_acceleration import detect_vix_spike
 
 
 def _compute_loss(features: np.ndarray, theta: np.ndarray) -> np.ndarray:
@@ -842,7 +843,8 @@ class AcademicJumpModel:
         default_lambda: float = 1.5,  # Recalibrated for z-score features (std=1): lambda 1.0-2.0 appropriate for moderate signals
         lambda_candidates: List[float] = None,
         adaptive_lambda: bool = False,
-        return_raw_states: bool = False
+        return_raw_states: bool = False,
+        vix_data: Optional[pd.Series] = None
     ) -> Tuple[pd.Series, pd.Series, pd.DataFrame]:
         """
         Online inference with rolling parameter updates (Phase D).
@@ -876,6 +878,10 @@ class AcademicJumpModel:
                            If True, reselects optimal lambda via cross-validation (academic paper behavior)
             return_raw_states: If True, return 2-state (bull/bear) output without 4-regime mapping (default: False)
                              Useful for testing lambda parameter sensitivity at clustering level
+            vix_data: Optional VIX close prices (Series) for flash crash detection (default: None)
+                     If provided, VIX acceleration layer overrides CRASH regime on rapid spikes
+                     Thresholds: 20% 1-day OR 50% 3-day VIX change triggers CRASH
+                     Use case: August 5, 2024 flash crash (VIX +64.90% in 1 day)
 
         Returns:
             regime_states: Series of 'bull'/'bear' regime labels with date index
@@ -1014,6 +1020,20 @@ class AcademicJumpModel:
         # Regime mapping needs GLOBAL z-scores for consistent thresholds across time
         features_df_standardized, _, _ = self._standardize_window(features_df)
         atlas_regimes = self.map_to_atlas_regimes(regime_states, features_df_standardized)
+
+        # VIX Acceleration Override (Layer 1B-1): Flash crash detection
+        # If VIX data provided, override to CRASH on rapid VIX spikes
+        # This catches flash crashes (Aug 5, 2024) that academic model misses
+        # due to 20-60 day smoothing lag
+        if vix_data is not None:
+            # Align VIX data with result index (handle missing dates)
+            vix_aligned = vix_data.reindex(atlas_regimes.index, method='ffill')
+
+            # Detect VIX spikes (20% 1-day OR 50% 3-day threshold)
+            vix_spikes = detect_vix_spike(vix_aligned, threshold_1d=0.20, threshold_3d=0.50)
+
+            # Override to CRASH regime on spike days
+            atlas_regimes[vix_spikes] = 'CRASH'
 
         return atlas_regimes, lambda_series, theta_df
 
