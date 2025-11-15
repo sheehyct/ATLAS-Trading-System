@@ -98,12 +98,20 @@ def plot_regime_overlay(
     print("\n[5/5] Creating interactive Plotly chart...")
     fig = go.Figure()
 
-    # Define regime colors (transparency via rgba)
+    # Define regime colors (professional palette with subtle transparency)
     regime_colors = {
-        'CRASH': 'rgba(255, 0, 0, 0.2)',      # Red
-        'TREND_BEAR': 'rgba(255, 165, 0, 0.2)',  # Orange
-        'TREND_NEUTRAL': 'rgba(128, 128, 128, 0.15)',  # Gray
-        'TREND_BULL': 'rgba(0, 255, 0, 0.2)'   # Green
+        'CRASH': 'rgba(220, 53, 69, 0.15)',      # Professional red
+        'TREND_BEAR': 'rgba(253, 126, 20, 0.12)',  # Professional orange
+        'TREND_NEUTRAL': 'rgba(108, 117, 125, 0.08)',  # Professional gray
+        'TREND_BULL': 'rgba(40, 167, 69, 0.15)'   # Professional green
+    }
+
+    # Border colors for regime bands (adds definition)
+    regime_border_colors = {
+        'CRASH': 'rgba(220, 53, 69, 0.3)',
+        'TREND_BEAR': 'rgba(253, 126, 20, 0.25)',
+        'TREND_NEUTRAL': 'rgba(108, 117, 125, 0.2)',
+        'TREND_BULL': 'rgba(40, 167, 69, 0.3)'
     }
 
     # Add regime background bands
@@ -146,20 +154,28 @@ def plot_regime_overlay(
                 y=[y_min, y_max, y_max, y_min, y_min],
                 fill='toself',
                 fillcolor=color,
-                line=dict(width=0),
+                line=dict(
+                    width=1,
+                    color=regime_border_colors[regime_name]
+                ),
                 showlegend=True if segment == segments[0] else False,
-                name=regime_name,
-                hoverinfo='skip'
+                name=regime_name.replace('TREND_', ''),  # Cleaner legend names
+                hoverinfo='skip',
+                legendgroup=regime_name
             ))
 
-    # Add price line (on top of regime bands)
+    # Add price line (on top of regime bands) with professional styling
     fig.add_trace(go.Scatter(
         x=data.index,
         y=data['Close'],
         mode='lines',
-        name=f'{symbol} Price',
-        line=dict(color='black', width=2),
-        hovertemplate='%{x}<br>Price: $%{y:.2f}<extra></extra>'
+        name=f'{symbol} Close',
+        line=dict(color='#2C3E50', width=2.5),  # Professional dark blue-gray
+        hovertemplate=(
+            '<b>%{x|%Y-%m-%d}</b><br>' +
+            'Close: $%{y:.2f}<br>' +
+            '<extra></extra>'
+        )
     ))
 
     # Add VIX spike markers (flash crash detection)
@@ -175,51 +191,94 @@ def plot_regime_overlay(
             x=spike_dates,
             y=spike_prices,
             mode='markers',
-            name='VIX Flash Crash',
+            name='VIX Spike',
             marker=dict(
-                color='red',
-                size=12,
-                symbol='x',
-                line=dict(width=2, color='darkred')
+                color='#DC3545',  # Bootstrap danger red
+                size=14,
+                symbol='x-thin',
+                line=dict(width=3, color='#C82333'),  # Darker red border
+                opacity=0.9
             ),
-            hovertemplate='VIX Spike<br>%{x}<br>Price: $%{y:.2f}<extra></extra>'
+            hovertemplate=(
+                '<b>VIX FLASH CRASH</b><br>' +
+                'Date: %{x|%Y-%m-%d}<br>' +
+                'Price: $%{y:.2f}<br>' +
+                '<extra></extra>'
+            )
         ))
 
-    # Update layout
+    # Update layout with professional styling
     fig.update_layout(
         title=dict(
-            text=f'{symbol} Price with ATLAS Regime Detection<br><sub>Academic Jump Model + VIX Acceleration Layer (2020-2025)</sub>',
-            font=dict(size=20)
+            text=f'{symbol} Price Action with ATLAS Regime Detection<br><sub style="font-size: 13px; color: #6c757d;">Academic Jump Model + VIX Acceleration Layer ({start_date[:4]}-{end_date[:4]})</sub>',
+            font=dict(size=22, family='Arial, sans-serif', color='#2C3E50'),
+            x=0.5,
+            xanchor='center'
         ),
-        xaxis_title='Date',
-        yaxis_title='Price ($)',
+        xaxis=dict(
+            title=dict(text='Date', font=dict(size=13, family='Arial, sans-serif')),
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(0, 0, 0, 0.05)',
+            showline=True,
+            linewidth=1,
+            linecolor='rgba(0, 0, 0, 0.2)'
+        ),
+        yaxis=dict(
+            title=dict(text='Price (USD)', font=dict(size=13, family='Arial, sans-serif')),
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(0, 0, 0, 0.05)',
+            showline=True,
+            linewidth=1,
+            linecolor='rgba(0, 0, 0, 0.2)',
+            tickprefix='$'
+        ),
         hovermode='x unified',
-        template='plotly_white',
-        height=700,
-        width=1400,
+        plot_bgcolor='rgba(250, 250, 250, 1)',  # Very light gray background
+        paper_bgcolor='white',
+        height=750,
+        width=1500,
+        margin=dict(l=80, r=80, t=120, b=100),
+        font=dict(family='Arial, sans-serif', size=11, color='#2C3E50'),
         legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01,
-            bgcolor='rgba(255, 255, 255, 0.8)',
-            bordercolor='black',
-            borderwidth=1
+            orientation='h',
+            yanchor='top',
+            y=1.08,
+            xanchor='center',
+            x=0.5,
+            bgcolor='rgba(255, 255, 255, 0.95)',
+            bordercolor='rgba(0, 0, 0, 0.2)',
+            borderwidth=1,
+            font=dict(size=12)
         ),
         annotations=[
             dict(
                 text=(
-                    f"Regime Distribution: "
-                    f"CRASH {regime_counts.get('CRASH', 0)} days, "
-                    f"BEAR {regime_counts.get('TREND_BEAR', 0)} days, "
-                    f"NEUTRAL {regime_counts.get('TREND_NEUTRAL', 0)} days, "
-                    f"BULL {regime_counts.get('TREND_BULL', 0)} days"
+                    f"<b>Regime Distribution:</b> "
+                    f"CRASH {regime_counts.get('CRASH', 0)}d ({regime_counts.get('CRASH', 0)/len(regimes)*100:.1f}%) | "
+                    f"BEAR {regime_counts.get('TREND_BEAR', 0)}d ({regime_counts.get('TREND_BEAR', 0)/len(regimes)*100:.1f}%) | "
+                    f"NEUTRAL {regime_counts.get('TREND_NEUTRAL', 0)}d ({regime_counts.get('TREND_NEUTRAL', 0)/len(regimes)*100:.1f}%) | "
+                    f"BULL {regime_counts.get('TREND_BULL', 0)}d ({regime_counts.get('TREND_BULL', 0)/len(regimes)*100:.1f}%)"
                 ),
                 xref="paper", yref="paper",
-                x=0.5, y=-0.15,
+                x=0.5, y=-0.10,
                 showarrow=False,
-                font=dict(size=12, color='gray'),
-                xanchor='center'
+                font=dict(size=11, color='#6c757d', family='Arial, sans-serif'),
+                xanchor='center',
+                align='center'
+            ),
+            dict(
+                text=(
+                    f"Total Classified Days: {len(regimes)} | Coverage: {len(regimes)/len(data)*100:.1f}% | "
+                    f"VIX Spikes: {vix_spikes.sum() if vix_spikes.sum() > 0 else 0}"
+                ),
+                xref="paper", yref="paper",
+                x=0.5, y=-0.14,
+                showarrow=False,
+                font=dict(size=10, color='#95a5a6', family='Arial, sans-serif'),
+                xanchor='center',
+                align='center'
             )
         ]
     )
@@ -267,11 +326,19 @@ def create_comparison_chart(symbols=['SPY', 'QQQ'], start_date='2020-01-01', end
     print("\nFetching VIX data...")
     vix_data = fetch_vix_data(start_date, end_date)
 
+    # Professional color palette (matching individual charts)
     regime_colors = {
-        'CRASH': 'rgba(255, 0, 0, 0.2)',
-        'TREND_BEAR': 'rgba(255, 165, 0, 0.2)',
-        'TREND_NEUTRAL': 'rgba(128, 128, 128, 0.15)',
-        'TREND_BULL': 'rgba(0, 255, 0, 0.2)'
+        'CRASH': 'rgba(220, 53, 69, 0.15)',
+        'TREND_BEAR': 'rgba(253, 126, 20, 0.12)',
+        'TREND_NEUTRAL': 'rgba(108, 117, 125, 0.08)',
+        'TREND_BULL': 'rgba(40, 167, 69, 0.15)'
+    }
+
+    regime_border_colors = {
+        'CRASH': 'rgba(220, 53, 69, 0.3)',
+        'TREND_BEAR': 'rgba(253, 126, 20, 0.25)',
+        'TREND_NEUTRAL': 'rgba(108, 117, 125, 0.2)',
+        'TREND_BULL': 'rgba(40, 167, 69, 0.3)'
     }
 
     for idx, symbol in enumerate(symbols, start=1):
@@ -320,47 +387,85 @@ def create_comparison_chart(symbols=['SPY', 'QQQ'], start_date='2020-01-01', end
                     y=[y_min, y_max, y_max, y_min, y_min],
                     fill='toself',
                     fillcolor=color,
-                    line=dict(width=0),
+                    line=dict(width=1, color=regime_border_colors[regime_name]),
                     showlegend=(idx == 1 and seg_idx == 0),  # Only show legend once
-                    name=regime_name,
+                    name=regime_name.replace('TREND_', ''),
                     legendgroup=regime_name,
                     hoverinfo='skip'
                 ), row=idx, col=1)
 
-        # Add price line
+        # Add price line with professional styling
         fig.add_trace(go.Scatter(
             x=data.index,
             y=data['Close'],
             mode='lines',
             name=symbol,
-            line=dict(color='black', width=2),
+            line=dict(color='#2C3E50', width=2.5),
             showlegend=False,
-            hovertemplate='%{x}<br>Price: $%{y:.2f}<extra></extra>'
+            hovertemplate=(
+                '<b>%{x|%Y-%m-%d}</b><br>' +
+                f'{symbol}: $' + '%{y:.2f}<br>' +
+                '<extra></extra>'
+            )
         ), row=idx, col=1)
 
         # Update y-axis title
         fig.update_yaxes(title_text=f'{symbol} Price ($)', row=idx, col=1)
 
-    # Update layout
+    # Update layout with professional styling
     fig.update_layout(
         title=dict(
-            text='ATLAS Regime Detection Comparison<br><sub>Academic Jump Model + VIX Acceleration (2020-2025)</sub>',
-            font=dict(size=20)
+            text='ATLAS Regime Detection Comparison<br><sub style="font-size: 13px; color: #6c757d;">Academic Jump Model + VIX Acceleration Layer (Multi-Asset Analysis)</sub>',
+            font=dict(size=22, family='Arial, sans-serif', color='#2C3E50'),
+            x=0.5,
+            xanchor='center'
         ),
-        height=400 * len(symbols),
-        width=1400,
+        height=450 * len(symbols),
+        width=1500,
         hovermode='x unified',
-        template='plotly_white',
+        plot_bgcolor='rgba(250, 250, 250, 1)',
+        paper_bgcolor='white',
+        font=dict(family='Arial, sans-serif', size=11, color='#2C3E50'),
+        margin=dict(l=80, r=80, t=120, b=80),
         legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="center",
-            x=0.5
+            orientation='h',
+            yanchor='top',
+            y=1.05,
+            xanchor='center',
+            x=0.5,
+            bgcolor='rgba(255, 255, 255, 0.95)',
+            bordercolor='rgba(0, 0, 0, 0.2)',
+            borderwidth=1,
+            font=dict(size=12)
         )
     )
 
-    fig.update_xaxes(title_text='Date', row=len(symbols), col=1)
+    # Update all axes with professional styling
+    for i in range(1, len(symbols) + 1):
+        fig.update_xaxes(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(0, 0, 0, 0.05)',
+            showline=True,
+            linewidth=1,
+            linecolor='rgba(0, 0, 0, 0.2)',
+            row=i, col=1
+        )
+        fig.update_yaxes(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='rgba(0, 0, 0, 0.05)',
+            showline=True,
+            linewidth=1,
+            linecolor='rgba(0, 0, 0, 0.2)',
+            tickprefix='$',
+            row=i, col=1
+        )
+
+    fig.update_xaxes(
+        title=dict(text='Date', font=dict(size=13, family='Arial, sans-serif')),
+        row=len(symbols), col=1
+    )
 
     # Save
     save_path = 'Combined_regime_comparison.html'
