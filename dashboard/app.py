@@ -534,7 +534,7 @@ def create_error_card(message: str):
 
 if __name__ == '__main__':
     logger.info(f"Starting ATLAS Dashboard on {DASHBOARD_CONFIG['host']}:{DASHBOARD_CONFIG['port']}")
-    app.run_server(
+    app.run(
         debug=DASHBOARD_CONFIG['debug'],
         host=DASHBOARD_CONFIG['host'],
         port=DASHBOARD_CONFIG['port']
