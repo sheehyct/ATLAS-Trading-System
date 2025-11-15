@@ -77,7 +77,9 @@ def plot_regime_overlay(
 
     # Run online inference with VIX acceleration
     print("\n[4/5] Running regime detection (Academic + VIX)...")
-    lookback = min(1000, len(data) - 100)  # Adaptive lookback
+    # Reduced lookback for better historical coverage (252 days = 1 trading year)
+    # This allows regime classification to start ~1 year into data instead of 4 years
+    lookback = min(252, len(data) - 100)  # Adaptive lookback
     regimes, lambda_series, theta_df = model.online_inference(
         data,
         lookback=lookback,
@@ -283,7 +285,8 @@ def create_comparison_chart(symbols=['SPY', 'QQQ'], start_date='2020-01-01', end
         train_size = int(len(data) * 0.6)
         model.fit(data.iloc[:train_size], n_starts=3, random_seed=42)
 
-        lookback = min(1000, len(data) - 100)
+        # Reduced lookback for better historical coverage (252 days = 1 trading year)
+        lookback = min(252, len(data) - 100)
         regimes, _, _ = model.online_inference(data, lookback=lookback, vix_data=vix_data)
 
         # Add regime bands
