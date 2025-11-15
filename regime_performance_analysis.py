@@ -171,17 +171,17 @@ def analyze_regime_performance(
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=[
-            'Cumulative Returns by Regime',
-            'Daily Returns Distribution by Regime',
-            'Win Rate by Regime',
-            'Sharpe Ratio by Regime'
+            '<b>Cumulative Returns by Regime</b>',
+            '<b>Daily Returns Distribution</b>',
+            '<b>Win Rate by Regime</b>',
+            '<b>Risk-Adjusted Performance (Sharpe Ratio)</b>'
         ],
         specs=[
             [{'type': 'scatter'}, {'type': 'box'}],
             [{'type': 'bar'}, {'type': 'bar'}]
         ],
-        vertical_spacing=0.12,
-        horizontal_spacing=0.1
+        vertical_spacing=0.15,
+        horizontal_spacing=0.12
     )
 
     # Color scheme matching regime colors
@@ -214,7 +214,7 @@ def analyze_regime_performance(
             row=1, col=1
         )
 
-    # Plot 2: Distribution box plots
+    # Plot 2: Distribution box plots (cleaner labels)
     for regime in ['CRASH', 'TREND_BEAR', 'TREND_NEUTRAL', 'TREND_BULL']:
         if regime not in regime_metrics:
             continue
@@ -222,13 +222,17 @@ def analyze_regime_performance(
         regime_mask = (regimes == regime)
         regime_returns_series = returns[regime_mask]
 
+        # Clean label (remove TREND_ prefix)
+        clean_label = regime.replace('TREND_', '')
+
         fig.add_trace(
             go.Box(
                 y=regime_returns_series * 100,  # Convert to percentage
-                name=regime,
+                name=clean_label,
                 marker_color=regime_colors_map[regime],
                 legendgroup=regime,
-                showlegend=False
+                showlegend=False,
+                boxmean='sd'  # Show mean and std deviation
             ),
             row=1, col=2
         )
@@ -250,46 +254,96 @@ def analyze_regime_performance(
         row=2, col=1
     )
 
-    # Plot 4: Sharpe ratio bar chart
+    # Plot 4: Sharpe ratio bar chart (color-coded for pos/neg)
     sharpes = [regime_metrics[r]['Sharpe Ratio'] for r in ['CRASH', 'TREND_BEAR', 'TREND_NEUTRAL', 'TREND_BULL'] if r in regime_metrics]
+
+    # Color code: green for positive, red for negative
+    sharpe_colors = []
+    for i, s in enumerate(sharpes):
+        if s >= 0:
+            sharpe_colors.append(colors[i])  # Use regime color for positive
+        else:
+            sharpe_colors.append('rgba(220, 53, 69, 0.7)')  # Red for negative
 
     fig.add_trace(
         go.Bar(
             x=regime_names,
             y=sharpes,
-            marker_color=colors,
+            marker_color=sharpe_colors,
             showlegend=False,
-            text=[f'{s:.2f}' for s in sharpes],
-            textposition='outside'
+            text=[f'{s:+.2f}' for s in sharpes],  # Include +/- sign
+            textposition='outside',
+            textfont=dict(size=11, family='Arial, sans-serif')
         ),
         row=2, col=2
     )
 
-    # Update layout
+    # Update layout (improved formatting and readability)
     fig.update_layout(
         title=dict(
-            text=f'{symbol} Performance Analysis by Regime<br><sub>ATLAS Academic Jump Model + VIX Acceleration (2021-2025)</sub>',
-            font=dict(size=18, family='Arial, sans-serif')
+            text=(
+                f'<b>{symbol} Performance Analysis by Market Regime</b><br>'
+                f'<span style="font-size:12px; color:#6c757d;">ATLAS Academic Jump Model + VIX Acceleration (2021-2025)</span>'
+            ),
+            font=dict(size=20, family='Arial, sans-serif', color='#2C3E50'),
+            x=0.5,
+            xanchor='center'
         ),
         height=900,
-        width=1400,
-        template='plotly_white',
-        font=dict(family='Arial, sans-serif', size=11),
-        hovermode='closest'
+        width=1500,
+        plot_bgcolor='rgba(250, 250, 250, 1)',
+        paper_bgcolor='white',
+        font=dict(family='Arial, sans-serif', size=11, color='#2C3E50'),
+        hovermode='closest',
+        margin=dict(l=80, r=80, t=100, b=80),
+        showlegend=True,
+        legend=dict(
+            orientation='v',
+            yanchor='top',
+            y=0.98,
+            xanchor='right',
+            x=0.98,
+            bgcolor='rgba(255, 255, 255, 0.9)',
+            bordercolor='rgba(0, 0, 0, 0.2)',
+            borderwidth=1,
+            font=dict(size=10, family='Arial, sans-serif')
+        )
     )
 
-    # Update axes
-    fig.update_xaxes(title_text='Date', row=1, col=1)
-    fig.update_yaxes(title_text='Cumulative Return', row=1, col=1)
+    # Update axes (improved styling and labels)
+    for row in [1, 2]:
+        for col in [1, 2]:
+            fig.update_xaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0, 0, 0, 0.05)',
+                showline=True,
+                linewidth=1,
+                linecolor='rgba(0, 0, 0, 0.2)',
+                row=row, col=col
+            )
+            fig.update_yaxes(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(0, 0, 0, 0.05)',
+                showline=True,
+                linewidth=1,
+                linecolor='rgba(0, 0, 0, 0.2)',
+                row=row, col=col
+            )
 
-    fig.update_xaxes(title_text='Regime', row=1, col=2)
-    fig.update_yaxes(title_text='Daily Return (%)', row=1, col=2)
+    # Specific axis titles
+    fig.update_xaxes(title_text='Date', row=1, col=1, title_font=dict(size=12))
+    fig.update_yaxes(title_text='Cumulative Return (Multiple)', row=1, col=1, title_font=dict(size=12))
 
-    fig.update_xaxes(title_text='Regime', row=2, col=1)
-    fig.update_yaxes(title_text='Win Rate (%)', row=2, col=1)
+    fig.update_xaxes(title_text='', row=1, col=2)  # No x-axis title for box plot
+    fig.update_yaxes(title_text='Daily Return (%)', row=1, col=2, title_font=dict(size=12))
 
-    fig.update_xaxes(title_text='Regime', row=2, col=2)
-    fig.update_yaxes(title_text='Sharpe Ratio', row=2, col=2)
+    fig.update_xaxes(title_text='', row=2, col=1)
+    fig.update_yaxes(title_text='Win Rate (%)', row=2, col=1, title_font=dict(size=12), range=[0, 100])
+
+    fig.update_xaxes(title_text='', row=2, col=2)
+    fig.update_yaxes(title_text='Sharpe Ratio', row=2, col=2, title_font=dict(size=12), zeroline=True, zerolinewidth=2, zerolinecolor='rgba(0,0,0,0.3)')
 
     # Save comparison chart
     comparison_path = f'{save_prefix}_comparison.html'

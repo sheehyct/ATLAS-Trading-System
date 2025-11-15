@@ -207,13 +207,18 @@ def plot_regime_overlay(
             )
         ))
 
-    # Update layout with professional styling
+    # Update layout with professional styling (fixed subtitle formatting)
     fig.update_layout(
         title=dict(
-            text=f'{symbol} Price Action with ATLAS Regime Detection<br><sub style="font-size: 13px; color: #6c757d;">Academic Jump Model + VIX Acceleration Layer ({start_date[:4]}-{end_date[:4]})</sub>',
-            font=dict(size=22, family='Arial, sans-serif', color='#2C3E50'),
+            text=(
+                f'<b>{symbol} Price Action with ATLAS Regime Detection</b><br>'
+                f'<span style="font-size:12px; color:#6c757d;">Academic Jump Model + VIX Acceleration ({start_date[:4]}-{end_date[:4]})</span>'
+            ),
+            font=dict(size=20, family='Arial, sans-serif', color='#2C3E50'),
             x=0.5,
-            xanchor='center'
+            xanchor='center',
+            y=0.98,
+            yanchor='top'
         ),
         xaxis=dict(
             title=dict(text='Date', font=dict(size=13, family='Arial, sans-serif')),
@@ -243,40 +248,44 @@ def plot_regime_overlay(
         font=dict(family='Arial, sans-serif', size=11, color='#2C3E50'),
         legend=dict(
             orientation='h',
-            yanchor='top',
-            y=1.08,
+            yanchor='bottom',
+            y=1.02,
             xanchor='center',
             x=0.5,
             bgcolor='rgba(255, 255, 255, 0.95)',
             bordercolor='rgba(0, 0, 0, 0.2)',
             borderwidth=1,
-            font=dict(size=12)
+            font=dict(size=11, family='Arial, sans-serif')
         ),
         annotations=[
+            # First row - Regime distribution
             dict(
                 text=(
-                    f"<b>Regime Distribution:</b> "
-                    f"CRASH {regime_counts.get('CRASH', 0)}d ({regime_counts.get('CRASH', 0)/len(regimes)*100:.1f}%) | "
-                    f"BEAR {regime_counts.get('TREND_BEAR', 0)}d ({regime_counts.get('TREND_BEAR', 0)/len(regimes)*100:.1f}%) | "
-                    f"NEUTRAL {regime_counts.get('TREND_NEUTRAL', 0)}d ({regime_counts.get('TREND_NEUTRAL', 0)/len(regimes)*100:.1f}%) | "
-                    f"BULL {regime_counts.get('TREND_BULL', 0)}d ({regime_counts.get('TREND_BULL', 0)/len(regimes)*100:.1f}%)"
+                    f"<b>Regime Distribution:</b>  "
+                    f"<span style='color:#DC3545'>CRASH {regime_counts.get('CRASH', 0)}d ({regime_counts.get('CRASH', 0)/len(regimes)*100:.1f}%)</span>  •  "
+                    f"<span style='color:#FD7E14'>BEAR {regime_counts.get('TREND_BEAR', 0)}d ({regime_counts.get('TREND_BEAR', 0)/len(regimes)*100:.1f}%)</span>  •  "
+                    f"<span style='color:#6C757D'>NEUTRAL {regime_counts.get('TREND_NEUTRAL', 0)}d ({regime_counts.get('TREND_NEUTRAL', 0)/len(regimes)*100:.1f}%)</span>  •  "
+                    f"<span style='color:#28A745'>BULL {regime_counts.get('TREND_BULL', 0)}d ({regime_counts.get('TREND_BULL', 0)/len(regimes)*100:.1f}%)</span>"
                 ),
                 xref="paper", yref="paper",
-                x=0.5, y=-0.10,
+                x=0.5, y=-0.11,
                 showarrow=False,
-                font=dict(size=11, color='#6c757d', family='Arial, sans-serif'),
+                font=dict(size=11, family='Arial, sans-serif', color='#2C3E50'),
                 xanchor='center',
                 align='center'
             ),
+            # Second row - Meta statistics
             dict(
                 text=(
-                    f"Total Classified Days: {len(regimes)} | Coverage: {len(regimes)/len(data)*100:.1f}% | "
-                    f"VIX Spikes: {vix_spikes.sum() if vix_spikes.sum() > 0 else 0}"
+                    f"Classified: {len(regimes)} days  •  "
+                    f"Coverage: {len(regimes)/len(data)*100:.1f}%  •  "
+                    f"VIX Spikes: {vix_spikes.sum() if vix_spikes.sum() > 0 else 0}  •  "
+                    f"Lookback: {lookback} days"
                 ),
                 xref="paper", yref="paper",
-                x=0.5, y=-0.14,
+                x=0.5, y=-0.15,
                 showarrow=False,
-                font=dict(size=10, color='#95a5a6', family='Arial, sans-serif'),
+                font=dict(size=10, family='Arial, sans-serif', color='#95a5a6'),
                 xanchor='center',
                 align='center'
             )
@@ -412,13 +421,18 @@ def create_comparison_chart(symbols=['SPY', 'QQQ'], start_date='2020-01-01', end
         # Update y-axis title
         fig.update_yaxes(title_text=f'{symbol} Price ($)', row=idx, col=1)
 
-    # Update layout with professional styling
+    # Update layout with professional styling (fixed title formatting)
     fig.update_layout(
         title=dict(
-            text='ATLAS Regime Detection Comparison<br><sub style="font-size: 13px; color: #6c757d;">Academic Jump Model + VIX Acceleration Layer (Multi-Asset Analysis)</sub>',
-            font=dict(size=22, family='Arial, sans-serif', color='#2C3E50'),
+            text=(
+                '<b>ATLAS Regime Detection Comparison</b><br>'
+                '<span style="font-size:12px; color:#6c757d;">Academic Jump Model + VIX Acceleration (Multi-Asset)</span>'
+            ),
+            font=dict(size=20, family='Arial, sans-serif', color='#2C3E50'),
             x=0.5,
-            xanchor='center'
+            xanchor='center',
+            y=0.98,
+            yanchor='top'
         ),
         height=450 * len(symbols),
         width=1500,
