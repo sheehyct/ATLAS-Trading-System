@@ -1,0 +1,393 @@
+/*
+ATLAS Trading Dashboard - Custom Styles
+Professional trading color scheme based on TradingView dark theme
+*/
+
+/* ============================================
+   ROOT VARIABLES (from config.py)
+   ============================================ */
+
+:root {
+    /* Background Colors */
+    --bg-dark: #090008;
+    --bg-medium: #2E2E2E;
+    --bg-light: #3E3E3E;
+
+    /* Text Colors */
+    --text-primary: #E0E0E0;
+    --text-secondary: #A0A0A0;
+
+    /* Trading Colors */
+    --bull-primary: #00ff55;
+    --bull-secondary: #26A69A;
+    --bear-primary: #ed4807;
+    --bear-secondary: #EF5350;
+
+    /* Grid and Borders */
+    --grid: #333333;
+    --grid-major: #444444;
+
+    /* Status Colors */
+    --success: #00C853;
+    --warning: #FFC107;
+    --danger: #FF1744;
+    --info: #2196F3;
+}
+
+/* ============================================
+   GLOBAL STYLES
+   ============================================ */
+
+body {
+    background-color: var(--bg-dark) !important;
+    color: var(--text-primary) !important;
+    font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
+}
+
+/* ============================================
+   DASH COMPONENTS
+   ============================================ */
+
+/* Cards */
+.card {
+    background-color: var(--bg-medium) !important;
+    border-color: var(--grid) !important;
+    color: var(--text-primary) !important;
+}
+
+.card-header {
+    background-color: var(--bg-light) !important;
+    color: var(--text-primary) !important;
+    border-bottom: 2px solid var(--grid-major) !important;
+}
+
+.card-body {
+    background-color: var(--bg-dark) !important;
+}
+
+/* Dropdown Menus */
+.Select-control {
+    background-color: var(--bg-medium) !important;
+    border-color: var(--grid) !important;
+    color: var(--text-primary) !important;
+}
+
+.Select-menu-outer {
+    background-color: var(--bg-medium) !important;
+    border-color: var(--grid) !important;
+}
+
+.Select-option {
+    background-color: var(--bg-medium) !important;
+    color: var(--text-primary) !important;
+}
+
+.Select-option:hover {
+    background-color: var(--bg-light) !important;
+}
+
+/* Tabs */
+.nav-tabs .nav-link {
+    color: var(--text-secondary) !important;
+    background-color: var(--bg-medium) !important;
+    border-color: var(--grid) !important;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--bull-primary) !important;
+    background-color: var(--bg-dark) !important;
+    border-color: var(--bull-primary) !important;
+    font-weight: bold !important;
+}
+
+.nav-tabs .nav-link:hover {
+    border-color: var(--grid-major) !important;
+    color: var(--text-primary) !important;
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: var(--bull-secondary) !important;
+    border-color: var(--bull-secondary) !important;
+}
+
+.btn-primary:hover {
+    background-color: var(--bull-primary) !important;
+    border-color: var(--bull-primary) !important;
+}
+
+.btn-danger {
+    background-color: var(--bear-primary) !important;
+    border-color: var(--bear-primary) !important;
+}
+
+/* ============================================
+   BADGES
+   ============================================ */
+
+.badge.bg-success {
+    background-color: var(--success) !important;
+}
+
+.badge.bg-danger {
+    background-color: var(--danger) !important;
+}
+
+.badge.bg-warning {
+    background-color: var(--warning) !important;
+    color: var(--bg-dark) !important;
+}
+
+.badge.bg-info {
+    background-color: var(--info) !important;
+}
+
+/* ============================================
+   TABLES (DataTable)
+   ============================================ */
+
+.dash-table-container {
+    background-color: var(--bg-dark) !important;
+}
+
+.dash-spreadsheet {
+    background-color: var(--bg-dark) !important;
+    color: var(--text-primary) !important;
+}
+
+.dash-spreadsheet-container {
+    background-color: var(--bg-dark) !important;
+}
+
+.dash-spreadsheet th {
+    background-color: var(--bg-medium) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--grid) !important;
+    font-weight: bold !important;
+}
+
+.dash-spreadsheet td {
+    background-color: var(--bg-dark) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--grid) !important;
+}
+
+.dash-spreadsheet tr:hover {
+    background-color: var(--bg-light) !important;
+}
+
+/* ============================================
+   PLOTLY CHARTS
+   ============================================ */
+
+.js-plotly-plot .plotly .modebar {
+    background-color: transparent !important;
+}
+
+.js-plotly-plot .plotly .modebar-btn {
+    color: var(--text-secondary) !important;
+}
+
+.js-plotly-plot .plotly .modebar-btn:hover {
+    color: var(--text-primary) !important;
+}
+
+/* ============================================
+   ALERTS
+   ============================================ */
+
+.alert-info {
+    background-color: rgba(33, 150, 243, 0.1) !important;
+    border-color: var(--info) !important;
+    color: var(--text-primary) !important;
+}
+
+.alert-warning {
+    background-color: rgba(255, 193, 7, 0.1) !important;
+    border-color: var(--warning) !important;
+    color: var(--text-primary) !important;
+}
+
+.alert-danger {
+    background-color: rgba(255, 23, 68, 0.1) !important;
+    border-color: var(--danger) !important;
+    color: var(--text-primary) !important;
+}
+
+.alert-success {
+    background-color: rgba(0, 200, 83, 0.1) !important;
+    border-color: var(--success) !important;
+    color: var(--text-primary) !important;
+}
+
+/* ============================================
+   CUSTOM TRADING STYLES
+   ============================================ */
+
+/* Price Up/Down Colors */
+.price-up {
+    color: var(--bull-primary) !important;
+    font-weight: bold !important;
+}
+
+.price-down {
+    color: var(--bear-primary) !important;
+    font-weight: bold !important;
+}
+
+/* Trade Markers */
+.trade-win {
+    color: var(--bull-primary) !important;
+    background-color: rgba(0, 255, 85, 0.1) !important;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.trade-loss {
+    color: var(--bear-primary) !important;
+    background-color: rgba(237, 72, 7, 0.1) !important;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+/* Regime Indicators */
+.regime-bull {
+    color: var(--bull-primary) !important;
+    font-weight: bold !important;
+}
+
+.regime-bear {
+    color: #FFA500 !important;
+    font-weight: bold !important;
+}
+
+.regime-neutral {
+    color: var(--text-secondary) !important;
+}
+
+.regime-crash {
+    color: var(--bear-primary) !important;
+    font-weight: bold !important;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* ============================================
+   SCROLLBARS (WebKit)
+   ============================================ */
+
+::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+    border: 1px solid var(--grid);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-light);
+    border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--grid-major);
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+/* Mobile optimizations */
+@media (max-width: 576px) {
+    .card {
+        margin-bottom: 1rem !important;
+    }
+
+    .navbar-brand {
+        font-size: 1rem !important;
+    }
+
+    .badge {
+        font-size: 0.7rem !important;
+    }
+
+    .dash-table-container {
+        overflow-x: auto !important;
+    }
+}
+
+/* Tablet optimizations */
+@media (max-width: 768px) {
+    .container-fluid {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+}
+
+/* ============================================
+   LOADING STATES
+   ============================================ */
+
+.loading-state {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.spinner-border {
+    color: var(--bull-primary) !important;
+}
+
+/* ============================================
+   SHADOWS AND DEPTH
+   ============================================ */
+
+.shadow-sm {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.5) !important;
+}
+
+.shadow {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5) !important;
+}
+
+/* ============================================
+   TRANSITIONS
+   ============================================ */
+
+.card, .btn, .nav-link {
+    transition: all 0.2s ease-in-out !important;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+.text-muted {
+    color: var(--text-secondary) !important;
+}
+
+.text-primary {
+    color: var(--text-primary) !important;
+}
+
+.fw-bold {
+    font-weight: 600 !important;
+}
+
+/* Spacing utilities */
+.mb-3 {
+    margin-bottom: 1rem !important;
+}
+
+.mb-4 {
+    margin-bottom: 1.5rem !important;
+}
+
+.p-4 {
+    padding: 1.5rem !important;
+}
