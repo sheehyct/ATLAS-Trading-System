@@ -1,9 +1,0 @@
-============================= test session starts =============================
-platform win32 -- Python 3.12.11, pytest-8.4.1, pluggy-1.6.0 -- C:\Strat_Trading_Bot\vectorbt-workspace\.venv\Scripts\python.exe
-cachedir: .pytest_cache
-rootdir: C:\Strat_Trading_Bot\vectorbt-workspace
-configfile: pytest.ini
-plugins: anyio-4.10.0, dash-3.2.0, asyncio-1.2.0, cov-6.3.0
-asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collecting ... collected 22 items
-
