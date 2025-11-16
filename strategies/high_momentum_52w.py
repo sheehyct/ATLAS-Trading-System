@@ -10,11 +10,13 @@ Academic Foundation:
 - George & Hwang (2004): "The 52-Week High and Momentum Investing"
 - Documented momentum effect with lowest turnover among momentum strategies
 
-Strategy Logic:
+Strategy Logic (VALIDATED Session 36):
 - Entry: Price within 10% of 52-week high (distance >= 0.90)
-- Exit: Price 30% off highs (distance < 0.70)
-- Volume Confirmation: MANDATORY 2.0x average (per research evidence)
-- Rebalance: Semi-annual (February, August) in production
+- Exit: Price 12% off highs (distance < 0.88) - creates balanced entry/exit cycles
+- Volume Confirmation: Configurable threshold (default 1.25x for SPY)
+  - Calibrated per asset volatility (high vol: 1.15x, moderate: 1.5-1.75x, low: 1.25x)
+  - Set to None to disable volume filter
+- Signal Type: EVENT-BASED (state transitions, not continuous states)
 - Position Sizing: ATR-based with 2% risk per trade
 
 Performance Targets (per architecture):
@@ -96,7 +98,12 @@ class HighMomentum52W(BaseStrategy):
         >>> print(f"Sharpe: {metrics['sharpe_ratio']:.2f}")
     """
 
-    def __init__(self, config: StrategyConfig, atr_multiplier: float = 2.5):
+    def __init__(
+        self,
+        config: StrategyConfig,
+        atr_multiplier: float = 2.5,
+        volume_multiplier: float = 1.25
+    ):
         """
         Initialize 52-Week High Momentum strategy.
 
@@ -104,9 +111,15 @@ class HighMomentum52W(BaseStrategy):
             config: StrategyConfig with validated parameters
             atr_multiplier: Stop loss distance multiplier (default: 2.5)
                 Reasonable range: 2.0-3.0
+            volume_multiplier: Volume confirmation threshold (default: 1.25)
+                Calibrated per asset volatility:
+                - High volatility (TSLA): 1.15-1.25
+                - Moderate volatility (MSFT): 1.5-1.75
+                - Low volatility (SPY): 1.25-1.5
+                Set to None to disable volume filter
 
         Raises:
-            ValueError: If atr_multiplier outside reasonable range
+            ValueError: If parameters outside reasonable ranges
         """
         # Validate strategy-specific parameters before calling parent
         if not 2.0 <= atr_multiplier <= 3.0:
@@ -115,7 +128,14 @@ class HighMomentum52W(BaseStrategy):
                 f"2.5 is standard."
             )
 
+        if volume_multiplier is not None and not 1.0 <= volume_multiplier <= 2.5:
+            raise ValueError(
+                f"volume_multiplier {volume_multiplier} outside reasonable range [1.0, 2.5]. "
+                f"1.25 recommended for SPY."
+            )
+
         self.atr_multiplier = atr_multiplier
+        self.volume_multiplier = volume_multiplier
 
         # Call parent constructor (validates config)
         super().__init__(config)
@@ -145,12 +165,20 @@ class HighMomentum52W(BaseStrategy):
         """
         Generate entry/exit signals for 52-Week High Momentum strategy.
 
-        Signal Logic:
+        Signal Logic (VALIDATED Session 36):
         1. Calculate 52-week high (252 trading days rolling maximum)
         2. Calculate distance from high (close / 52w_high)
-        3. Entry: distance >= 0.90 AND volume > 2.0x average
-        4. Exit: distance < 0.70 (30% off highs)
-        5. Stop distance: 2.5x ATR
+        3. Define entry/exit ZONES:
+           - Entry zone: distance >= 0.90 (within 10% of highs)
+           - Exit zone: distance < 0.88 (exits just below entry, 12% off highs)
+        4. Generate EVENT signals (state transitions):
+           - Entry event: Transition INTO entry zone WITH volume confirmation
+           - Exit event: Transition INTO exit zone
+        5. Stop distance: 2.5x ATR (for position sizing)
+
+        CRITICAL: Uses event-based signals (state transitions) not continuous states.
+        VBT from_signals() only allows one position at a time, so we generate
+        discrete entry/exit EVENTS rather than continuous TRUE/FALSE states.
 
         Args:
             data: OHLCV DataFrame with DatetimeIndex
@@ -160,8 +188,8 @@ class HighMomentum52W(BaseStrategy):
 
         Returns:
             Dictionary with v2.0 format signals:
-            - 'entry_signal': Boolean Series for entries
-            - 'exit_signal': Boolean Series for exits
+            - 'entry_signal': Boolean Series for entry EVENTS (state transitions)
+            - 'exit_signal': Boolean Series for exit EVENTS (state transitions)
             - 'stop_distance': Float Series for stop losses (in price units)
             - 'distance_from_high': Float Series (for debugging/CSV export)
             - 'volume_confirmed': Boolean Series (for debugging/CSV export)
@@ -172,8 +200,8 @@ class HighMomentum52W(BaseStrategy):
 
         Example:
             >>> signals = strategy.generate_signals(spy_data, regime='TREND_BULL')
-            >>> print(f"Entry signals: {signals['entry_signal'].sum()}")
-            >>> print(f"Exit signals: {signals['exit_signal'].sum()}")
+            >>> print(f"Entry events: {signals['entry_signal'].sum()}")
+            >>> print(f"Exit events: {signals['exit_signal'].sum()}")
         """
         # Regime filter: If incompatible regime, return all False signals
         if regime and not self.should_trade_in_regime(regime):
@@ -194,26 +222,29 @@ class HighMomentum52W(BaseStrategy):
         # Calculate volume moving average (20-day standard)
         volume_ma_20 = data['Volume'].rolling(window=20, min_periods=20).mean()
 
-        # Volume confirmation: 2.0x threshold (MANDATORY per research)
-        volume_confirmed = data['Volume'] > (volume_ma_20 * 2.0)
-
         # Calculate ATR for stop loss (14-period standard)
         atr = self._calculate_atr(data, period=14)
 
-        # Entry Signal: Within 10% of 52w high + volume confirmation
-        entry_signal = (
-            (distance_from_high >= 0.90) &  # Within 10% of highs
-            volume_confirmed &              # Volume surge (MANDATORY)
-            high_52w.notna() &              # Valid 52w high calculated
-            volume_ma_20.notna() &          # Valid volume average
-            atr.notna()                     # Valid ATR
-        )
+        # Define STATES (continuous conditions)
+        in_entry_zone = (distance_from_high >= 0.90) & high_52w.notna() & atr.notna()
+        in_exit_zone = (distance_from_high < 0.88) & high_52w.notna()
 
-        # Exit Signal: 30% off highs (distance < 0.70)
-        exit_signal = (
-            (distance_from_high < 0.70) &   # 30% off highs
-            high_52w.notna()                # Valid 52w high
-        )
+        # Apply volume filter if configured
+        if self.volume_multiplier is not None:
+            volume_confirmed = (
+                (data['Volume'] > (volume_ma_20 * self.volume_multiplier)) &
+                volume_ma_20.notna()
+            )
+            in_entry_zone = in_entry_zone & volume_confirmed
+        else:
+            volume_confirmed = pd.Series(True, index=data.index)
+
+        # Convert states to EVENTS (state transitions)
+        # Entry: Transition FROM outside entry zone TO inside entry zone
+        entry_signal = in_entry_zone & ~in_entry_zone.shift(1).fillna(False)
+
+        # Exit: Transition FROM outside exit zone TO inside exit zone
+        exit_signal = in_exit_zone & ~in_exit_zone.shift(1).fillna(False)
 
         # Stop Distance: 2.5x ATR (standard)
         stop_distance = atr * self.atr_multiplier
