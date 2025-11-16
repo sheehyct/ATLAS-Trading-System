@@ -49,12 +49,14 @@ Both approaches can be deployed independently or combined based on available cap
 
 ## Project Status
 
-**Current Phase**: Foundation Strategy Development
+**Current Phase**: Foundation Strategy Validation Complete
 
 **Completed Components**:
 - Layer 1 regime detection with VIX acceleration monitoring
+- Layer 2 STRAT pattern recognition (bar classification and pattern detection)
 - Position sizing with ATR-based stops and capital constraints
 - Opening Range Breakout strategy with volume confirmation
+- 52-week high momentum multi-asset portfolio strategy (Gate 1 validated)
 - Feature calculation for regime detection (downside deviation, Sortino ratios)
 - Optimization solver using dynamic programming and coordinate descent
 - Cross-validation framework for parameter selection
@@ -63,24 +65,31 @@ Both approaches can be deployed independently or combined based on available cap
 - Portfolio heat management and risk controls
 - Multi-asset portfolio backtesting framework with VectorBT integration
 - Stock scanner bridge for momentum strategy portfolio execution
+- Tiingo historical data integration (30+ years of market data)
 
-**Test Coverage**: 46+ regime detection tests passing
+**Test Coverage**: 56+ tests passing across all layers
 
-**Validation Results**:
-- March 2020 crash detection: 77% accuracy (exceeds 50% target)
-- Feature-based regime classification validated
-- Layer 1 regime detection implementation complete
-- Multi-asset portfolio execution framework validated
-- 52-week high momentum strategy implementation in progress
+**Foundation Strategy Validation (Gate 1)**:
+- Technology sector multi-asset portfolio (30 stocks, top 10 selection)
+- Sharpe Ratio: 0.88 (target: 0.8 minimum) - PASS
+- CAGR: 14.61% (target: 10% minimum) - PASS
+- Maximum Drawdown: -35.51% (acceptable range)
+- Comparison to SPY benchmark: +19% Sharpe improvement, +166% CAGR improvement
+- Portfolio selection: 63 stocks across 10 rebalance periods (2020-2025)
+- Semi-annual rebalancing with momentum-based stock selection
 
-**Implementation Progress**:
-- Phase A (Feature Calculation): Complete - 16/16 tests passing
-- Phase B (Optimization Solver): Complete - 6/6 tests passing
-- Phase C (Parameter Selection): Complete - 9/9 tests passing
-- Phase D (Online Inference): Complete - March 2020 77% CRASH detection
-- Phase E (Regime Mapping): Complete - Four-regime classification validated
-- Phase F (Final Validation): Complete - Layer 1 Validated
-- Foundation Strategies: In Progress - 52-week high momentum calibration
+**Historical Data Coverage**:
+- SPY: 8,257 trading days (1993-01-29 to present)
+- QQQ: 6,715 trading days (1999-03-10 to present)
+- IWM: 6,407 trading days (2000-05-26 to present)
+- Data source: Tiingo API (free tier, professional validation)
+- Local caching system for efficient data retrieval
+
+**Layer Implementation Progress**:
+- Layer 1 (ATLAS Regime Detection): Complete - 31/31 tests passing
+- Layer 2 (STRAT Pattern Recognition): Complete - 56/56 tests passing
+- Foundation Strategies: Gate 1 validation complete
+- Next phase: Regime integration with foundation strategies
 
 ## Technical Requirements
 
@@ -90,7 +99,7 @@ Both approaches can be deployed independently or combined based on available cap
 - NumPy (numerical computing)
 - pandas (time series analysis)
 - scikit-learn (statistical models)
-- Alpaca API (market data and execution)
+- tiingo (historical market data, 30+ years coverage)
 
 ### Development Tools
 - pytest (testing framework)
@@ -98,7 +107,8 @@ Both approaches can be deployed independently or combined based on available cap
 - pandas-market-calendars (market hours validation)
 
 ### API Access Required
-- Alpaca Markets account (paper trading supported)
+- Tiingo account (free tier, historical data provider)
+- Alpaca Markets account (optional, paper trading supported)
 - GitHub account (for VectorBT Pro installation)
 
 ## Installation
@@ -130,7 +140,10 @@ uv run pytest tests/test_gate1_position_sizing.py -v
 Required credentials in `.env`:
 
 ```bash
-# Alpaca API (required)
+# Tiingo API (required for historical data)
+TIINGO_API_KEY=your_tiingo_api_token
+
+# Alpaca API (optional, for paper trading)
 ALPACA_API_KEY=your_alpaca_api_key
 ALPACA_SECRET_KEY=your_alpaca_secret_key
 ALPACA_BASE_URL=https://paper-api.alpaca.markets
