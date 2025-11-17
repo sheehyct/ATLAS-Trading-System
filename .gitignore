@@ -154,7 +154,18 @@ accuracy_test_report.json
 *.mp3
 
 # Debug and test scripts (temporary investigation files)
+exploratory/
+scripts/
 test_label_bug.py
 test_lambda_*.py
 transcribe*.py
 spy_features_*.csv
+
+# Session documentation (internal development notes)
+SESSION_*.md
+DASHBOARD_IMPLEMENTATION_SUMMARY.md
+PLOTLY_DASH_DASHBOARD_GUIDE.md
+.session_startup_prompt*.md
+
+# Visualization outputs
+visualization/

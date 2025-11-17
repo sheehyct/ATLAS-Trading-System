@@ -71,12 +71,14 @@ Both approaches can be deployed independently or combined based on available cap
 
 **Foundation Strategy Validation (Gate 1)**:
 - Technology sector multi-asset portfolio (30 stocks, top 10 selection)
-- Sharpe Ratio: 0.88 (target: 0.8 minimum) - PASS
-- CAGR: 14.61% (target: 10% minimum) - PASS
-- Maximum Drawdown: -35.51% (acceptable range)
-- Comparison to SPY benchmark: +19% Sharpe improvement, +166% CAGR improvement
+- ATLAS regime integration: TREND_BULL/NEUTRAL/BEAR/CRASH allocation (100%/70%/30%/0%)
+- Sharpe Ratio: 0.99 (target: 0.8 minimum) - PASS
+- CAGR: 11.80% (target: 10% minimum) - PASS
+- Maximum Drawdown: -19.06% (excellent, -46.7% improvement vs baseline)
+- March 2020 CRASH detection: 81.8% accuracy (18/22 days)
+- Baseline comparison: +8.6% Sharpe, -21.9% CAGR, -46.7% drawdown
 - Portfolio selection: 63 stocks across 10 rebalance periods (2020-2025)
-- Semi-annual rebalancing with momentum-based stock selection
+- Semi-annual rebalancing with momentum-based stock selection and regime-aware allocation
 
 **Historical Data Coverage**:
 - SPY: 8,257 trading days (1993-01-29 to present)
