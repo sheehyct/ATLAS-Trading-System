@@ -29,8 +29,8 @@ from pydantic import Field
 from strategies.base_strategy import BaseStrategy, StrategyConfig
 from utils.position_sizing import calculate_position_size_atr
 
-# Load environment variables
-load_dotenv('config/.env')
+# Load environment variables from root .env
+load_dotenv()
 
 
 class ORBConfig(StrategyConfig):

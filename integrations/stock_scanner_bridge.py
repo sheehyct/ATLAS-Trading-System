@@ -30,10 +30,13 @@ import sys
 import os
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import vectorbtpro as vbt
+
+# Import Tiingo data fetcher (Session 38)
+from .tiingo_data_fetcher import TiingoDataFetcher
 
 # Add scanner directory to path
 SCANNER_PATH = Path("C:/Dev/strat-stock-scanner")
@@ -57,6 +60,26 @@ class MomentumPortfolioBacktest:
     - Optional volume confirmation
     - Compatible with ATLAS regime system
     """
+
+    # Regime-based allocation rules (Session 39)
+    REGIME_ALLOCATION = {
+        'TREND_BULL': {
+            'portfolio_size_multiplier': 1.0,  # Full portfolio (10 stocks)
+            'allocation_pct': 1.0             # 100% capital deployed
+        },
+        'TREND_NEUTRAL': {
+            'portfolio_size_multiplier': 0.5,  # Reduced portfolio (5 stocks)
+            'allocation_pct': 0.7             # 70% capital (30% cash buffer)
+        },
+        'TREND_BEAR': {
+            'portfolio_size_multiplier': 0.3,  # Minimal positions (3 stocks)
+            'allocation_pct': 0.3             # 30% capital (70% cash)
+        },
+        'CRASH': {
+            'portfolio_size_multiplier': 0.0,  # Risk-off (0 stocks)
+            'allocation_pct': 0.0             # 100% cash
+        }
+    }
 
     # Stock universes (from scanner)
     UNIVERSES = {
@@ -223,7 +246,8 @@ class MomentumPortfolioBacktest:
         self,
         close: pd.DataFrame,
         rebalance_dates: List[str],
-        portfolios: Dict[str, List[str]]
+        portfolios: Dict[str, List[str]],
+        regime_at_rebalance: Dict[str, str] = None
     ) -> pd.DataFrame:
         """
         Build allocation matrix from portfolio selections.
@@ -232,6 +256,7 @@ class MomentumPortfolioBacktest:
             close: Close price DataFrame (from VBT data.get('Close'))
             rebalance_dates: List of rebalance dates
             portfolios: Dict mapping rebalance_date -> list of selected tickers
+            regime_at_rebalance: Dict mapping rebalance_date -> regime (Session 39)
 
         Returns:
             DataFrame with allocation percentages (rows=dates, cols=symbols)
@@ -242,6 +267,8 @@ class MomentumPortfolioBacktest:
 
         # Fill allocations at each rebalance date
         for i, rebalance_date in enumerate(rebalance_dates):
+            # IMPORTANT: Clear all allocations for this period before setting new ones
+            # This prevents accumulation when stocks appear in multiple rebalances
             rebalance_ts = pd.Timestamp(rebalance_date)
 
             # Make timezone-aware if data index is timezone-aware
@@ -264,6 +291,13 @@ class MomentumPortfolioBacktest:
             # Calculate equal weight
             weight = 1.0 / len(selected_stocks)
 
+            # Apply regime allocation percentage if enabled
+            if regime_at_rebalance and rebalance_date in regime_at_rebalance:
+                regime = regime_at_rebalance[rebalance_date]
+                if regime in self.REGIME_ALLOCATION:
+                    allocation_pct = self.REGIME_ALLOCATION[regime]['allocation_pct']
+                    weight = weight * allocation_pct
+
             # Determine end date for this allocation period
             if i < len(rebalance_dates) - 1:
                 # Next rebalance date
@@ -280,7 +314,11 @@ class MomentumPortfolioBacktest:
                 # Last rebalance - hold until end of data
                 end_ts = close.index[-1]
 
-            # Set allocations (forward-fill until next rebalance)
+            # CRITICAL FIX: Clear ALL allocations for this period first
+            # This prevents holding old stocks that aren't in the new portfolio
+            allocations.loc[rebalance_ts:end_ts, :] = 0.0
+
+            # Set allocations for selected stocks (forward-fill until next rebalance)
             for stock in selected_stocks:
                 if stock in allocations.columns:
                     allocations.loc[rebalance_ts:end_ts, stock] = weight
@@ -318,13 +356,153 @@ class MomentumPortfolioBacktest:
 
         return metrics
 
+    def _fetch_regime_data(
+        self,
+        start_date: str,
+        end_date: str,
+        lookback: int = 1000
+    ) -> Tuple[pd.DataFrame, pd.Series]:
+        """
+        Fetch SPY and VIX data for ATLAS regime detection.
+
+        Downloads additional historical data to support lookback window,
+        ensuring regime series covers entire backtest period.
+
+        Hybrid approach: Try Tiingo first, fallback to Yahoo Finance if unavailable.
+
+        Args:
+            start_date: Backtest start date
+            end_date: Backtest end date
+            lookback: Lookback window in days (default: 1000)
+
+        Returns:
+            Tuple of (spy_data DataFrame, vix_close Series)
+        """
+        print(f"\nFetching regime detection data (SPY + VIX)...")
+
+        # Extend start date to include lookback period
+        # Add extra buffer for weekends/holidays (lookback * 1.5)
+        start_dt = pd.Timestamp(start_date)
+        extended_start = start_dt - timedelta(days=int(lookback * 1.5))
+        extended_start_str = extended_start.strftime('%Y-%m-%d')
+
+        print(f"  Extended date range: {extended_start_str} to {end_date}")
+        print(f"  (includes {lookback}-day lookback window)")
+
+        # Try Tiingo first (professional data source with 30+ years)
+        try:
+            from .tiingo_data_fetcher import TiingoDataFetcher
+
+            fetcher = TiingoDataFetcher()
+
+            # Download SPY data for regime proxy (returns VBT Data object)
+            print(f"  Downloading SPY via Tiingo...")
+            spy_data_obj = fetcher.fetch('SPY', start_date=extended_start_str, end_date=end_date)
+            spy_close = spy_data_obj.get('Close')
+
+            # Download VIX data for flash crash detection
+            print(f"  Downloading VIX via Tiingo...")
+            vix_data_obj = fetcher.fetch('VIX', start_date=extended_start_str, end_date=end_date)
+            vix_close = vix_data_obj.get('Close')
+
+            print(f"  Success: Using Tiingo data source")
+            print(f"  SPY: {len(spy_close)} days ({spy_close.index[0].date()} to {spy_close.index[-1].date()})")
+            print(f"  VIX: {len(vix_close)} days ({vix_close.index[0].date()} to {vix_close.index[-1].date()})")
+
+            # Create OHLCV DataFrame for ATLAS model
+            spy_ohlcv = pd.DataFrame({
+                'Open': spy_data_obj.get('Open'),
+                'High': spy_data_obj.get('High'),
+                'Low': spy_data_obj.get('Low'),
+                'Close': spy_close,
+                'Volume': spy_data_obj.get('Volume')
+            })
+
+            return spy_ohlcv, vix_close
+
+        except Exception as e:
+            # Fallback to Yahoo Finance (proven reliable, baseline backtest used this)
+            print(f"  Tiingo unavailable: {str(e)[:80]}...")
+            print(f"  Falling back to Yahoo Finance")
+
+            # Download SPY data via Yahoo Finance
+            print(f"  Downloading SPY via Yahoo Finance...")
+            spy_data_obj = vbt.YFData.pull('SPY', start=extended_start_str, end=end_date)
+            spy_df = spy_data_obj.get()
+
+            # Download VIX data via Yahoo Finance (note: ^VIX symbol)
+            print(f"  Downloading VIX via Yahoo Finance...")
+            vix_data_obj = vbt.YFData.pull('^VIX', start=extended_start_str, end=end_date)
+            vix_df = vix_data_obj.get()
+
+            print(f"  Success: Using Yahoo Finance data source")
+            print(f"  SPY: {len(spy_df)} days ({spy_df.index[0].date()} to {spy_df.index[-1].date()})")
+            print(f"  VIX: {len(vix_df)} days ({vix_df.index[0].date()} to {vix_df.index[-1].date()})")
+
+            # Create OHLCV DataFrame for ATLAS model
+            spy_ohlcv = pd.DataFrame({
+                'Open': spy_df['Open'],
+                'High': spy_df['High'],
+                'Low': spy_df['Low'],
+                'Close': spy_df['Close'],
+                'Volume': spy_df['Volume']
+            })
+
+            vix_close = vix_df['Close']
+
+            return spy_ohlcv, vix_close
+
+    def _generate_regimes(
+        self,
+        spy_data: pd.DataFrame,
+        vix_data: pd.Series,
+        lookback: int = 1000
+    ) -> pd.Series:
+        """
+        Generate ATLAS regime classifications using academic jump model.
+
+        Args:
+            spy_data: SPY OHLCV DataFrame
+            vix_data: VIX close prices
+            lookback: Lookback window for regime detection (default: 1000 days for 2020-2025 data)
+
+        Returns:
+            Series of regime classifications indexed by date
+        """
+        print(f"\nGenerating ATLAS regime classifications...")
+        print(f"  Lookback window: {lookback} days")
+
+        # Import regime model
+        from regime.academic_jump_model import AcademicJumpModel
+
+        # Initialize model
+        model = AcademicJumpModel()
+
+        # Generate regimes with VIX acceleration
+        regimes, lambda_history, theta_history = model.online_inference(
+            data=spy_data,
+            vix_data=vix_data,
+            lookback=lookback,
+            default_lambda=1.5,  # Session 26-27 recalibration
+            adaptive_lambda=False
+        )
+
+        print(f"  Regime series length: {len(regimes)} days")
+        print(f"  Regime distribution:")
+        for regime, count in regimes.value_counts().items():
+            pct = count / len(regimes) * 100
+            print(f"    {regime}: {count} days ({pct:.1f}%)")
+
+        return regimes
+
     def run(
         self,
         start_date: str = '2015-01-01',
         end_date: str = '2025-01-01',
         initial_capital: float = 100000,
         fees: float = 0.001,
-        slippage: float = 0.001
+        slippage: float = 0.001,
+        use_regime_filter: bool = False
     ) -> Dict:
         """
         Run historical backtest of momentum portfolio strategy.
@@ -335,16 +513,20 @@ class MomentumPortfolioBacktest:
             initial_capital: Starting capital
             fees: Trading fees (0.1% default)
             slippage: Slippage (0.1% default)
+            use_regime_filter: Enable ATLAS regime filtering (Session 39)
 
         Returns:
             Dictionary with backtest results
         """
         print(f"\n{'='*80}")
         print(f"52-WEEK HIGH MOMENTUM PORTFOLIO BACKTEST")
+        if use_regime_filter:
+            print(f" (WITH ATLAS REGIME INTEGRATION)")
         print(f"{'='*80}")
         print(f"\nUniverse: {self.universe_name} ({len(self.universe)} stocks)")
         print(f"Portfolio Size: Top {self.top_n} stocks")
         print(f"Volume Filter: {self.volume_threshold}x" if self.volume_threshold else "Volume Filter: Disabled")
+        print(f"Regime Filter: {'ENABLED' if use_regime_filter else 'DISABLED'}")
         print(f"Rebalance: {self.rebalance_frequency}")
         print(f"Period: {start_date} to {end_date}")
 
@@ -363,6 +545,13 @@ class MomentumPortfolioBacktest:
         print(f"Downloaded {len(close)} days of data")
         print(f"Date range: {close.index[0]} to {close.index[-1]}")
 
+        # Generate ATLAS regimes if regime filter enabled
+        regime_series = None
+        regime_lookback = 1000  # Days of historical data for regime detection
+        if use_regime_filter:
+            spy_data, vix_data = self._fetch_regime_data(start_date, end_date, lookback=regime_lookback)
+            regime_series = self._generate_regimes(spy_data, vix_data, lookback=regime_lookback)
+
         # Generate rebalance dates
         rebalance_dates = self.get_rebalance_dates(start_date, end_date)
         print(f"\nRebalance schedule: {len(rebalance_dates)} rebalances")
@@ -377,19 +566,60 @@ class MomentumPortfolioBacktest:
         print(f"\nSelecting portfolios at each rebalance date...")
 
         rebalance_portfolios = {}
+        regime_at_rebalance = {}
+
         for rebalance_date in rebalance_dates:
+            # Get regime at rebalance date if regime filter enabled
+            current_regime = None
+            target_portfolio_size = self.top_n
+
+            if use_regime_filter and regime_series is not None:
+                # Get regime at rebalance date
+                rebalance_ts = pd.Timestamp(rebalance_date)
+                if close.index.tz is not None:
+                    rebalance_ts = rebalance_ts.tz_localize(close.index.tz)
+
+                # Find regime on or before rebalance date
+                regime_dates = regime_series.index[regime_series.index <= rebalance_ts]
+                if len(regime_dates) > 0:
+                    regime_date = regime_dates[-1]
+                    current_regime = regime_series.loc[regime_date]
+
+                    # Get regime allocation rules
+                    if current_regime in self.REGIME_ALLOCATION:
+                        multiplier = self.REGIME_ALLOCATION[current_regime]['portfolio_size_multiplier']
+                        target_portfolio_size = int(self.top_n * multiplier)
+
+                    regime_at_rebalance[rebalance_date] = current_regime
+
+            # Select portfolio
             selected = self.select_portfolio_at_date(data, rebalance_date)
+
+            # Apply regime portfolio size limit
+            if use_regime_filter and target_portfolio_size < len(selected):
+                selected = selected[:target_portfolio_size]
+
             rebalance_portfolios[rebalance_date] = selected
-            print(f"  {rebalance_date}: {len(selected)} stocks selected")
+
+            if use_regime_filter:
+                print(f"  {rebalance_date}: Regime={current_regime}, {len(selected)}/{target_portfolio_size} stocks selected")
+            else:
+                print(f"  {rebalance_date}: {len(selected)} stocks selected")
 
         # Build allocation matrix from portfolio selections
         print(f"\nBuilding allocation matrix...")
         allocations = self._build_allocation_matrix(
             close=close,
             rebalance_dates=rebalance_dates,
-            portfolios=rebalance_portfolios
+            portfolios=rebalance_portfolios,
+            regime_at_rebalance=regime_at_rebalance if use_regime_filter else None
         )
         print(f"Allocation matrix shape: {allocations.shape}")
+
+        # Validate allocation sums (should be <= 1.0)
+        if use_regime_filter:
+            max_allocation = allocations.sum(axis=1).max()
+            print(f"Maximum total allocation: {max_allocation:.2%}")
 
         # Run VBT portfolio backtest
         print(f"\nRunning VectorBT portfolio backtest...")
@@ -433,8 +663,14 @@ class MomentumPortfolioBacktest:
             'portfolio_size': self.top_n,
             'rebalance_dates': rebalance_dates,
             'portfolios': rebalance_portfolios,
-            'period': f"{start_date} to {end_date}"
+            'period': f"{start_date} to {end_date}",
+            'regime_filter_enabled': use_regime_filter
         }
+
+        # Add regime data if enabled
+        if use_regime_filter:
+            results['regime_at_rebalance'] = regime_at_rebalance
+            results['regime_series'] = regime_series
 
         return results
 

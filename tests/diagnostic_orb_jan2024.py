@@ -24,8 +24,8 @@ from dotenv import load_dotenv
 workspace_root = Path(__file__).parent.parent
 sys.path.insert(0, str(workspace_root))
 
-# Load environment
-load_dotenv('config/.env')
+# Load environment from root .env
+load_dotenv()
 
 
 def print_section(title):
@@ -44,7 +44,7 @@ def fetch_data_jan2024():
     api_secret = os.getenv('ALPACA_MID_SECRET')
 
     if not api_key or not api_secret:
-        raise ValueError("Alpaca credentials not found in config/.env")
+        raise ValueError("Alpaca credentials not found in .env")
 
     vbt.AlpacaData.set_custom_settings(
         client_config=dict(
