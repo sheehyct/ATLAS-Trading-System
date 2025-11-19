@@ -30,8 +30,8 @@ def fetch_us_stocks(
         start: Start date in format 'YYYY-MM-DD' (e.g., '2025-11-01')
         end: End date in format 'YYYY-MM-DD' (e.g., '2025-11-20')
         timeframe: Timeframe specification (default: '1d' for daily)
-        source: Data source ('alpaca' or 'tiingo', default: 'alpaca')
-        client_config: API credentials dict (api_key, secret_key, etc.)
+        source: Data source ('alpaca', 'tiingo', or 'yahoo', default: 'alpaca')
+        client_config: API credentials dict (api_key, secret_key, etc.) - not needed for yahoo
         **kwargs: Additional parameters passed to data source
 
     Returns:
@@ -64,8 +64,8 @@ def fetch_us_stocks(
         - OpenMemory: Tag "date-handling"
     """
     # Validate source
-    if source not in ['alpaca', 'tiingo']:
-        raise ValueError(f"source must be 'alpaca' or 'tiingo', got: {source}")
+    if source not in ['alpaca', 'tiingo', 'yahoo']:
+        raise ValueError(f"source must be 'alpaca', 'tiingo', or 'yahoo', got: {source}")
 
     # CRITICAL: Always set timezone to America/New_York for US markets
     kwargs['tz'] = 'America/New_York'
@@ -94,6 +94,16 @@ def fetch_us_stocks(
             end=end,
             timeframe=timeframe,
             client_config=client_config,
+            **kwargs
+        )
+
+    elif source == 'yahoo':
+        # Yahoo Finance (no API key required)
+        data = vbt.YFData.pull(
+            symbols,
+            start=start,
+            end=end,
+            timeframe=timeframe,
             **kwargs
         )
 

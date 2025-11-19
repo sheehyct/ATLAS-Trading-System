@@ -45,6 +45,10 @@ sys.path.insert(0, str(project_root))
 from integrations.alpaca_trading_client import AlpacaTradingClient
 from core.order_validator import OrderValidator
 from utils.execution_logger import ExecutionLogger
+from utils import fetch_us_stocks
+from regime.academic_jump_model import AcademicJumpModel
+from integrations.stock_scanner_bridge import MomentumPortfolioBacktest
+import vectorbtpro as vbt
 
 
 class RebalanceExecutor:
@@ -89,6 +93,13 @@ class RebalanceExecutor:
         self.logger = logger or ExecutionLogger()
         self.trading_client = None
         self.validator = OrderValidator()
+
+        # Regime detection cache (avoid redundant data downloads)
+        self._regime_cache = None
+        self._regime_model = None
+
+        # Stock scanner cache (avoid redundant downloads)
+        self._scanner_data_cache = None
 
         self.logger.logger.info("=" * 60)
         self.logger.logger.info("52-WEEK HIGH MOMENTUM REBALANCE")
@@ -168,12 +179,16 @@ class RebalanceExecutor:
 
         return positions
 
-    def get_current_regime(self, override_regime: str = None) -> str:
+    def get_current_regime(self, override_regime: str = None, date: datetime = None) -> str:
         """
-        Detect current market regime.
+        Detect current market regime using ATLAS model.
+
+        Fetches SPY and VIX data, runs online regime inference, and returns
+        the most recent regime classification.
 
         Args:
             override_regime: Manual regime override for testing
+            date: Specific date for regime detection (default: today)
 
         Returns:
             Regime string (TREND_BULL, TREND_NEUTRAL, TREND_BEAR, CRASH)
@@ -182,52 +197,215 @@ class RebalanceExecutor:
             self.logger.logger.info(f"Using override regime: {override_regime}")
             return override_regime
 
-        # TODO: Implement ATLAS regime detection
-        # For now, use safe default
-        default_regime = 'TREND_NEUTRAL'
-        self.logger.logger.warning(
-            f"ATLAS regime detection not yet integrated - using default: {default_regime}"
-        )
+        self.logger.logger.info("Detecting market regime with ATLAS model...")
 
-        return default_regime
+        try:
+            # Use cached regime if available
+            if self._regime_cache is not None:
+                regime = self._regime_cache.iloc[-1]
+                self.logger.logger.info(f"Using cached regime: {regime}")
+                return regime
+
+            # Fetch SPY data (with correct timezone handling)
+            self.logger.logger.info("Fetching SPY market data...")
+            spy_data = fetch_us_stocks(
+                'SPY',
+                start='2020-01-01',  # 5+ years for regime detection
+                end=datetime.now().strftime('%Y-%m-%d'),
+                timeframe='1d',
+                source='alpaca',
+                client_config={
+                    'api_key': os.getenv('APCA_API_KEY_ID'),
+                    'secret_key': os.getenv('APCA_API_SECRET_KEY'),
+                    'paper': True
+                }
+            )
+
+            spy_df = spy_data.get()
+            self.logger.logger.info(f"SPY data: {len(spy_df)} days loaded")
+
+            # Fetch VIX data for flash crash detection
+            self.logger.logger.info("Fetching VIX data...")
+            vix_data = fetch_us_stocks(
+                '^VIX',  # Yahoo Finance symbol for VIX
+                start='2020-01-01',
+                end=datetime.now().strftime('%Y-%m-%d'),
+                timeframe='1d',
+                source='yahoo'  # VIX not available on Alpaca
+            )
+
+            vix_df = vix_data.get()
+            vix_close = vix_df['Close']
+            self.logger.logger.info(f"VIX data: {len(vix_df)} days loaded")
+
+            # Initialize ATLAS regime model
+            if self._regime_model is None:
+                self._regime_model = AcademicJumpModel()
+
+            # Run online inference
+            self.logger.logger.info("Running ATLAS regime detection...")
+            regimes, lambdas, thetas = self._regime_model.online_inference(
+                data=spy_df,
+                lookback=1000,  # 4 years of history for parameter estimation
+                default_lambda=1.5,  # Moderate regime persistence
+                vix_data=vix_close  # Enable flash crash detection
+            )
+
+            # Cache results
+            self._regime_cache = regimes
+
+            # Get most recent regime
+            if date:
+                # Use regime for specific date if provided
+                regime = regimes.loc[date.strftime('%Y-%m-%d')]
+            else:
+                # Use most recent regime
+                regime = regimes.iloc[-1]
+
+            self.logger.logger.info(f"Current regime: {regime}")
+            self.logger.logger.info(f"  Lambda used: {lambdas.iloc[-1]:.2f}")
+            self.logger.logger.info(f"  Regime coverage: {len(regimes)} days")
+
+            # Log regime distribution
+            regime_counts = regimes.value_counts()
+            self.logger.logger.info("  Regime distribution:")
+            for r, count in regime_counts.items():
+                pct = 100 * count / len(regimes)
+                self.logger.logger.info(f"    {r}: {count} days ({pct:.1f}%)")
+
+            return regime
+
+        except Exception as e:
+            self.logger.logger.error(f"Regime detection failed: {str(e)}")
+            self.logger.logger.warning("Falling back to safe default: TREND_NEUTRAL")
+            return 'TREND_NEUTRAL'
 
     def generate_signals(
         self,
         universe: str,
-        top_n: int
+        top_n: int,
+        date: datetime = None
     ) -> List[Dict[str, Any]]:
         """
-        Generate stock selection signals via scanner.
+        Generate stock selection signals via 52-week high momentum scanner.
 
         Args:
-            universe: Stock universe (technology, sp500_proxy, etc.)
+            universe: Stock universe (technology, sp500_proxy, healthcare, financials)
             top_n: Number of stocks to select
+            date: Specific date for selection (default: today)
 
         Returns:
             List of selected stocks [{symbol, momentum_score, price}]
         """
         self.logger.logger.info(f"Generating signals: universe={universe}, top_n={top_n}")
 
-        # TODO: Integrate stock scanner
-        # For now, use hardcoded test portfolio
-        self.logger.logger.warning("Stock scanner integration pending - using test portfolio")
-
-        test_portfolio = [
-            {'symbol': 'AAPL', 'momentum_score': 0.95, 'price': 175.00},
-            {'symbol': 'MSFT', 'momentum_score': 0.92, 'price': 380.00},
-            {'symbol': 'NVDA', 'momentum_score': 0.90, 'price': 500.00}
-        ]
-
-        selected = test_portfolio[:top_n]
-
-        self.logger.logger.info(f"  Selected {len(selected)} stocks:")
-        for stock in selected:
-            self.logger.logger.info(
-                f"    {stock['symbol']}: momentum={stock['momentum_score']:.2f}, "
-                f"price=${stock['price']:.2f}"
+        try:
+            # Initialize scanner
+            scanner = MomentumPortfolioBacktest(
+                universe=universe,
+                top_n=top_n,
+                volume_threshold=None,  # No volume filter (per Session 38 findings)
+                min_distance=0.90  # Within 10% of 52-week high
             )
 
-        return selected
+            # Get stock list for universe
+            stock_universe = scanner.universe
+
+            self.logger.logger.info(f"Universe '{universe}': {len(stock_universe)} stocks")
+
+            # Download data if not cached
+            if self._scanner_data_cache is None:
+                self.logger.logger.info("Downloading universe data...")
+
+                # Download data for all stocks in universe
+                data = vbt.YFData.pull(
+                    stock_universe,
+                    start='2020-01-01',  # 5+ years for momentum calculation
+                    end=datetime.now().strftime('%Y-%m-%d'),
+                    timeframe='1d',
+                    tz='America/New_York'  # Correct timezone handling
+                )
+
+                self._scanner_data_cache = data
+                self.logger.logger.info(f"Downloaded data for {len(stock_universe)} stocks")
+            else:
+                self.logger.logger.info("Using cached universe data")
+                data = self._scanner_data_cache
+
+            # Select portfolio at date
+            selection_date = date.strftime('%Y-%m-%d') if date else datetime.now().strftime('%Y-%m-%d')
+
+            self.logger.logger.info(f"Selecting top {top_n} stocks at {selection_date}...")
+
+            # Get selected tickers
+            selected_tickers = scanner.select_portfolio_at_date(data, selection_date)
+
+            self.logger.logger.info(f"Selected {len(selected_tickers)} stocks: {', '.join(selected_tickers)}")
+
+            if not selected_tickers:
+                self.logger.logger.warning("No stocks selected by momentum scanner")
+                return []
+
+            # Get current prices for selected stocks
+            self.logger.logger.info("Fetching current prices...")
+
+            results = []
+            close_df = data.get('Close')
+
+            for ticker in selected_tickers:
+                try:
+                    # Get most recent price
+                    ticker_close = close_df[ticker].dropna()
+                    current_price = float(ticker_close.iloc[-1])
+
+                    # Calculate distance from 52-week high (momentum score proxy)
+                    recent_252_days = ticker_close.tail(252)
+                    high_52w = recent_252_days.max()
+                    momentum_score = current_price / high_52w
+
+                    results.append({
+                        'symbol': ticker,
+                        'momentum_score': momentum_score,
+                        'price': current_price
+                    })
+
+                except Exception as e:
+                    self.logger.logger.warning(f"Failed to get price for {ticker}: {str(e)}")
+                    continue
+
+            # Sort by momentum score
+            results.sort(key=lambda x: x['momentum_score'], reverse=True)
+
+            self.logger.logger.info("Signal generation complete:")
+            for r in results:
+                self.logger.logger.info(
+                    f"  {r['symbol']}: price=${r['price']:.2f}, "
+                    f"momentum={r['momentum_score']:.3f}"
+                )
+
+            return results
+
+        except Exception as e:
+            self.logger.logger.error(f"Signal generation failed: {str(e)}")
+            self.logger.logger.warning("Using fallback test portfolio")
+
+            # Fallback to test portfolio
+            test_portfolio = [
+                {'symbol': 'AAPL', 'momentum_score': 0.95, 'price': 175.00},
+                {'symbol': 'MSFT', 'momentum_score': 0.92, 'price': 380.00},
+                {'symbol': 'NVDA', 'momentum_score': 0.90, 'price': 500.00}
+            ]
+
+            selected = test_portfolio[:top_n]
+
+            self.logger.logger.info(f"  Selected {len(selected)} stocks (fallback):")
+            for stock in selected:
+                self.logger.logger.info(
+                    f"    {stock['symbol']}: momentum={stock['momentum_score']:.2f}, "
+                    f"price=${stock['price']:.2f}"
+                )
+
+            return selected
 
     def calculate_target_positions(
         self,
