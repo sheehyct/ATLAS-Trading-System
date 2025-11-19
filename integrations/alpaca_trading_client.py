@@ -1,5 +1,5 @@
 """
-Alpaca Trading Client - Production-Grade Order Execution Interface
+Alpaca Trading Client - Order Execution Interface
 
 Provides wrapper around alpaca-py SDK with:
 - Retry logic with exponential backoff (3 attempts)
@@ -17,6 +17,24 @@ Environment Variables Required:
 - APCA_API_KEY_ID: Alpaca API key (paper or live)
 - APCA_API_SECRET_KEY: Alpaca secret key
 - APCA_API_BASE_URL: Paper trading URL (default: https://paper-api.alpaca.markets)
+
+CRITICAL TODO (Before Session 44-45 - Account 2 Deployment):
+    User has THREE separate Alpaca accounts. Current implementation only supports
+    ONE set of credentials. MUST enhance to support multiple account credentials:
+
+    Required .env structure:
+        APCA_API_KEY_ID_ACCOUNT1=...      # LARGE account
+        APCA_API_SECRET_KEY_ACCOUNT1=...
+        APCA_API_KEY_ID_ACCOUNT2=...      # SMALL account (options deployment)
+        APCA_API_SECRET_KEY_ACCOUNT2=...
+        APCA_API_KEY_ID_ACCOUNT3=...      # EXPERIMENTAL account
+        APCA_API_SECRET_KEY_ACCOUNT3=...
+
+    Required API change:
+        client = AlpacaTradingClient(account_id='ACCOUNT1')  # Loads correct credentials
+
+    See: HANDOFF.md "CRITICAL: Multi-Account Architecture Required Before Session 44-45"
+    See: OpenMemory tag "multi-account", "deployment-blocker"
 
 Usage:
     client = AlpacaTradingClient(account='LARGE')
