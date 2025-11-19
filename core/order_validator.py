@@ -133,8 +133,8 @@ class OrderValidator:
         Validate total allocation within limits (max 105%).
 
         Args:
-            positions: Current positions [{symbol, qty, price}]
-            new_orders: New orders to submit [{symbol, qty, price}]
+            positions: Current positions [{symbol, qty, market_value}]
+            new_orders: New orders to submit [{symbol, qty, price, side}]
             portfolio_value: Current portfolio value
 
         Returns:
@@ -142,17 +142,26 @@ class OrderValidator:
         """
         # Calculate current position value
         position_value = sum(
-            pos.get('qty', 0) * pos.get('price', 0)
+            pos.get('market_value', pos.get('qty', 0) * pos.get('price', 0))
             for pos in positions
         )
 
-        # Calculate new order value
-        order_value = sum(
+        # Calculate net impact of orders (BUY adds, SELL reduces)
+        # If no 'side' specified, assume BUY for backward compatibility
+        buy_value = sum(
             order.get('qty', 0) * order.get('price', 0)
             for order in new_orders
+            if order.get('side', 'BUY').upper() == 'BUY'
         )
 
-        total_value = position_value + order_value
+        sell_value = sum(
+            order.get('qty', 0) * order.get('price', 0)
+            for order in new_orders
+            if order.get('side', '').upper() == 'SELL'
+        )
+
+        # Target allocation = current positions - sells + buys
+        total_value = position_value - sell_value + buy_value
         allocation_pct = total_value / portfolio_value if portfolio_value > 0 else 0
 
         max_allocation = 1.05  # 105% max (allow small over-allocation for fills)
@@ -161,7 +170,8 @@ class OrderValidator:
             return False, (
                 f"Total allocation {allocation_pct:.1%} exceeds limit "
                 f"{max_allocation:.1%} "
-                f"(positions ${position_value:,.2f} + orders ${order_value:,.2f} "
+                f"(positions ${position_value:,.2f} - sells ${sell_value:,.2f} + "
+                f"buys ${buy_value:,.2f} = ${total_value:,.2f} "
                 f"> ${portfolio_value * max_allocation:,.2f})"
             )
 
@@ -361,19 +371,38 @@ class OrderValidator:
         portfolio_value = account_info.get('portfolio_value',
                                           account_info.get('equity', 0.0))
 
-        # Calculate total order value
-        total_order_value = sum(
+        # Calculate net cash impact (BUY orders consume cash, SELL orders free cash)
+        buy_value = sum(
             order.get('qty', 0) * order.get('price', 0)
             for order in orders
+            if order.get('side', '').upper() == 'BUY'
         )
 
-        # Gate 1: Buying power check
-        valid, msg = self.validate_buying_power(account_info, total_order_value)
-        if not valid:
-            errors.append(f"[BUYING_POWER] {msg}")
+        sell_value = sum(
+            order.get('qty', 0) * order.get('price', 0)
+            for order in orders
+            if order.get('side', '').upper() == 'SELL'
+        )
 
-        # Gate 2: Regime compliance (total allocation)
-        allocation_pct = total_order_value / portfolio_value if portfolio_value > 0 else 0
+        net_cash_required = buy_value - sell_value
+
+        # Gate 1: Buying power check (only check if net cash required)
+        if net_cash_required > 0:
+            valid, msg = self.validate_buying_power(account_info, net_cash_required)
+            if not valid:
+                errors.append(f"[BUYING_POWER] {msg}")
+
+        # Gate 2: Regime compliance (use target allocation after orders execute)
+        # Current position value
+        current_position_value = sum(
+            pos.get('market_value', 0)
+            for pos in current_positions
+        )
+
+        # Target allocation = current positions - sells + buys
+        target_allocation_value = current_position_value - sell_value + buy_value
+        allocation_pct = target_allocation_value / portfolio_value if portfolio_value > 0 else 0
+
         valid, msg = self.validate_regime_compliance(regime, allocation_pct)
         if not valid:
             errors.append(f"[REGIME] {msg}")

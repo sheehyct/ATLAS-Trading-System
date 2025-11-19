@@ -593,7 +593,10 @@ class RebalanceExecutor:
         orders: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        Submit orders to Alpaca.
+        Submit orders to Alpaca with proper sequencing.
+
+        CRITICAL: Submits SELL orders first and waits for fills before
+        submitting BUY orders to avoid buying power failures.
 
         Args:
             orders: Orders to submit
@@ -607,38 +610,170 @@ class RebalanceExecutor:
             return []
 
         self.logger.logger.info("")
-        self.logger.logger.info("Submitting orders...")
+        self.logger.logger.info("Submitting orders with proper sequencing...")
+
+        # Separate SELL and BUY orders
+        sell_orders = [o for o in orders if o['side'] == 'SELL']
+        buy_orders = [o for o in orders if o['side'] == 'BUY']
+
+        self.logger.logger.info(f"  Phase 1: {len(sell_orders)} SELL orders")
+        self.logger.logger.info(f"  Phase 2: {len(buy_orders)} BUY orders")
 
         submitted = []
 
-        for order in orders:
-            try:
-                result = self.trading_client.submit_market_order(
-                    symbol=order['symbol'],
-                    qty=order['qty'],
-                    side=order['side'].lower()
-                )
+        # Phase 1: Submit and wait for SELL orders to fill
+        if sell_orders:
+            self.logger.logger.info("")
+            self.logger.logger.info("Phase 1: Submitting SELL orders...")
 
-                self.logger.log_order_submission(
-                    symbol=order['symbol'],
-                    qty=order['qty'],
-                    side=order['side'],
-                    order_type='market',
-                    order_id=result['id']
-                )
+            sell_order_ids = []
 
-                submitted.append(result)
+            for order in sell_orders:
+                try:
+                    result = self.trading_client.submit_market_order(
+                        symbol=order['symbol'],
+                        qty=order['qty'],
+                        side='sell'
+                    )
 
-            except Exception as e:
-                self.logger.log_error(
-                    component='OrderSubmission',
-                    error_msg=f"Failed to submit {order['side']} {order['qty']} {order['symbol']}",
-                    exc_info=e
-                )
+                    self.logger.log_order_submission(
+                        symbol=order['symbol'],
+                        qty=order['qty'],
+                        side=order['side'],
+                        order_type='market',
+                        order_id=result['id']
+                    )
 
-        self.logger.logger.info(f"  Submitted {len(submitted)} / {len(orders)} orders")
+                    submitted.append(result)
+                    sell_order_ids.append(result['id'])
+
+                    self.logger.logger.info(
+                        f"  Submitted: SELL {order['qty']} {order['symbol']} "
+                        f"(Order ID: {result['id']})"
+                    )
+
+                except Exception as e:
+                    self.logger.log_error(
+                        component='OrderSubmission',
+                        error_msg=f"Failed to submit SELL {order['qty']} {order['symbol']}",
+                        exc_info=e
+                    )
+
+            # Wait for SELL orders to fill
+            if sell_order_ids:
+                self.logger.logger.info("")
+                self.logger.logger.info(f"Waiting for {len(sell_order_ids)} SELL orders to fill...")
+                self._wait_for_order_fills(sell_order_ids, timeout=300)
+
+        # Phase 2: Submit BUY orders
+        if buy_orders:
+            self.logger.logger.info("")
+            self.logger.logger.info("Phase 2: Submitting BUY orders...")
+
+            for order in buy_orders:
+                try:
+                    result = self.trading_client.submit_market_order(
+                        symbol=order['symbol'],
+                        qty=order['qty'],
+                        side='buy'
+                    )
+
+                    self.logger.log_order_submission(
+                        symbol=order['symbol'],
+                        qty=order['qty'],
+                        side=order['side'],
+                        order_type='market',
+                        order_id=result['id']
+                    )
+
+                    submitted.append(result)
+
+                    self.logger.logger.info(
+                        f"  Submitted: BUY {order['qty']} {order['symbol']} "
+                        f"(Order ID: {result['id']})"
+                    )
+
+                except Exception as e:
+                    self.logger.log_error(
+                        component='OrderSubmission',
+                        error_msg=f"Failed to submit BUY {order['qty']} {order['symbol']}",
+                        exc_info=e
+                    )
+
+        self.logger.logger.info("")
+        self.logger.logger.info(f"Order submission complete: {len(submitted)} / {len(orders)} orders submitted")
 
         return submitted
+
+    def _wait_for_order_fills(
+        self,
+        order_ids: List[str],
+        timeout: int = 300,
+        poll_interval: int = 10
+    ):
+        """
+        Wait for orders to reach terminal state (filled, cancelled, rejected).
+
+        Args:
+            order_ids: List of order IDs to monitor
+            timeout: Maximum time to wait in seconds (default: 300 = 5 minutes)
+            poll_interval: Seconds between status checks (default: 10)
+        """
+        terminal_states = {'filled', 'cancelled', 'expired', 'rejected', 'replaced'}
+
+        start_time = time.time()
+        pending_orders = set(order_ids)
+
+        while pending_orders and (time.time() - start_time) < timeout:
+            # Check status of all pending orders
+            for order_id in list(pending_orders):
+                try:
+                    order = self.trading_client.get_order(order_id)
+                    status = order['status'].lower()
+
+                    if status in terminal_states:
+                        pending_orders.remove(order_id)
+
+                        if status == 'filled':
+                            self.logger.logger.info(
+                                f"  ✓ {order['symbol']}: FILLED {order['filled_qty']} @ "
+                                f"${order['filled_avg_price']:.2f}"
+                            )
+
+                            # Log fill to audit trail
+                            self.logger.log_order_fill(
+                                order_id=order['id'],
+                                fill_price=order['filled_avg_price'],
+                                fill_qty=order['filled_qty'],
+                                commission=0.0,
+                                symbol=order['symbol']
+                            )
+                        else:
+                            self.logger.logger.warning(
+                                f"  ✗ {order['symbol']}: {status.upper()}"
+                            )
+
+                except Exception as e:
+                    self.logger.logger.error(
+                        f"  Failed to check order {order_id}: {str(e)}"
+                    )
+
+            if pending_orders:
+                elapsed = int(time.time() - start_time)
+                self.logger.logger.info(
+                    f"  {len(pending_orders)} orders still pending "
+                    f"(elapsed: {elapsed}s, timeout: {timeout}s)"
+                )
+                time.sleep(poll_interval)
+
+        if pending_orders:
+            self.logger.logger.warning(
+                f"  Timeout: {len(pending_orders)} orders still pending after {timeout}s"
+            )
+            for order_id in pending_orders:
+                self.logger.logger.warning(f"    Order {order_id}")
+        else:
+            self.logger.logger.info("  All orders filled successfully")
 
     def execute(
         self,
