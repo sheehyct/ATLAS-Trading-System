@@ -4,7 +4,7 @@ Test suite for STRAT bar classification.
 Tests cover:
 1. Known synthetic sequences with hand-calculated expected values
 2. Edge cases (all inside bars, all outside bars, alternating patterns)
-3. Governing range persistence across consecutive inside bars
+3. Previous bar comparison behavior across consecutive bars
 4. Real SPY data validation with distribution checks
 5. Performance benchmarks with large datasets
 """
@@ -15,7 +15,13 @@ import pandas as pd
 import time
 import vectorbtpro as vbt
 
-from strat.bar_classifier import StratBarClassifier, classify_bars, classify_bars_nb
+from strat.bar_classifier import (
+    StratBarClassifier,
+    classify_bars,
+    classify_bars_nb,
+    format_bar_classifications,
+    get_bar_sequence_string
+)
 
 
 class TestSyntheticData:
@@ -31,10 +37,10 @@ class TestSyntheticData:
 
         Expected:
         - Bar 0: Reference (-999)
-        - Bar 1: Breaks high (105 > 100) -> 2U (gov_range: 105/95)
-        - Bar 2: Inside (104 <= 105 and 99 >= 95) -> 1 (gov_range: unchanged)
-        - Bar 3: Breaks high (107 > 105) -> 2U (gov_range: 107/95)
-        - Bar 4: Breaks both (110 > 107 and 93 < 95) -> 3 (gov_range: 110/93)
+        - Bar 1: Compare to Bar 0: 105>100 and 98>=95 -> 2U
+        - Bar 2: Compare to Bar 1: 104<=105 and 99>=98 -> 1 (inside)
+        - Bar 3: Compare to Bar 2: 107>104 and 101>=99 -> 2U
+        - Bar 4: Compare to Bar 3: 110>107 and 93<101 -> 3 (outside)
         """
         test_data = pd.DataFrame({
             'high': [100, 105, 104, 107, 110],
@@ -54,7 +60,7 @@ class TestSyntheticData:
         """
         Test sequence of all inside bars.
 
-        After reference bar, all bars stay inside governing range.
+        After reference bar, each bar has lower high and higher low than previous.
         Expected: Ref, 1, 1, 1, 1
         """
         test_data = pd.DataFrame({
@@ -75,7 +81,7 @@ class TestSyntheticData:
         """
         Test sequence of all outside bars.
 
-        Each bar breaks both high and low of previous governing range.
+        Each bar breaks both high and low of previous bar.
         Expected: Ref, 3, 3, 3, 3
         """
         test_data = pd.DataFrame({
@@ -107,10 +113,10 @@ class TestSyntheticData:
         result = StratBarClassifier.run(test_data['high'], test_data['low'])
 
         # Bar 0: Ref (-999)
-        # Bar 1: H breaks (105>100) -> 2U (gov: 105/95)
-        # Bar 2: L breaks (90<95) -> 2D (gov: 104/90)
-        # Bar 3: H breaks (108>104) -> 2U (gov: 108/90)
-        # Bar 4: L breaks (88<90) -> 2D (gov: 107/88)
+        # Bar 1: Compare to Bar 0: H breaks (105>100), L doesn't (96>=95) -> 2U
+        # Bar 2: Compare to Bar 1: H doesn't (104<=105), L breaks (90<96) -> 2D
+        # Bar 3: Compare to Bar 2: H breaks (108>104), L doesn't (92>=90) -> 2U
+        # Bar 4: Compare to Bar 3: H doesn't (107<=108), L breaks (88<92) -> 2D
         expected = np.array([-999, 2, -2, 2, -2])
         np.testing.assert_array_equal(
             result.classification.values,
@@ -118,23 +124,23 @@ class TestSyntheticData:
             err_msg="Alternating 2U/2D sequence incorrect"
         )
 
-    def test_governing_range_persistence(self):
+    def test_consecutive_inside_bars_then_breakout(self):
         """
-        Test that governing range persists across multiple inside bars.
+        Test consecutive inside bars followed by a breakout.
 
-        Critical test: Inside bars should reference SAME governing range
-        until it's broken, not reference the previous bar.
+        With previous bar comparison, each inside bar is compared only to
+        the immediately preceding bar, not to a governing range.
         """
         test_data = pd.DataFrame({
             'high': [100, 99, 98, 97, 105],  # 3 inside bars, then breaks high only
-            'low': [90, 91, 92, 93, 91],     # Last bar stays above gov_low (90)
+            'low': [90, 91, 92, 93, 94],     # Last bar keeps higher low
         })
 
         result = StratBarClassifier.run(test_data['high'], test_data['low'])
 
-        # Bar 0: Ref (gov: 100/90)
-        # Bar 1-3: Inside (gov: unchanged at 100/90)
-        # Bar 4: Breaks high only (105 > 100, 91 >= 90) -> 2U
+        # Bar 0: Ref
+        # Bar 1-3: Each inside relative to previous bar
+        # Bar 4: Breaks high of Bar 3 (105 > 97) but keeps higher low (94 >= 93) -> 2U
         assert result.classification.iloc[0] == -999, "First bar should be reference"
         assert result.classification.iloc[1] == 1, "Bar 1 should be inside"
         assert result.classification.iloc[2] == 1, "Bar 2 should be inside"
@@ -351,6 +357,55 @@ class TestConvenienceFunction:
             expected,
             err_msg="classify_bars() convenience function incorrect"
         )
+
+
+class TestDisplayFunctions:
+    """Test bar classification display and formatting functions."""
+
+    def test_format_bar_classifications(self):
+        """Test format_bar_classifications() with skip_reference=True."""
+        classifications = np.array([-999, 2, 1, 2, 3])
+
+        result = format_bar_classifications(classifications, skip_reference=True)
+
+        expected = ['2U', '1', '2U', '3']
+        assert result == expected, f"Expected {expected}, got {result}"
+
+    def test_format_bar_classifications_include_reference(self):
+        """Test format_bar_classifications() with skip_reference=False."""
+        classifications = np.array([-999, 2, 1, 2, 3])
+
+        result = format_bar_classifications(classifications, skip_reference=False)
+
+        expected = ['REF', '2U', '1', '2U', '3']
+        assert result == expected, f"Expected {expected}, got {result}"
+
+    def test_format_bar_classifications_with_2d(self):
+        """Test format_bar_classifications() with 2D bars."""
+        classifications = np.array([-999, 2, -2, 2, -2])
+
+        result = format_bar_classifications(classifications, skip_reference=True)
+
+        expected = ['2U', '2D', '2U', '2D']
+        assert result == expected, f"Expected {expected}, got {result}"
+
+    def test_get_bar_sequence_string(self):
+        """Test get_bar_sequence_string() produces comma-separated output."""
+        classifications = np.array([-999, 2, 1, 2, 3])
+
+        result = get_bar_sequence_string(classifications)
+
+        expected = '2U, 1, 2U, 3'
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_get_bar_sequence_string_with_pandas_series(self):
+        """Test get_bar_sequence_string() works with pandas Series."""
+        classifications = pd.Series([-999, 2, 1, 2, 3])
+
+        result = get_bar_sequence_string(classifications)
+
+        expected = '2U, 1, 2U, 3'
+        assert result == expected, f"Expected '{expected}', got '{result}'"
 
 
 if __name__ == '__main__':
