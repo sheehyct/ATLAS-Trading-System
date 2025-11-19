@@ -108,18 +108,54 @@ class AlpacaTradingClient:
         self.logger = logger or self._create_default_logger()
 
         # API credentials from environment
-        self.api_key = os.getenv('APCA_API_KEY_ID')
-        self.secret_key = os.getenv('APCA_API_SECRET_KEY')
-        self.base_url = os.getenv(
-            'APCA_API_BASE_URL',
-            'https://paper-api.alpaca.markets'
-        )
+        # Try multiple naming conventions for flexibility
+        if account == 'LARGE':
+            self.api_key = (
+                os.getenv('APCA_API_KEY_ID') or
+                os.getenv('ALPACA_LARGE_KEY') or
+                os.getenv('ALPACA_API_KEY')
+            )
+            self.secret_key = (
+                os.getenv('APCA_API_SECRET_KEY') or
+                os.getenv('ALPACA_LARGE_SECRET') or
+                os.getenv('ALPACA_SECRET_KEY')
+            )
+            self.base_url = (
+                os.getenv('APCA_API_BASE_URL') or
+                os.getenv('ALPACA_LARGE_ENDPOINT') or
+                os.getenv('ALPACA_BASE_URL') or
+                'https://paper-api.alpaca.markets'
+            )
+        elif account == 'SMALL':
+            self.api_key = (
+                os.getenv('APCA_API_KEY_ID') or
+                os.getenv('ALPACA_API_KEY')
+            )
+            self.secret_key = (
+                os.getenv('APCA_API_SECRET_KEY') or
+                os.getenv('ALPACA_SECRET_KEY')
+            )
+            self.base_url = (
+                os.getenv('APCA_API_BASE_URL') or
+                os.getenv('ALPACA_ENDPOINT') or
+                'https://paper-api.alpaca.markets'
+            )
+        else:
+            # Default: standard APCA_* variables
+            self.api_key = os.getenv('APCA_API_KEY_ID')
+            self.secret_key = os.getenv('APCA_API_SECRET_KEY')
+            self.base_url = os.getenv(
+                'APCA_API_BASE_URL',
+                'https://paper-api.alpaca.markets'
+            )
 
         # Validate environment variables
         if not self.api_key or not self.secret_key:
             raise ValueError(
-                "Missing Alpaca API credentials. Set APCA_API_KEY_ID "
-                "and APCA_API_SECRET_KEY environment variables."
+                f"Missing Alpaca API credentials for account '{account}'. "
+                f"Set APCA_API_KEY_ID/APCA_API_SECRET_KEY or "
+                f"ALPACA_LARGE_KEY/ALPACA_LARGE_SECRET (for LARGE account) or "
+                f"ALPACA_API_KEY/ALPACA_SECRET_KEY environment variables."
             )
 
         # Trading client (initialized in connect())

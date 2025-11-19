@@ -38,6 +38,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Tuple
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
