@@ -12,14 +12,24 @@ Architecture:
 - Layer 1B-1: VIX Acceleration (this module) - Flash crashes (minutes-hours)
 - Layer 1A: Academic Clustering (existing) - Slow trends (weeks-months)
 
+Real-Time Detection:
+- detect_realtime_vix_spike(): Intraday detection using 1-minute data (paper trading)
+- detect_vix_spike(): Historical detection using daily close data (backtesting)
+
+Data Sources:
+- Paper Trading: Yahoo Finance (yfinance) via VIXSpikeDetector
+- Live Trading: Upgrade to massive.com for real-time unlimited index data
+
 References:
 - Session 34 exploration: docs/exploration/SESSION_34_VIX_STRAT_CROSS_ASSET_ENHANCEMENT.md
+- Session 50 real-time detection: docs/sessions/SESSION_50_*.md
 - Validation: August 5 2024, March 2020, 2020-2024 backtest
 """
 
 import pandas as pd
 import vectorbtpro as vbt
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
+from regime.vix_spike_detector import VIXSpikeDetector
 
 
 def fetch_vix_data(start_date: str, end_date: str) -> pd.Series:
@@ -225,6 +235,114 @@ def get_vix_regime_override(
     severity = classify_vix_severity(vix_close)
 
     return spike_detected, severity
+
+
+def detect_realtime_vix_spike() -> Dict:
+    """
+    Detect real-time VIX spike using intraday 1-minute data.
+
+    Uses VIXSpikeDetector to check for flash crash conditions based on
+    intraday VIX movements. This catches spikes that occur within a
+    trading day that would be missed by daily close-to-close analysis.
+
+    Data Source:
+        - Paper Trading: Yahoo Finance (yfinance)
+        - Live Trading: Upgrade to massive.com before live deployment
+
+    Returns
+    -------
+    Dict
+        Detection results with keys:
+        - is_crash (bool): True if crash detected
+        - vix_current (float): Current VIX level
+        - intraday_change_pct (float): Intraday % change (open to current)
+        - one_day_change_pct (float): 1-day % change
+        - three_day_change_pct (float): 3-day % change
+        - triggers (list): Which thresholds were exceeded
+        - timestamp (datetime): When check was performed
+        - market_open (bool): Whether market is currently open
+
+    Examples
+    --------
+    >>> # Check for real-time crash before rebalancing
+    >>> vix_status = detect_realtime_vix_spike()
+    >>> if vix_status['is_crash']:
+    >>>     print(f"CRASH detected: {vix_status['triggers']}")
+    >>>     # Abort deployment or switch to 0% allocation
+    >>>
+    >>> # Use in regime detection
+    >>> if detect_realtime_vix_spike()['is_crash']:
+    >>>     current_regime = 'CRASH'
+
+    Notes
+    -----
+    Thresholds (from VIXSpikeDetector):
+    - Intraday spike: >= 20% from market open
+    - 1-day spike: >= 20% from previous close
+    - 3-day spike: >= 50% from 3 days ago
+    - Absolute VIX: >= 35 (extreme fear)
+
+    Real-World Example (November 20, 2025):
+    - VIX opened: 20.79
+    - VIX spiked to: 28.14 by 12:20 PM EST
+    - Intraday change: +35.35%
+    - Result: CRASH DETECTED (exceeds 20% threshold)
+    - Daily close data would have shown only +8.3% (MISSED)
+
+    See Also
+    --------
+    detect_vix_spike : Historical detection for backtesting (daily data)
+    VIXSpikeDetector : Core detection class with detailed reporting
+    """
+    detector = VIXSpikeDetector()
+    return detector.get_details()
+
+
+def get_current_regime() -> str:
+    """
+    Get current regime classification with real-time VIX override.
+
+    Convenience function for real-time regime determination during trading hours.
+    Checks for VIX crash conditions and returns appropriate regime.
+
+    Returns
+    -------
+    str
+        Current regime: 'CRASH', 'TREND_NEUTRAL', 'TREND_BULL', or 'TREND_BEAR'
+        If crash detected, always returns 'CRASH'
+        Otherwise returns 'TREND_NEUTRAL' (conservative default for real-time checks)
+
+    Examples
+    --------
+    >>> # Before executing rebalance
+    >>> regime = get_current_regime()
+    >>> if regime == 'CRASH':
+    >>>     print("Market crash detected - abort deployment")
+    >>>     allocation_pct = 0.0  # 100% cash
+    >>> elif regime == 'TREND_NEUTRAL':
+    >>>     allocation_pct = 0.70  # 70% deployed
+    >>> elif regime == 'TREND_BULL':
+    >>>     allocation_pct = 1.00  # 100% deployed
+
+    Notes
+    -----
+    This is a simplified real-time check. For full regime detection with
+    historical context, use AcademicJumpModel.online_inference().
+
+    Real-time checks prioritize crash detection over nuanced regime classification
+    because:
+    1. Crash protection is most time-sensitive
+    2. Other regime changes (bull/bear/neutral) can wait for scheduled checks
+    3. Conservative default (NEUTRAL) is safe for unscheduled checks
+    """
+    vix_status = detect_realtime_vix_spike()
+
+    if vix_status['is_crash']:
+        return 'CRASH'
+    else:
+        # Conservative default: TREND_NEUTRAL (70% allocation)
+        # For full regime detection, use AcademicJumpModel.online_inference()
+        return 'TREND_NEUTRAL'
 
 
 # Module-level validation
