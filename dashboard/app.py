@@ -56,6 +56,7 @@ from dashboard.components.risk_panel import create_risk_panel
 from dashboard.data_loaders.regime_loader import RegimeDataLoader
 from dashboard.data_loaders.backtest_loader import BacktestDataLoader
 from dashboard.data_loaders.live_loader import LiveDataLoader
+from dashboard.data_loaders.orders_loader import OrdersDataLoader
 
 # Import visualizations
 from dashboard.visualizations.regime_viz import (
@@ -128,6 +129,13 @@ try:
 except Exception as e:
     logger.warning(f"LiveDataLoader initialization failed: {e}")
     live_loader = None
+
+try:
+    orders_loader = OrdersDataLoader()
+    logger.info("OrdersDataLoader initialized successfully")
+except Exception as e:
+    logger.warning(f"OrdersDataLoader initialization failed: {e}")
+    orders_loader = None
 
 # ============================================
 # APP LAYOUT

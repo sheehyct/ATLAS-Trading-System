@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from typing import Optional, Dict
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,15 @@ class RegimeDataLoader:
         """
         self.data_dir = data_dir or Path(__file__).parent.parent.parent / 'data'
         self.cache = {}
-        logger.info(f"RegimeDataLoader initialized with data_dir: {self.data_dir}")
+
+        # Initialize ATLAS regime detection model
+        try:
+            from regime.academic_jump_model import AcademicJumpModel
+            self.atlas_model = AcademicJumpModel()
+            logger.info("RegimeDataLoader initialized with AcademicJumpModel")
+        except Exception as e:
+            logger.error(f"Failed to initialize AcademicJumpModel: {e}")
+            self.atlas_model = None
 
     def get_regime_timeline(
         self,
@@ -40,12 +49,7 @@ class RegimeDataLoader:
         symbol: str = 'SPY'
     ) -> pd.DataFrame:
         """
-        Get regime classification timeline for date range.
-
-        This is a PLACEHOLDER implementation. In production, this should:
-        1. Load data from regime/academic_jump_model.py results
-        2. Query saved regime classifications from database or cache
-        3. Run the academic jump model if results don't exist
+        Get regime classification timeline using ATLAS AcademicJumpModel.
 
         Args:
             start_date: Start date (YYYY-MM-DD)
@@ -57,42 +61,65 @@ class RegimeDataLoader:
                 - date: DatetimeIndex
                 - regime: Regime label (TREND_BULL, TREND_BEAR, TREND_NEUTRAL, CRASH)
                 - price: Close price
-                - confidence: Classification confidence (optional)
         """
 
         try:
-            # PLACEHOLDER: Generate sample data for demonstration
-            # In production, replace with actual regime model data
+            if self.atlas_model is None:
+                logger.warning("AcademicJumpModel not initialized, returning empty data")
+                return pd.DataFrame(columns=['date', 'regime', 'price'])
 
             logger.info(f"Loading regime data for {symbol} from {start_date} to {end_date}")
 
-            # Create date range
-            dates = pd.date_range(start=start_date, end=end_date, freq='D')
+            # Check cache first
+            cache_key = f"{symbol}_{start_date}_{end_date}"
+            if cache_key in self.cache:
+                logger.info("Using cached regime data")
+                return self.cache[cache_key]
 
-            # Sample regime data (replace with actual model output)
-            np.random.seed(42)
-            regimes = np.random.choice(
-                ['TREND_BULL', 'TREND_NEUTRAL', 'TREND_BEAR', 'CRASH'],
-                size=len(dates),
-                p=[0.4, 0.3, 0.2, 0.1]  # Probabilities
+            # Fetch SPY market data using VectorBT
+            import vectorbtpro as vbt
+
+            spy_data = vbt.YFData.pull(
+                symbol,
+                start=start_date,
+                end=end_date,
+                tz='America/New_York'
+            )
+            spy_df = spy_data.get()
+
+            # Fetch VIX data for crash detection
+            vix_data = vbt.YFData.pull(
+                '^VIX',
+                start=start_date,
+                end=end_date,
+                tz='America/New_York'
+            )
+            vix_close = vix_data.get()['Close']
+
+            # Run ATLAS regime detection
+            regimes, lambdas, thetas = self.atlas_model.online_inference(
+                spy_df,
+                lookback=1000,
+                default_lambda=1.5,
+                vix_data=vix_close
             )
 
-            # Sample price data (replace with actual price data)
-            prices = 100 + np.cumsum(np.random.randn(len(dates)) * 2)
-
+            # Format as DataFrame
             df = pd.DataFrame({
-                'date': dates,
-                'regime': regimes,
-                'price': prices,
-                'confidence': np.random.uniform(0.6, 0.95, len(dates))
+                'date': regimes.index,
+                'regime': regimes.values,
+                'price': spy_df['Close'].loc[regimes.index].values
             })
 
-            logger.info(f"Loaded {len(df)} regime observations")
+            # Cache the result
+            self.cache[cache_key] = df
+
+            logger.info(f"Loaded {len(df)} regime observations from ATLAS model")
             return df
 
         except Exception as e:
-            logger.error(f"Error loading regime timeline: {e}")
-            return pd.DataFrame(columns=['date', 'regime', 'price', 'confidence'])
+            logger.error(f"Error loading regime timeline: {e}", exc_info=True)
+            return pd.DataFrame(columns=['date', 'regime', 'price'])
 
     def get_regime_features(
         self,
@@ -209,6 +236,70 @@ class RegimeDataLoader:
 
         logger.warning("load_from_model not yet implemented")
         return {}
+
+    def get_current_regime(self) -> str:
+        """
+        Get the current regime classification.
+
+        Returns:
+            Current regime: 'TREND_BULL', 'TREND_NEUTRAL', 'TREND_BEAR', or 'CRASH'
+        """
+
+        try:
+            # Get regime timeline for recent data
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = '2020-01-01'  # Get enough history for lookback
+
+            timeline = self.get_regime_timeline(start_date, end_date)
+
+            if timeline.empty:
+                logger.warning("No regime data available")
+                return 'UNKNOWN'
+
+            # Return the most recent regime
+            current = timeline.iloc[-1]['regime']
+            logger.info(f"Current regime: {current}")
+
+            return current
+
+        except Exception as e:
+            logger.error(f"Error getting current regime: {e}", exc_info=True)
+            return 'UNKNOWN'
+
+    def get_vix_status(self) -> Dict:
+        """
+        Get current VIX crash detection status.
+
+        Returns:
+            Dictionary with:
+                - vix_current: Current VIX level
+                - intraday_change_pct: Intraday percentage change
+                - one_day_change_pct: 1-day percentage change
+                - three_day_change_pct: 3-day percentage change
+                - is_crash: Boolean indicating if crash detected
+                - triggers: List of triggered thresholds
+        """
+
+        try:
+            from regime.vix_spike_detector import VIXSpikeDetector
+
+            detector = VIXSpikeDetector()
+            details = detector.get_details()
+
+            logger.info(f"VIX status: {details['vix_current']:.2f}, Crash: {details['is_crash']}")
+
+            return details
+
+        except Exception as e:
+            logger.error(f"Error getting VIX status: {e}", exc_info=True)
+            return {
+                'vix_current': 0.0,
+                'intraday_change_pct': 0.0,
+                'one_day_change_pct': 0.0,
+                'three_day_change_pct': 0.0,
+                'is_crash': False,
+                'triggers': []
+            }
 
     def clear_cache(self):
         """Clear cached data."""

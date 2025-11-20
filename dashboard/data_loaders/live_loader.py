@@ -17,48 +17,35 @@ class LiveDataLoader:
     """
     Fetch real-time data from Alpaca for live monitoring.
 
-    This is a PLACEHOLDER implementation that returns dummy data.
-    In production, this should:
-    1. Initialize Alpaca API clients
-    2. Fetch real account data
-    3. Handle API errors gracefully
-    4. Implement rate limiting
+    Uses AlpacaTradingClient to fetch real account data, positions,
+    and market status from paper trading or live account.
     """
 
-    def __init__(self):
-        """Initialize LiveDataLoader with Alpaca API clients."""
+    def __init__(self, account='LARGE'):
+        """
+        Initialize LiveDataLoader with AlpacaTradingClient.
 
-        # Check for API credentials
-        api_key = os.getenv('ALPACA_API_KEY')
-        secret_key = os.getenv('ALPACA_SECRET_KEY')
+        Args:
+            account: Account to use ('LARGE' for $10k paper, 'SMALL' for $3k)
+        """
+        self.account = account
+        self.client = None
 
-        if not api_key or not secret_key:
-            logger.warning("Alpaca API credentials not found in environment")
-            self.data_client = None
-            self.trading_client = None
-        else:
-            # PLACEHOLDER: Would initialize actual Alpaca clients
-            # from alpaca.data.historical import StockHistoricalDataClient
-            # from alpaca.trading.client import TradingClient
-            #
-            # self.data_client = StockHistoricalDataClient(
-            #     api_key=api_key,
-            #     secret_key=secret_key
-            # )
-            #
-            # self.trading_client = TradingClient(
-            #     api_key=api_key,
-            #     secret_key=secret_key,
-            #     paper=True
-            # )
+        try:
+            from integrations.alpaca_trading_client import AlpacaTradingClient
 
-            logger.info("LiveDataLoader initialized (using dummy data)")
-            self.data_client = "PLACEHOLDER"
-            self.trading_client = "PLACEHOLDER"
+            self.client = AlpacaTradingClient(account=account)
+            self.client.connect()
+            logger.info(f"LiveDataLoader initialized with {account} account")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize AlpacaTradingClient: {e}")
+            logger.warning("LiveDataLoader will return empty data")
+            self.client = None
 
     def get_current_positions(self) -> pd.DataFrame:
         """
-        Get current open positions.
+        Get current open positions from Alpaca.
 
         Returns:
             DataFrame with columns:
@@ -68,56 +55,34 @@ class LiveDataLoader:
                 - unrealized_pl: Unrealized P&L
                 - unrealized_plpc: Unrealized P&L %
                 - avg_entry_price: Average entry price
+                - current_price: Current market price
         """
 
         try:
-            if self.trading_client is None:
-                logger.warning("Trading client not initialized")
+            if self.client is None:
+                logger.warning("AlpacaTradingClient not initialized")
                 return pd.DataFrame()
 
-            # PLACEHOLDER: Would fetch from Alpaca
-            # positions = self.trading_client.get_all_positions()
-            # return pd.DataFrame([
-            #     {
-            #         'symbol': p.symbol,
-            #         'qty': float(p.qty),
-            #         'market_value': float(p.market_value),
-            #         'unrealized_pl': float(p.unrealized_pl),
-            #         'unrealized_plpc': float(p.unrealized_plpc)
-            #     }
-            #     for p in positions
-            # ])
+            # Fetch real positions from Alpaca
+            positions = self.client.list_positions()
 
-            # For now, return dummy positions
-            positions = pd.DataFrame([
-                {
-                    'symbol': 'SPY',
-                    'qty': 10,
-                    'market_value': 4500.00,
-                    'unrealized_pl': 125.50,
-                    'unrealized_plpc': 0.0287,
-                    'avg_entry_price': 437.55
-                },
-                {
-                    'symbol': 'QQQ',
-                    'qty': 5,
-                    'market_value': 1875.00,
-                    'unrealized_pl': -23.75,
-                    'unrealized_plpc': -0.0125,
-                    'avg_entry_price': 379.75
-                }
-            ])
+            if not positions:
+                logger.info("No open positions")
+                return pd.DataFrame()
 
-            logger.info(f"Fetched {len(positions)} positions")
-            return positions
+            # Convert to DataFrame
+            df = pd.DataFrame(positions)
+
+            logger.info(f"Fetched {len(df)} positions")
+            return df
 
         except Exception as e:
-            logger.error(f"Error getting positions: {e}")
+            logger.error(f"Error getting positions: {e}", exc_info=True)
             return pd.DataFrame()
 
     def get_account_status(self) -> Dict:
         """
-        Get account equity, buying power, etc.
+        Get account equity, buying power, etc from Alpaca.
 
         Returns:
             Dictionary with:
@@ -125,41 +90,22 @@ class LiveDataLoader:
                 - cash: Available cash
                 - buying_power: Buying power
                 - portfolio_value: Portfolio value
-                - last_equity: Previous day equity
-                - daytrade_count: Number of day trades
+                - timestamp: Last update timestamp
         """
 
         try:
-            if self.trading_client is None:
-                logger.warning("Trading client not initialized")
+            if self.client is None:
+                logger.warning("AlpacaTradingClient not initialized")
                 return {}
 
-            # PLACEHOLDER: Would fetch from Alpaca
-            # account = self.trading_client.get_account()
-            # return {
-            #     'equity': float(account.equity),
-            #     'cash': float(account.cash),
-            #     'buying_power': float(account.buying_power),
-            #     'portfolio_value': float(account.portfolio_value),
-            #     'last_equity': float(account.last_equity),
-            #     'daytrade_count': int(account.daytrade_count)
-            # }
-
-            # For now, return dummy account data
-            account_data = {
-                'equity': 12375.50,
-                'cash': 5000.25,
-                'buying_power': 10000.50,
-                'portfolio_value': 12375.50,
-                'last_equity': 12250.00,
-                'daytrade_count': 2
-            }
+            # Fetch real account data from Alpaca
+            account_data = self.client.get_account()
 
             logger.info("Fetched account status")
             return account_data
 
         except Exception as e:
-            logger.error(f"Error getting account status: {e}")
+            logger.error(f"Error getting account status: {e}", exc_info=True)
             return {}
 
     def get_latest_price(self, symbol: str) -> Optional[float]:
@@ -195,28 +141,35 @@ class LiveDataLoader:
 
     def get_market_status(self) -> Dict:
         """
-        Get current market status.
+        Get current market status from Alpaca.
 
         Returns:
-            Dictionary with market open/close status
+            Dictionary with:
+                - is_open: Boolean indicating if market is currently open
+                - timestamp: Current time
         """
 
         try:
-            # PLACEHOLDER: Would check Alpaca clock
-            # clock = self.trading_client.get_clock()
-            # return {
-            #     'is_open': clock.is_open,
-            #     'next_open': clock.next_open,
-            #     'next_close': clock.next_close
-            # }
+            if self.client is None:
+                logger.warning("AlpacaTradingClient not initialized")
+                return {'is_open': False}
 
-            # For now, return dummy status
+            # Use Alpaca's market calendar to check if market is open
+            # For now, return basic status (can be enhanced later with full clock API)
+            from datetime import datetime
+            import pandas_market_calendars as mcal
+
+            nyse = mcal.get_calendar('NYSE')
+            now = datetime.now()
+            schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
+
+            is_open = len(schedule) > 0
+
             return {
-                'is_open': True,
-                'next_open': '2024-11-15T09:30:00-05:00',
-                'next_close': '2024-11-15T16:00:00-05:00'
+                'is_open': is_open,
+                'timestamp': now.isoformat()
             }
 
         except Exception as e:
-            logger.error(f"Error getting market status: {e}")
-            return {}
+            logger.error(f"Error getting market status: {e}", exc_info=True)
+            return {'is_open': False}
