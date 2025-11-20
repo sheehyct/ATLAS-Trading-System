@@ -812,6 +812,42 @@ class AcademicJumpModel:
 
         return standardized, means, stds
 
+    def _standardize_expanding(self, features_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Standardize features using expanding window to prevent look-ahead bias.
+
+        For each date t, standardizes using mean/std calculated from START to date t only.
+        This ensures thresholds remain consistent across time while preventing future
+        data from affecting past z-scores.
+
+        Args:
+            features_df: Raw features DataFrame with date index
+
+        Returns:
+            standardized_df: Standardized features DataFrame
+
+        Example:
+            For date 2020-03-15 (crash), z-score uses 2016-01-01 to 2020-03-15 data only.
+            For date 2024-01-01, z-score uses 2016-01-01 to 2024-01-01 data.
+            This way extreme events (crashes, rallies) have correct z-scores relative
+            to their historical context, not diluted by future "recovery" data.
+        """
+        standardized = features_df.copy()
+
+        for col in features_df.columns:
+            # Calculate expanding mean and std (minimum 60 days for stability)
+            expanding_mean = features_df[col].expanding(min_periods=60).mean()
+            expanding_std = features_df[col].expanding(min_periods=60).std()
+
+            # Standardize using expanding statistics
+            # This prevents look-ahead bias: z-score at time t uses only data up to time t
+            standardized[col] = (features_df[col] - expanding_mean) / expanding_std
+
+            # Handle NaN (early periods with insufficient data, replace with 0.0)
+            standardized[col] = standardized[col].fillna(0.0)
+
+        return standardized
+
     def _apply_standardization(self, features: np.ndarray, means: dict, stds: dict,
                                feature_names: list) -> np.ndarray:
         """
@@ -1017,8 +1053,10 @@ class AcademicJumpModel:
             return regime_states, lambda_series, theta_df
 
         # Map 2-state (bull/bear) to 4-regime ATLAS output
-        # Regime mapping needs GLOBAL z-scores for consistent thresholds across time
-        features_df_standardized, _, _ = self._standardize_window(features_df)
+        # Use EXPANDING window standardization to prevent look-ahead bias
+        # For each date t, standardize using only historical data from START to t
+        # This maintains consistent thresholds while preventing future data from affecting past z-scores
+        features_df_standardized = self._standardize_expanding(features_df)
         atlas_regimes = self.map_to_atlas_regimes(regime_states, features_df_standardized)
 
         # VIX Acceleration Override (Layer 1B-1): Flash crash detection

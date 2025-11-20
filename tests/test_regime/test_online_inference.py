@@ -58,7 +58,8 @@ def test_online_inference_basic_functionality():
     )
 
     # Validate lambda values are from candidates
-    valid_lambdas = [5, 10, 15, 35, 50, 70, 100, 150]
+    # Updated to match new z-score scaled lambda values (scaled down 10x from raw feature values)
+    valid_lambdas = [0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
     assert all(l in valid_lambdas for l in lambda_history.unique()), "Lambda from candidates"
 
     print(f"[PASS] Basic functionality: {len(regime_states)} days, "
