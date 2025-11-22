@@ -264,6 +264,11 @@ class EquityValidationBacktest:
         stops_212 = pattern_result.stops_212
         targets_212 = pattern_result.targets_212
 
+        entries_22 = pattern_result.entries_22
+        directions_22 = pattern_result.directions_22
+        stops_22 = pattern_result.stops_22
+        targets_22 = pattern_result.targets_22
+
         # Process 3-1-2 Up patterns (bullish: directions_312 == 1)
         for i in range(len(entries_312)):
             if entries_312.iloc[i] and directions_312.iloc[i] == 1:
@@ -483,6 +488,113 @@ class EquityValidationBacktest:
                     'detection_timeframe': detection_timeframe
                 })
 
+        # Process 2-2 Up patterns (bullish: directions_22 == 1)
+        # 2D-2U: Bearish → Bullish reversal (failed breakdown)
+        for i in range(len(entries_22)):
+            if entries_22.iloc[i] and directions_22.iloc[i] == 1:
+                pattern_date = entries_22.index[i]
+
+                # Market open filter: For hourly patterns, need 2 bars minimum
+                # 10:30 (bar 1), 11:30 (bar 2 triggers pattern)
+                if detection_timeframe == '1H':
+                    if pattern_date.hour < 11 or (pattern_date.hour == 11 and pattern_date.minute < 30):
+                        continue  # Skip patterns before 11:30 AM
+
+                # Entry price = trigger bar high (2U bar high)
+                # Note: For 2-2 patterns, NO inside bar - entry is trigger bar itself
+                entry_price = detection_data.loc[pattern_date, 'High']
+
+                high_dict = {tf: mtf_data[tf]['High'] for tf in continuity_timeframes if tf in mtf_data}
+                low_dict = {tf: mtf_data[tf]['Low'] for tf in continuity_timeframes if tf in mtf_data}
+
+                continuity_checker = TimeframeContinuityChecker(timeframes=continuity_timeframes)
+
+                # Use flexible or full continuity based on config
+                if self.config['filters'].get('use_flexible_continuity', False):
+                    continuity = continuity_checker.check_flexible_continuity_at_datetime(
+                        high_dict, low_dict, pattern_date,
+                        direction='bullish',
+                        min_strength=self.config['filters']['min_continuity_strength'],
+                        detection_timeframe=detection_timeframe
+                    )
+                    if not continuity['passes_flexible']:
+                        continue
+                else:
+                    # Legacy full continuity mode
+                    continuity = continuity_checker.check_continuity_at_datetime(
+                        high_dict, low_dict, pattern_date, direction='bullish'
+                    )
+                    if self.config['filters']['require_full_continuity']:
+                        if not continuity['full_continuity']:
+                            continue
+
+                # Record pattern
+                patterns_found.append({
+                    'symbol': symbol,
+                    'pattern_type': '2-2 Up',
+                    'entry_date': pattern_date,
+                    'entry_price': entry_price,
+                    'stop_price': stops_22.iloc[i],
+                    'target_price': targets_22.iloc[i],
+                    'direction': 'bullish',
+                    'continuity_strength': continuity['strength'],
+                    'full_continuity': continuity.get('full_continuity', continuity.get('passes_flexible', False)),
+                    'detection_timeframe': detection_timeframe
+                })
+
+        # Process 2-2 Down patterns (bearish: directions_22 == -1)
+        # 2U-2D: Bullish → Bearish reversal (failed breakout)
+        for i in range(len(entries_22)):
+            if entries_22.iloc[i] and directions_22.iloc[i] == -1:
+                pattern_date = entries_22.index[i]
+
+                # Market open filter: For hourly patterns, need 2 bars minimum
+                if detection_timeframe == '1H':
+                    if pattern_date.hour < 11 or (pattern_date.hour == 11 and pattern_date.minute < 30):
+                        continue  # Skip patterns before 11:30 AM
+
+                # Entry price = trigger bar low (2D bar low)
+                # Note: For 2-2 patterns, NO inside bar - entry is trigger bar itself
+                entry_price = detection_data.loc[pattern_date, 'Low']
+
+                high_dict = {tf: mtf_data[tf]['High'] for tf in continuity_timeframes if tf in mtf_data}
+                low_dict = {tf: mtf_data[tf]['Low'] for tf in continuity_timeframes if tf in mtf_data}
+
+                continuity_checker = TimeframeContinuityChecker(timeframes=continuity_timeframes)
+
+                # Use flexible or full continuity based on config
+                if self.config['filters'].get('use_flexible_continuity', False):
+                    continuity = continuity_checker.check_flexible_continuity_at_datetime(
+                        high_dict, low_dict, pattern_date,
+                        direction='bearish',
+                        min_strength=self.config['filters']['min_continuity_strength'],
+                        detection_timeframe=detection_timeframe
+                    )
+                    if not continuity['passes_flexible']:
+                        continue
+                else:
+                    # Legacy full continuity mode
+                    continuity = continuity_checker.check_continuity_at_datetime(
+                        high_dict, low_dict, pattern_date, direction='bearish'
+                    )
+                    if self.config['filters']['require_full_continuity']:
+                        if not continuity['full_continuity']:
+                            continue
+
+                # Record pattern
+                patterns_found.append({
+                    'symbol': symbol,
+                    'pattern_type': '2-2 Down',
+                    'entry_date': pattern_date,
+                    'entry_price': entry_price,
+                    'stop_price': stops_22.iloc[i],
+                    'target_price': targets_22.iloc[i],
+                    'direction': 'bearish',
+                    'continuity_strength': continuity['strength'],
+                    'full_continuity': continuity.get('full_continuity', continuity.get('passes_flexible', False)),
+                    'detection_timeframe': detection_timeframe
+                })
+
         return patterns_found
 
     def measure_pattern_outcome(
@@ -524,24 +636,33 @@ class EquityValidationBacktest:
         stop_hit = False
         bars_to_stop = None
 
-        # Count continuation bars (consecutive directional bars after pattern entry)
+        # Count continuation bars (directional bars after pattern entry in 5-bar window)
         # Session 55 insight: Patterns with 2+ continuation bars show higher hit rates
+        # Session 57 fix: Count ALL directional bars in window, not just consecutive
+        # Rationale: Reversal patterns often consolidate 1-2 bars before continuation
         continuation_bars = 0
         if len(future_data) > 0:
             future_classifications = classify_bars(future_data['High'], future_data['Low'])
-            for bar_classification in future_classifications:
+            # Scan 5-bar window after entry (or fewer if less data available)
+            scan_window = min(5, len(future_classifications))
+            for i in range(scan_window):
+                bar_classification = future_classifications[i]
                 if direction == 'bullish':
-                    # Bullish pattern: Count consecutive 2U bars (classification == 2.0)
+                    # Bullish pattern: Count 2U bars (directional up)
                     if bar_classification == 2.0:
                         continuation_bars += 1
-                    else:
-                        break  # Stop on inside bar (1) or opposite bar (2D)
+                    # Allow inside bars (1.0) without breaking count
+                    # Break only on opposite directional bar (2D = -2.0)
+                    elif bar_classification == -2.0:
+                        break  # Opposite direction = pattern failed
                 elif direction == 'bearish':
-                    # Bearish pattern: Count consecutive 2D bars (classification == -2.0)
+                    # Bearish pattern: Count 2D bars (directional down)
                     if bar_classification == -2.0:
                         continuation_bars += 1
-                    else:
-                        break  # Stop on inside bar (1) or opposite bar (2U)
+                    # Allow inside bars (1.0) without breaking count
+                    # Break only on opposite directional bar (2U = 2.0)
+                    elif bar_classification == 2.0:
+                        break  # Opposite direction = pattern failed
 
         # Track outcomes bar by bar
         for bar_idx in range(min(len(future_data), max_holding_bars)):

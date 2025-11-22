@@ -28,7 +28,7 @@ test_config = {
         'continuity_check': ['1M', '1W', '1D', '4H', '1H'],
         'rationale': 'Multi-timeframe pattern detection + alignment test'
     },
-    'pattern_types': ['3-1-2 Up', '3-1-2 Down', '2-1-2 Up', '2-1-2 Down'],
+    'pattern_types': ['3-1-2 Up', '3-1-2 Down', '2-1-2 Up', '2-1-2 Down', '2-2 Up', '2-2 Down'],
     'filters': {
         'require_full_continuity': False,  # Changed to flexible (Session 56 Bug #3 fix)
         'use_flexible_continuity': True,   # Use timeframe-appropriate continuity

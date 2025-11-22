@@ -1,7 +1,7 @@
 r"""
 STRAT Pattern Detection VBT Custom Indicator
 
-Implements 3-1-2 and 2-1-2 pattern detection with measured move targets.
+Implements 3-1-2, 2-1-2, and 2-2 pattern detection with measured move targets.
 
 Pattern Types:
     3-1-2: Outside-Inside-Directional (reversal pattern)
@@ -14,9 +14,15 @@ Pattern Types:
         - Bar 2: Inside bar (classification = 1)
         - Bar 3: Second directional bar (classification = 2 or -2)
 
+    2-2: Directional-Directional (rapid reversal pattern)
+        - Bar 1: First directional bar (classification = 2 or -2)
+        - Bar 2: Opposite directional bar (classification = -2 or 2)
+        - NO inside bar - immediate momentum shift
+
 Entry/Stop/Target Calculation:
-    Entry: Inside bar high (bullish) or low (bearish)
-    Stop: Structural level (Outside bar or Inside bar opposite extreme)
+    3-1-2 & 2-1-2: Entry at inside bar high/low
+    2-2: Entry at trigger bar high/low (no inside bar)
+    Stop: Structural level (first bar opposite extreme)
     Target: Measured move = entry + pattern_height
 
 Algorithm ported from:
@@ -345,11 +351,141 @@ def detect_212_patterns_nb(classifications, high, low):
 
 
 @njit
+def detect_22_patterns_nb(classifications, high, low):
+    """
+    Detect 2-2 reversal patterns (2D-2U, 2U-2D).
+
+    Pattern Structure:
+        - Bar at i-1: First directional bar (classification = 2 or -2)
+        - Bar at i: Opposite directional bar (classification = -2 or 2) - TRIGGER
+        - NO inside bar - rapid momentum reversal
+
+    2D-2U: Bearish → Bullish reversal (failed breakdown)
+    2U-2D: Bullish → Bearish reversal (failed breakout)
+
+    Parameters:
+    -----------
+    classifications : np.ndarray
+        Bar classifications from bar_classifier.py (1D or 2D array)
+    high : np.ndarray
+        Array of bar high prices
+    low : np.ndarray
+        Array of bar low prices
+
+    Returns:
+    --------
+    tuple of 4 np.ndarray:
+        entries : Boolean array (True at trigger bar index)
+        stops : Stop loss prices (np.nan where no pattern)
+        targets : Target prices (np.nan where no pattern)
+        directions : 1 for bullish, -1 for bearish, 0 for no pattern
+
+    Examples:
+    ---------
+    2D-2U Bullish Reversal:
+        Bar 0 (idx=1): 2D directional down (H=105, L=95, classification=-2, range=10)
+        Bar 1 (idx=2): 2U directional up (classification=2) - TRIGGER
+
+        Entry: 105 (2U bar high)
+        Stop: 95 (2D bar low)
+        Target: 105 + 10 = 115 (measured move)
+        Direction: 1 (bullish)
+
+    2U-2D Bearish Reversal:
+        Bar 0 (idx=1): 2U directional up (H=105, L=95, classification=2, range=10)
+        Bar 1 (idx=2): 2D directional down (classification=-2) - TRIGGER
+
+        Entry: 95 (2D bar low)
+        Stop: 105 (2U bar high)
+        Target: 95 - 10 = 85 (measured move)
+        Direction: -1 (bearish)
+    """
+    # Handle both 1D and 2D arrays from VBT
+    if classifications.ndim == 1:
+        n = len(classifications)
+        # Initialize output arrays as 1D
+        entries = np.zeros(n, dtype=np.bool_)
+        stops = np.full(n, np.nan, dtype=np.float64)
+        targets = np.full(n, np.nan, dtype=np.float64)
+        directions = np.zeros(n, dtype=np.int8)
+
+        # Pattern requires 2 bars minimum
+        for i in range(1, n):
+            bar1_class = classifications[i-1]  # First directional bar
+            bar2_class = classifications[i]    # Opposite directional bar (trigger)
+
+            # 2D-2U: Bearish to Bullish reversal (failed breakdown)
+            if bar1_class == -2 and bar2_class == 2:
+                entries[i] = True
+                directions[i] = 1  # Bullish
+
+                # Entry trigger: High of 2U bar (trigger bar)
+                # Stop: Low of 2D bar (first directional bar)
+                # Target: Measured move (first directional bar range projected from entry)
+                trigger_price = high[i]  # 2U bar high
+                stops[i] = low[i-1]  # 2D bar low
+
+                pattern_height = high[i-1] - low[i-1]  # 2D bar range
+                targets[i] = trigger_price + pattern_height
+
+            # 2U-2D: Bullish to Bearish reversal (failed breakout)
+            elif bar1_class == 2 and bar2_class == -2:
+                entries[i] = True
+                directions[i] = -1  # Bearish
+
+                # Entry trigger: Low of 2D bar (trigger bar)
+                # Stop: High of 2U bar (first directional bar)
+                # Target: Measured move (first directional bar range projected from entry)
+                trigger_price = low[i]  # 2D bar low
+                stops[i] = high[i-1]  # 2U bar high
+
+                pattern_height = high[i-1] - low[i-1]  # 2U bar range
+                targets[i] = trigger_price - pattern_height
+
+    else:  # 2D array
+        n = classifications.shape[0]
+        # Initialize output arrays as 2D (n, 1)
+        entries = np.zeros((n, 1), dtype=np.bool_)
+        stops = np.full((n, 1), np.nan, dtype=np.float64)
+        targets = np.full((n, 1), np.nan, dtype=np.float64)
+        directions = np.zeros((n, 1), dtype=np.int8)
+
+        # Pattern requires 2 bars minimum
+        for i in range(1, n):
+            bar1_class = classifications[i-1, 0]  # First directional bar
+            bar2_class = classifications[i, 0]    # Opposite directional bar (trigger)
+
+            # 2D-2U: Bearish to Bullish reversal
+            if bar1_class == -2 and bar2_class == 2:
+                entries[i, 0] = True
+                directions[i, 0] = 1  # Bullish
+
+                trigger_price = high[i, 0]  # 2U bar high
+                stops[i, 0] = low[i-1, 0]  # 2D bar low
+
+                pattern_height = high[i-1, 0] - low[i-1, 0]  # 2D bar range
+                targets[i, 0] = trigger_price + pattern_height
+
+            # 2U-2D: Bullish to Bearish reversal
+            elif bar1_class == 2 and bar2_class == -2:
+                entries[i, 0] = True
+                directions[i, 0] = -1  # Bearish
+
+                trigger_price = low[i, 0]  # 2D bar low
+                stops[i, 0] = high[i-1, 0]  # 2U bar high
+
+                pattern_height = high[i-1, 0] - low[i-1, 0]  # 2U bar range
+                targets[i, 0] = trigger_price - pattern_height
+
+    return (entries, stops, targets, directions)
+
+
+@njit
 def detect_all_patterns_nb(classifications, high, low):
     """
-    Detect all pattern types (3-1-2 and 2-1-2) in a single pass.
+    Detect all pattern types (3-1-2, 2-1-2, and 2-2) in a single pass.
 
-    Combines both pattern detectors for efficiency and returns all outputs.
+    Combines all pattern detectors for efficiency and returns all outputs.
 
     Parameters:
     -----------
@@ -362,7 +498,7 @@ def detect_all_patterns_nb(classifications, high, low):
 
     Returns:
     --------
-    tuple of 8 np.ndarray:
+    tuple of 12 np.ndarray:
         entries_312 : Boolean array for 3-1-2 patterns
         stops_312 : Stop prices for 3-1-2 patterns
         targets_312 : Target prices for 3-1-2 patterns
@@ -371,6 +507,10 @@ def detect_all_patterns_nb(classifications, high, low):
         stops_212 : Stop prices for 2-1-2 patterns
         targets_212 : Target prices for 2-1-2 patterns
         directions_212 : Directions for 2-1-2 patterns
+        entries_22 : Boolean array for 2-2 patterns
+        stops_22 : Stop prices for 2-2 patterns
+        targets_22 : Target prices for 2-2 patterns
+        directions_22 : Directions for 2-2 patterns
     """
     # Detect 3-1-2 patterns
     entries_312, stops_312, targets_312, directions_312 = detect_312_patterns_nb(
@@ -382,20 +522,27 @@ def detect_all_patterns_nb(classifications, high, low):
         classifications, high, low
     )
 
-    # Return all 8 outputs as tuple (order MUST match output_names)
+    # Detect 2-2 patterns
+    entries_22, stops_22, targets_22, directions_22 = detect_22_patterns_nb(
+        classifications, high, low
+    )
+
+    # Return all 12 outputs as tuple (order MUST match output_names)
     return (
         entries_312, stops_312, targets_312, directions_312,
-        entries_212, stops_212, targets_212, directions_212
+        entries_212, stops_212, targets_212, directions_212,
+        entries_22, stops_22, targets_22, directions_22
     )
 
 
-# Create VBT custom indicator with 8 outputs
+# Create VBT custom indicator with 12 outputs
 StratPatternDetector = vbt.IF(
     class_name='StratPatternDetector',
     input_names=['classifications', 'high', 'low'],
     output_names=[
         'entries_312', 'stops_312', 'targets_312', 'directions_312',
-        'entries_212', 'stops_212', 'targets_212', 'directions_212'
+        'entries_212', 'stops_212', 'targets_212', 'directions_212',
+        'entries_22', 'stops_22', 'targets_22', 'directions_22'
     ]
 ).with_apply_func(detect_all_patterns_nb)
 

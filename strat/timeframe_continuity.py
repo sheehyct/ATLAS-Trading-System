@@ -243,7 +243,7 @@ class TimeframeContinuityChecker:
         direction : str, default 'bullish'
             Direction to check: 'bullish' or 'bearish'
         min_strength : int, default 3
-            Minimum number of aligned timeframes required
+            Minimum number of aligned timeframes required (will be adjusted for timeframe)
         detection_timeframe : str, default '1D'
             Timeframe where pattern was detected (determines which TFs to check)
 
@@ -253,15 +253,29 @@ class TimeframeContinuityChecker:
             Same format as check_flexible_continuity()
         """
         # Define timeframe-appropriate continuity requirements
+        # Session 57: As user noted, hourly bars can throw off higher TF detection
+        # Higher timeframes need fewer aligned TFs (weekly doesn't need hourly alignment)
         timeframe_requirements = {
-            '1H': ['1W', '1D', '1H'],      # Hourly: Skip monthly (too broad)
-            '1D': ['1M', '1W', '1D'],      # Daily: Skip 4H/1H (too granular)
-            '1W': ['1M', '1W'],            # Weekly: Just month+week
-            '1M': ['1M']                   # Monthly: Just itself
+            '1H': ['1W', '1D', '1H'],      # Hourly: Skip monthly (too broad), need 3/3
+            '1D': ['1M', '1W', '1D'],      # Daily: Skip 4H/1H (too granular), need 2/3
+            '1W': ['1M', '1W'],            # Weekly: Just month+week, need 1/2
+            '1M': ['1M']                   # Monthly: Just itself, need 1/1
+        }
+
+        # Timeframe-appropriate minimum strength (prevents impossible requirements)
+        # Session 57: Weekly needs 1/2 TFs, Monthly needs 1/1 TF (not 3/5)
+        timeframe_min_strength = {
+            '1H': 3,  # Need 3/3 (Week, Day, Hour aligned)
+            '1D': 2,  # Need 2/3 (any 2 of Month, Week, Day)
+            '1W': 1,  # Need 1/2 (Month OR Week aligned)
+            '1M': 1   # Need 1/1 (Monthly bar itself)
         }
 
         # Get required timeframes for this detection timeframe
         required_tfs = timeframe_requirements.get(detection_timeframe, self.timeframes)
+
+        # Override min_strength with timeframe-appropriate value
+        min_strength = timeframe_min_strength.get(detection_timeframe, min_strength)
 
         aligned_timeframes = []
 
@@ -369,15 +383,28 @@ class TimeframeContinuityChecker:
         """
         # Define timeframe-appropriate continuity requirements
         # Key insight from Session 55: Don't check lower TFs for higher TF patterns
+        # Session 57: User noted hourly bars throw off higher TF detection
         timeframe_requirements = {
-            '1H': ['1W', '1D', '1H'],      # Hourly: Skip monthly (too broad)
-            '1D': ['1M', '1W', '1D'],      # Daily: Skip 4H/1H (too granular)
-            '1W': ['1M', '1W'],            # Weekly: Just month+week
-            '1M': ['1M']                   # Monthly: Just itself
+            '1H': ['1W', '1D', '1H'],      # Hourly: Skip monthly (too broad), need 3/3
+            '1D': ['1M', '1W', '1D'],      # Daily: Skip 4H/1H (too granular), need 2/3
+            '1W': ['1M', '1W'],            # Weekly: Just month+week, need 1/2
+            '1M': ['1M']                   # Monthly: Just itself, need 1/1
+        }
+
+        # Timeframe-appropriate minimum strength (prevents impossible requirements)
+        # Session 57: Weekly needs 1/2 TFs, Monthly needs 1/1 TF (not 3/5)
+        timeframe_min_strength = {
+            '1H': 3,  # Need 3/3 (Week, Day, Hour aligned)
+            '1D': 2,  # Need 2/3 (any 2 of Month, Week, Day)
+            '1W': 1,  # Need 1/2 (Month OR Week aligned)
+            '1M': 1   # Need 1/1 (Monthly bar itself)
         }
 
         # Get required timeframes for this detection timeframe
         required_tfs = timeframe_requirements.get(detection_timeframe, self.timeframes)
+
+        # Override min_strength with timeframe-appropriate value
+        min_strength = timeframe_min_strength.get(detection_timeframe, min_strength)
 
         aligned_timeframes = []
 
