@@ -1,9 +1,139 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 22, 2025 (Session 57 - 2-2 Patterns + Higher Timeframe Detection COMPLETE)
+**Last Updated:** November 22, 2025 (Session 58 - CRITICAL BUG DISCOVERED in 2-2 Magnitude Calculation)
 **Current Branch:** `main`
-**Phase:** STRAT equity validation - All pattern types working across all timeframes
-**Status:** 2-2 patterns implemented, weekly/monthly detection fixed. Ready for full 50-stock validation.
+**Phase:** STRAT equity validation - Bug fix required before proceeding
+**Status:** CRITICAL - All Session 57 2-2 pattern data invalidated. Must fix magnitude calculation before options module.
+
+---
+
+## Session 58: Risk-Reward Optimization Analysis → CRITICAL BUG DISCOVERED
+
+**Date:** November 22, 2025
+**Duration:** ~3 hours
+**Status:** Bug identified, optimization complete, fix required Session 59
+
+**Objective:** Achieve 2:1 R:R ratio through systematic optimization (continuation bars, target multipliers, stop adjustments).
+
+**CRITICAL DISCOVERY:** 2-2 reversal pattern magnitude calculation is fundamentally wrong, invalidating all Session 57 results for 2-2 patterns (183 patterns affected).
+
+### The Bug: Wrong Magnitude Target for 2-2 Reversals
+
+**Current (WRONG) Implementation:**
+```python
+# strat/pattern_detector.py lines 424-429
+# For 2D-2U reversal:
+trigger_price = high[i]      # 2U bar high (entry) ✓
+stops[i] = low[i-1]          # 2D bar low (stop) ✓
+pattern_height = high[i-1] - low[i-1]  # ❌ WRONG: uses 2D bar range
+targets[i] = trigger_price + pattern_height
+```
+
+**The Problem:**
+- Uses range of bar `i-1` (the 2D bar in the reversal)
+- But the 2U bar already broke ABOVE the 2D bar's high to become a 2U!
+- Measuring from 2D bar high = measuring from a level already passed
+- Creates impossible geometry (target at/near current price)
+
+**Correct STRAT Methodology (User Confirmed):**
+
+For 2D-2U reversal sequence (example: 2D-2D-2U):
+- Bar i-2: **2D** (establishes bearish momentum, sets a HIGH)
+- Bar i-1: **2D** (continues down, sets new LOW)
+- Bar i: **2U** (reversal, breaks back up)
+
+**The compound 2D-2D creates a "3" bar structure** (broadening formation):
+- Combined high = high of first 2D (i-2)
+- Combined low = low of second 2D (i-1)
+- The 2U reversal is breaking back UP through this range
+
+**Magnitude Target:** High of the PREVIOUS directional bar (opposite direction) NOT in the reversal sequence.
+- For 2D-2U: Target = high of bar i-2 (the 2D before the reversal starts)
+- For 2U-2D: Target = low of bar i-2 (the 2U before the reversal starts)
+
+**Why This Matters:**
+- Targets should be FURTHER away (breaking previous resistance/support)
+- Expected: Better R:R ratios (potentially 2:1+ after fix)
+- Expected: More realistic magnitude hits
+- Expected: Higher pattern counts
+
+### Optimization Analysis Results (Based on WRONG Data)
+
+**Phase 1: Continuation Bar Impact**
+- Hit rates improve dramatically with 2+ bars: 35% → 73% (hourly), 46% → 83% (daily)
+- R:R improvement modest: 1.17:1 → 1.34:1 (hourly)
+- **Daily 2-1-2 Up + 2+ bars: 2.65:1 R:R with 80% hit rate** (only pattern achieving target)
+- Expectancy improvement massive: negative → highly positive
+
+**Phase 2: Target Multipliers**
+- Testing 1.5x, 2x, 2.5x multipliers FAILED catastrophically
+- Hit rates collapse: 85% (1x) → 7% (1.5x) → near 0% (2x+)
+- Patterns don't naturally move 2x their measured range
+- REJECTED as optimization approach
+
+**Phase 3: Stop Efficiency Analysis**
+- Stop efficiency = 1.00x across ALL timeframes (hourly, daily, weekly)
+- Patterns use FULL stop distance before reversing
+- Stops correctly sized, cannot be tightened
+- Problem is target distance, not stop distance
+
+**Root Cause (Before Bug Discovery):**
+- Planned R:R ratios show geometric problem:
+  * Hourly: 1.20:1 (target 0.68%, stop 0.63%)
+  * Daily: 0.97:1 (target 1.97%, stop 2.56%) - **target SMALLER than stop**
+  * Weekly: 1.03:1 (target 5.59%, stop 6.25%) - **target SMALLER than stop**
+
+**NOW WE KNOW WHY:** The 2-2 magnitude calculation is using the wrong bar, creating targets that are too close or already passed!
+
+### What Session 57 Data Shows (Despite Wrong Targets)
+
+**Continuation bar filter is validated:**
+- 40-106% hit rate improvement across timeframes
+- Massive expectancy improvement (negative → positive)
+- **MANDATORY FILTER:** Require 2+ continuation bars for all patterns
+
+**Pattern counts affected by bug:**
+- Hourly 2-2: 56 patterns (26% of total)
+- Daily 2-2: 99 patterns (68% of total)
+- Weekly 2-2: 28 patterns (65% of total)
+- **Total invalidated: 183 patterns**
+
+### Session 59 Critical Tasks (MUST DO BEFORE OPTIONS MODULE)
+
+1. **Fix 2-2 Magnitude Calculation** (2 hours)
+   - Implement lookback logic in detect_22_patterns_nb()
+   - For 2D-2U: Find previous 2D bar (not in reversal), use its high
+   - For 2U-2D: Find previous 2U bar (not in reversal), use its low
+   - Handle edge cases (start of data, no previous bar)
+   - Update test_22_patterns.py with correct magnitude tests
+
+2. **Re-run 3-Stock Validation** (30 minutes)
+   - Generate new CSVs with corrected 2-2 targets
+   - Expected: Better R:R ratios, different hit rates
+   - Manual chart verification (5-10 patterns vs TradingView)
+
+3. **Re-run Optimization Analysis** (1 hour)
+   - Continuation bar analysis with corrected data
+   - Compare R:R before/after fix
+   - Determine if 2:1 R:R target is achievable with correct geometry
+
+4. **Additional Checks** (1 hour)
+   - Full timeframe continuity scoring (5/5 vs 4/5 vs 3/5 confidence tiers)
+   - ATR-based minimum magnitude filter (magnitude >= 1.5 * ATR?)
+   - Verify 3-1-2 and 2-1-2 magnitude calculations are correct
+   - Investigate why weekly pattern count lower than expected
+
+5. **GO/NO-GO Decision for Options Module**
+   - If 2-2 fix achieves 2:1+ R:R: Proceed to options module
+   - If still below target: Full 50-stock validation to find optimal patterns
+   - If fundamental issues remain: Reconsider approach
+
+**Files Created This Session:**
+- scripts/analyze_continuation_bar_impact.py (Phase 1 analysis)
+- scripts/test_target_multipliers.py (Phase 2 testing)
+- scripts/analyze_win_loss_magnitudes.py (Phase 3 stop efficiency)
+
+**Critical Insight:** User's STRAT experience caught a fundamental implementation error that data analysis alone wouldn't reveal. The magnitude calculation violates STRAT methodology (price traveling through previous ranges, compound "3" structures, resistance/support levels).
 
 ---
 
