@@ -84,7 +84,9 @@ VALIDATION_CONFIG = {
         'use_flexible_continuity': True,   # Use timeframe-appropriate continuity
         'min_continuity_strength': 3,      # Require 3/5 timeframes aligned minimum
         'use_atlas_regime': False,  # First test patterns alone, then with ATLAS
-        'min_pattern_quality': 'HIGH'
+        'min_pattern_quality': 'HIGH',
+        'require_continuation_bars': True,  # Session 63: Mandate continuation bar filter
+        'min_continuation_bars': 2  # Session 63: Require 2+ continuation bars (35→73% hit rate improvement)
     },
     'metrics': {
         'magnitude_window': 5,  # Bars to check for magnitude hit (patterns can take 1-5 bars)
@@ -500,9 +502,14 @@ class EquityValidationBacktest:
                     if pattern_date.hour < 11 or (pattern_date.hour == 11 and pattern_date.minute < 30):
                         continue  # Skip patterns before 11:30 AM
 
-                # Entry price = trigger bar high (2U bar high)
-                # Note: For 2-2 patterns, NO inside bar - entry is trigger bar itself
-                entry_price = detection_data.loc[pattern_date, 'High']
+                # CORRECTED (Session 59): Entry is LIVE when bar breaks previous bar's extreme
+                # For 2D-2U: Entry when price breaks ABOVE previous bar (i-1) HIGH
+                # All bars open as "1" (open = previous close), entry = previous bar HIGH
+                pattern_loc = detection_data.index.get_loc(pattern_date)
+                if pattern_loc < 1:
+                    continue  # Need previous bar for entry
+                prev_bar_date = detection_data.index[pattern_loc - 1]
+                entry_price = detection_data.loc[prev_bar_date, 'High']  # Previous 2D bar HIGH
 
                 high_dict = {tf: mtf_data[tf]['High'] for tf in continuity_timeframes if tf in mtf_data}
                 low_dict = {tf: mtf_data[tf]['Low'] for tf in continuity_timeframes if tf in mtf_data}
@@ -553,9 +560,14 @@ class EquityValidationBacktest:
                     if pattern_date.hour < 11 or (pattern_date.hour == 11 and pattern_date.minute < 30):
                         continue  # Skip patterns before 11:30 AM
 
-                # Entry price = trigger bar low (2D bar low)
-                # Note: For 2-2 patterns, NO inside bar - entry is trigger bar itself
-                entry_price = detection_data.loc[pattern_date, 'Low']
+                # CORRECTED (Session 59): Entry is LIVE when bar breaks previous bar's extreme
+                # For 2U-2D: Entry when price breaks BELOW previous bar (i-1) LOW
+                # All bars open as "1" (open = previous close), entry = previous bar LOW
+                pattern_loc = detection_data.index.get_loc(pattern_date)
+                if pattern_loc < 1:
+                    continue  # Need previous bar for entry
+                prev_bar_date = detection_data.index[pattern_loc - 1]
+                entry_price = detection_data.loc[prev_bar_date, 'Low']  # Previous 2U bar LOW
 
                 high_dict = {tf: mtf_data[tf]['High'] for tf in continuity_timeframes if tf in mtf_data}
                 low_dict = {tf: mtf_data[tf]['Low'] for tf in continuity_timeframes if tf in mtf_data}
@@ -638,8 +650,8 @@ class EquityValidationBacktest:
 
         # Count continuation bars (directional bars after pattern entry in 5-bar window)
         # Session 55 insight: Patterns with 2+ continuation bars show higher hit rates
-        # Session 57 fix: Count ALL directional bars in window, not just consecutive
-        # Rationale: Reversal patterns often consolidate 1-2 bars before continuation
+        # Session 57 fix: Allow inside bars (1.0) without breaking, but break on opposite directional
+        # Rationale: Opposite bar = pattern failed, inside bar = consolidation (pattern still valid)
         continuation_bars = 0
         if len(future_data) > 0:
             future_classifications = classify_bars(future_data['High'], future_data['Low'])
@@ -798,6 +810,14 @@ class EquityValidationBacktest:
 
                     # Measure outcome
                     outcome = self.measure_pattern_outcome(pattern, future_data, max_holding_bars)
+
+                    # Session 63: Apply continuation bar filter if enabled
+                    if self.config['filters'].get('require_continuation_bars', False):
+                        min_cont_bars = self.config['filters'].get('min_continuation_bars', 2)
+                        if outcome['continuation_bars'] < min_cont_bars:
+                            # Skip patterns with insufficient continuation bars
+                            # Session 58 proved: 0-1 bars = 35% hit rate, 2+ bars = 73% hit rate
+                            continue
 
                     # Combine pattern + outcome
                     pattern_with_outcome = {**pattern, **outcome}
