@@ -1,11 +1,126 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 24, 2025 (Session 73 - Data-Driven Strike Selection COMPLETE)
+**Last Updated:** November 25, 2025 (Session 74 - Claude Code Web Analysis + Railway Fix)
 **Current Branch:** `main`
-**Phase:** Options Strike Selection Optimized - 94.3% Delta Accuracy Achieved
-**Status:** All Session 73 objectives COMPLETE - 141 tests passing, delta accuracy 4.5x improvement
+**Pending Merge:** `claude/verify-repository-01A9Cm8YvZBytpMcojWQeo8u`
+**Phase:** Bug Scan Complete, UI/Alert Designed, Strategy Skeletons Created
+**Status:** Ready for Desktop review and merge
 
 **ARCHIVED SESSIONS:** Sessions 1-55 archived to `archives/sessions/HANDOFF_SESSIONS_01-55.md`
+
+---
+
+## 🔀 MERGE INSTRUCTIONS FOR CLAUDE CODE DESKTOP
+
+**Branch to Merge:** `claude/verify-repository-01A9Cm8YvZBytpMcojWQeo8u`
+
+**Commits to Review:**
+1. `2eda50f` - docs: add Session 74 analysis - bug scan, UI/Alert design, strategy skeletons
+2. `9281578` - fix: Railway deployment Python version + Deephaven join error
+
+**Merge Command:**
+```bash
+git fetch origin claude/verify-repository-01A9Cm8YvZBytpMcojWQeo8u
+git checkout main
+git merge origin/claude/verify-repository-01A9Cm8YvZBytpMcojWQeo8u --no-ff -m "Merge Session 74: Bug scan, UI/Alert design, strategy skeletons, Railway fix"
+git push origin main
+```
+
+**Files Added (6):**
+- `docs/SYSTEM_ARCHITECTURE/UI_ALERT_SYSTEM_SPECIFICATION.md` - Complete UI/Alert architecture
+- `docs/IMPLEMENTATION_PLAN_SESSION_74.md` - Prioritized implementation roadmap
+- `strategies/quality_momentum.py` - Quality-Momentum strategy skeleton
+- `strategies/semi_vol_momentum.py` - Semi-Volatility Momentum skeleton
+- `strategies/ibs_mean_reversion.py` - IBS Mean Reversion skeleton
+
+**Files Modified (3):**
+- `strategies/__init__.py` - Added exports for new strategies
+- `.python-version` - Changed `3.12.11` → `3.12` (Railway fix)
+- `dashboards/deephaven/portfolio_tracker.py` - Fixed Volume join error (line 249)
+
+---
+
+## Session 74: Bug Scan + UI/Alert Design + Railway Fix - COMPLETE
+
+**Date:** November 25, 2025
+**Environment:** Claude Code for Web
+**Status:** COMPLETE - Analysis done, fixes pushed, ready for merge
+
+**User Philosophy:** "Accuracy over speed. No time limit."
+
+### Task 1: Options Module Bug Scan (HIGH Priority) ✅
+
+**Files Analyzed:**
+- `strat/options_module.py` (1078 lines)
+- `strat/greeks.py` (538 lines)
+
+**Findings Summary:**
+
+| Severity | Count | Key Issues |
+|----------|-------|------------|
+| HIGH | 2 | Timezone stripping, Entry==Target edge case |
+| MEDIUM | 2 | Column validation, Position sizing |
+| LOW | 5 | Hardcoded values, logging gaps |
+
+**HIGH Severity Bugs (Require Fix):**
+
+1. **Timezone Handling** (`options_module.py:223-231, 886-902`)
+   - `tz_localize(None)` strips timezone without conversion
+   - Risk: Timestamps could shift by hours affecting DTE calculations
+   - Fix: Convert to UTC first, then strip: `.tz_convert('UTC').tz_localize(None)`
+
+2. **Entry==Target Edge Case** (`options_module.py:509`)
+   - `if entry >= target` for calls misses exact equality
+   - Risk: Division by zero if entry exactly equals target
+   - Fix: Add guard: `if abs(target - entry) < 0.001: return None`
+
+**Detailed bug analysis:** See `docs/IMPLEMENTATION_PLAN_SESSION_74.md`
+
+### Task 2: UI/Alert System Design (MEDIUM Priority) ✅
+
+**Created:** `docs/SYSTEM_ARCHITECTURE/UI_ALERT_SYSTEM_SPECIFICATION.md`
+
+**Architecture Components:**
+- `AlertEngine` - Rule-based alert processing with priority queuing
+- `NotificationChannel` (Abstract) → Console, Email, Pushover, Webhook
+- `PortfolioMonitor` - Real-time P/L tracking with 8% heat limit
+- `PatternAlertIntegration` - STRAT pattern completion alerts
+- `AlertDashboard` - React-based UI with TradingView charts
+
+**3-Phase Implementation:**
+1. Phase 1: Core AlertEngine + Console notifications
+2. Phase 2: Email/Pushover + PortfolioMonitor
+3. Phase 3: Web dashboard + historical analytics
+
+### Task 3: Strategy Skeletons (MEDIUM Priority) ✅
+
+**Created 3 strategy files:**
+
+| Strategy | File | Priority | Description |
+|----------|------|----------|-------------|
+| Quality-Momentum | `strategies/quality_momentum.py` | Phase 1 | All-weather, ROE+earnings quality scoring |
+| Semi-Vol Momentum | `strategies/semi_vol_momentum.py` | Phase 2 | Moreira & Muir (2017), vol-scaled positions |
+| IBS Mean Reversion | `strategies/ibs_mean_reversion.py` | Phase 2 | Internal Bar Strength, 65-75% win rate target |
+
+**Updated:** `strategies/__init__.py` with new exports
+
+### Task 4: Railway Deployment Fix ✅
+
+**Problem:** Railway build failing with:
+```
+error: No interpreter found for Python 3.12.11 in managed installations or system path
+```
+
+**Root Cause:** `.python-version` specified `3.12.11` exactly, but Railway/Nixpacks doesn't have that patch version.
+
+**Fix Applied:**
+- `.python-version`: `3.12.11` → `3.12`
+- `dashboards/deephaven/portfolio_tracker.py:249`: Removed non-existent `Volume` from join
+
+**Railway Environment Variables Needed:**
+- `TIINGO_API_KEY`
+- `ALPACA_MID_KEY`
+- `ALPACA_MID_SECRET`
 
 ---
 
