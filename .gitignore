@@ -22,7 +22,6 @@ wheels/
 MANIFEST
 
 # Virtual Environments
-.env
 .venv
 env/
 venv/
@@ -45,7 +44,6 @@ coverage.xml
 
 # Jupyter
 .ipynb_checkpoints
-*.ipynb
 
 # IDEs
 .vscode/settings.json
@@ -54,8 +52,10 @@ coverage.xml
 *.swp
 *.swo
 
-# Trading System Specific
-# API Keys and Secrets - CRITICAL SECURITY
+# ============================================
+# SECURITY CRITICAL - NEVER COMMIT
+# ============================================
+# API Keys and Secrets
 .env
 .env.*
 !.env.template
@@ -67,7 +67,7 @@ credentials.json
 secrets.json
 api_keys.json
 
-# Local Configuration
+# Local Configuration with secrets
 .env.local
 .env.development.local
 .env.test.local
@@ -76,10 +76,12 @@ config/local_*.py
 config/local_*.yaml
 config/local_*.json
 
-# Claude Code Settings (keep local only)
+# Claude Code local settings (may contain paths/preferences)
 .claude/settings.local.json
 
-# Data Files
+# ============================================
+# DATA FILES - Too large for git
+# ============================================
 data/
 *.csv
 *.parquet
@@ -87,33 +89,30 @@ data/
 *.hdf5
 *.db
 *.sqlite
+market_data/
+historical_data/
 
-# Log Files
+# ============================================
+# CACHE AND TEMPORARY FILES
+# ============================================
 logs/
 *.log
 *.log.*
 log_*.txt
-
-# Temporary Files
 tmp/
 temp/
 *.tmp
 *.temp
 nul
-
-# Cache
 .cache/
 cache/
 *.cache
 
-# Trading Data
-market_data/
-historical_data/
+# Backtest outputs (regenerable)
 backtest_results/
 optimization_results/
-performance_reports/
 
-# Model Files
+# Model Files (large binaries)
 models/
 *.pkl
 *.joblib
@@ -125,47 +124,22 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
-# MCP Servers (development tools, not core project code)
+# ============================================
+# MCP SERVERS (External tools, not project code)
+# ============================================
 alpaca-mcp-server/
 alphavantage/
 jupyter-mcp-server/
 matplotlib_mcp/
+.playwright-mcp/
 
-# Development-Specific Files (not for public repository)
-# Claude Code workspace settings and session state
-.claude/
-.session_startup_prompt.md
-
-# Internal documentation (development guides, handoff notes)
-docs/
-
-# Research and exploratory analysis (not core system)
-strategy_research/
-
-# Planning and proposal documents
-Claude Desktop Layer Proposals/
-
-# Output and report files
-output/
-*.html
-accuracy_test_report.json
-
-# Audio files (transcription utilities)
-*.mp3
-
-# Debug and test scripts (temporary investigation files)
-exploratory/
-scripts/
-test_label_bug.py
-test_lambda_*.py
-transcribe*.py
-spy_features_*.csv
-
-# Session documentation (internal development notes)
-SESSION_*.md
-DASHBOARD_IMPLEMENTATION_SUMMARY.md
-PLOTLY_DASH_DASHBOARD_GUIDE.md
-.session_startup_prompt*.md
-
-# Visualization outputs
-visualization/
+# ============================================
+# EXPLICITLY TRACKED (removed from ignore)
+# ============================================
+# docs/ - NOW TRACKED (documentation for Claude Code Web)
+# scripts/ - NOW TRACKED (validation and test scripts)
+# SESSION_*.md - NOW TRACKED (session history)
+# archives/ - NOW TRACKED (archived sessions)
+# .claude/ - NOW TRACKED (Claude configuration, except local settings)
+# *.html - NOW TRACKED (reports)
+# *.ipynb - NOW TRACKED (notebooks)

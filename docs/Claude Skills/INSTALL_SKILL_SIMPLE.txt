@@ -1,0 +1,50 @@
+# Copy-Paste This Into Claude Code to Install STRAT Skill
+
+---
+
+Please help me install the STRAT methodology skill. Follow these steps:
+
+**Step 1: Create the skill directory**
+```bash
+mkdir -p ~/.claude/skills/strat-methodology
+ls -la ~/.claude/skills/
+```
+
+**Step 2: Create SKILL.md file**
+Create `~/.claude/skills/strat-methodology/SKILL.md` with this structure:
+
+```yaml
+---
+name: strat-methodology
+description: Implements STRAT trading methodology with bar classification (Type 1/2U/2D/3), pattern detection (2-1-2, 3-1-2, 2-2, Rev Strats), timeframe continuity (4 C's, MOAF, institutional flips), entry/exit mechanics, position management, and options integration. Use when building algorithmic trading systems, detecting STRAT patterns, calculating mechanical entries, implementing multi-timeframe analysis, managing positions, or integrating options with technical patterns. Requires VectorBT PRO for backtesting.
+---
+
+# STRAT Trading Methodology
+
+[ADD YOUR FULL STRAT SKILL CONTENT HERE]
+```
+
+**Step 3: Verify installation**
+```bash
+# Check file exists
+ls -la ~/.claude/skills/strat-methodology/SKILL.md
+
+# View frontmatter
+head -n 10 ~/.claude/skills/strat-methodology/SKILL.md
+
+# Check file size
+wc -l ~/.claude/skills/strat-methodology/SKILL.md
+```
+
+**Step 4: Confirm the skill is ready**
+Tell me when:
+1. Directory is created
+2. SKILL.md exists with valid YAML frontmatter
+3. Content is added
+4. File size is reasonable (not empty)
+
+Then I'll be able to use this skill automatically when you detect STRAT-related requests.
+
+---
+
+**Note:** After installation, the skill will auto-trigger when I ask about STRAT methodology, bar classification, pattern detection, VectorBT Pro implementation, or algorithmic trading.
