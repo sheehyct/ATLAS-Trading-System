@@ -53,27 +53,37 @@ def load_config(force_reload: bool = False) -> None:
     project_root = Path(__file__).parent.parent
     env_path = project_root / '.env'
 
-    if not env_path.exists():
-        raise FileNotFoundError(
-            f"Required .env file not found at {env_path}. "
-            "Copy .env.example to .env and fill in credentials."
-        )
+    # Railway and other cloud platforms set env vars directly
+    # Only load .env file if it exists (local development)
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
+    else:
+        # Check if we're in a cloud environment with env vars already set
+        if not os.getenv('RAILWAY_ENVIRONMENT') and not os.getenv('TIINGO_API_KEY'):
+            raise FileNotFoundError(
+                f"Required .env file not found at {env_path}. "
+                "Copy .env.example to .env and fill in credentials."
+            )
+        # Cloud environment - env vars already available, no .env needed
 
-    # Load with override=True to ensure fresh values
-    load_dotenv(env_path, override=True)
     _CONFIG_LOADED = True
 
-    # Validate critical environment variables
+    # Validate critical environment variables (graceful for dashboards)
     _validate_required_vars()
 
 
-def _validate_required_vars() -> None:
+def _validate_required_vars(strict: bool = False) -> None:
     """
     Validate that all required environment variables are set.
 
+    Args:
+        strict: If True, raise ValueError on missing vars. If False, warn only.
+
     Raises:
-        ValueError: If any required variable is missing
+        ValueError: If strict=True and any required variable is missing
     """
+    import warnings
+
     required_vars = [
         'TIINGO_API_KEY',      # Required for historical data
         'ALPACA_MID_KEY',      # Primary trading account
@@ -87,10 +97,11 @@ def _validate_required_vars() -> None:
             missing.append(var)
 
     if missing:
-        raise ValueError(
-            f"Missing required environment variables: {missing}. "
-            f"Check your .env file at project root."
-        )
+        msg = f"Missing environment variables: {missing}. Some features may be unavailable."
+        if strict:
+            raise ValueError(msg + " Check your .env file at project root.")
+        else:
+            warnings.warn(msg, UserWarning)
 
 
 def get_alpaca_credentials(account: str = 'MID') -> Dict[str, str]:

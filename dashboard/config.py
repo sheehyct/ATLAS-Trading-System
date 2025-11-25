@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import Dict, Any
 
 # Use centralized config (loads from root .env with all credentials)
-from config.settings import get_alpaca_credentials
+import os
+import warnings
 
 # ============================================
 # PATH CONFIGURATION
@@ -34,13 +35,24 @@ STRATEGIES_DIR = BASE_DIR / 'strategies'
 # ============================================
 
 # Get Alpaca credentials from centralized config
-_alpaca_creds = get_alpaca_credentials('MID')
-ALPACA_CONFIG = {
-    'api_key': _alpaca_creds['api_key'],
-    'secret_key': _alpaca_creds['secret_key'],
-    'base_url': _alpaca_creds['base_url'],
-    'paper': True  # Use paper trading by default
-}
+# Wrapped in try/except for Railway deployment where credentials may be missing
+try:
+    from config.settings import get_alpaca_credentials
+    _alpaca_creds = get_alpaca_credentials('MID')
+    ALPACA_CONFIG = {
+        'api_key': _alpaca_creds['api_key'],
+        'secret_key': _alpaca_creds['secret_key'],
+        'base_url': _alpaca_creds['base_url'],
+        'paper': True  # Use paper trading by default
+    }
+except Exception as e:
+    warnings.warn(f"Could not load Alpaca credentials: {e}. Live data features disabled.")
+    ALPACA_CONFIG = {
+        'api_key': None,
+        'secret_key': None,
+        'base_url': 'https://paper-api.alpaca.markets',
+        'paper': True
+    }
 
 # ============================================
 # DASHBOARD SETTINGS
@@ -48,8 +60,8 @@ ALPACA_CONFIG = {
 
 DASHBOARD_CONFIG = {
     'host': '0.0.0.0',
-    'port': 8050,
-    'debug': True,
+    'port': int(os.getenv('PORT', 8050)),  # Railway sets PORT env var
+    'debug': os.getenv('DASH_DEBUG', 'false').lower() == 'true',  # False for production
     'refresh_interval': 30000,  # 30 seconds for live updates
     'cache_timeout': 300,  # 5 minutes cache
 }
