@@ -76,25 +76,42 @@ class RegimeDataLoader:
                 logger.info("Using cached regime data")
                 return self.cache[cache_key]
 
-            # Fetch SPY market data using VectorBT
-            import vectorbtpro as vbt
+            # Fetch SPY market data
+            # Try VectorBT Pro first, fall back to Tiingo for Railway deployment
+            try:
+                import vectorbtpro as vbt
+                spy_data = vbt.YFData.pull(
+                    symbol,
+                    start=start_date,
+                    end=end_date,
+                    tz='America/New_York'
+                )
+                spy_df = spy_data.get()
 
-            spy_data = vbt.YFData.pull(
-                symbol,
-                start=start_date,
-                end=end_date,
-                tz='America/New_York'
-            )
-            spy_df = spy_data.get()
+                vix_data = vbt.YFData.pull(
+                    '^VIX',
+                    start=start_date,
+                    end=end_date,
+                    tz='America/New_York'
+                )
+                vix_close = vix_data.get()['Close']
+            except ImportError:
+                # VectorBT Pro not available (Railway deployment)
+                # Use Tiingo (paid data source) as fallback
+                from integrations.tiingo_data_fetcher import TiingoDataFetcher
+                logger.info("VectorBT Pro not available, using Tiingo data source")
 
-            # Fetch VIX data for crash detection
-            vix_data = vbt.YFData.pull(
-                '^VIX',
-                start=start_date,
-                end=end_date,
-                tz='America/New_York'
-            )
-            vix_close = vix_data.get()['Close']
+                fetcher = TiingoDataFetcher()
+                spy_df = fetcher.fetch_daily(symbol, start_date, end_date)
+
+                # VIX not available on Tiingo - use static placeholder for dashboard
+                # Real VIX integration would require separate data source
+                vix_close = pd.Series(
+                    index=spy_df.index,
+                    data=20.0,  # Neutral VIX placeholder
+                    name='Close'
+                )
+                logger.warning("VIX data unavailable without VBT Pro, using placeholder")
 
             # Run ATLAS regime detection
             regimes, lambdas, thetas = self.atlas_model.online_inference(

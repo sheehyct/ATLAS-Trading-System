@@ -1,0 +1,11 @@
+# Nixpacks configuration for Railway deployment
+# Uses requirements-railway.txt to avoid VectorBT Pro private repo dependency
+
+[phases.setup]
+nixPkgs = ["python312"]
+
+[phases.install]
+cmds = ["pip install -r requirements-railway.txt"]
+
+[start]
+cmd = "python -m dashboard.app"
