@@ -1,152 +1,94 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 25, 2025 (Session 75 - Merge + Bug Fixes + Dashboard Prep)
+**Last Updated:** November 25, 2025 (Session 75 - Visual Verification + Railway Fix)
 **Current Branch:** `main`
-**Phase:** Options Module Bug Fixes Complete, Railway Ready
-**Status:** All tests passing (59 options tests), ready for paper trading deployment
+**Phase:** Visual Trade Verification Ready, Railway Deployment Fixed
+**Status:** All tests passing (59 options tests), verification script created
 
-**ARCHIVED SESSIONS:** Sessions 1-55 archived to `archives/sessions/HANDOFF_SESSIONS_01-55.md`
+**ARCHIVED SESSIONS:** Sessions 1-66 archived to `archives/sessions/HANDOFF_SESSIONS_01-66.md`
 
 ---
 
-## Session 75: Merge Review + Bug Fixes + Dashboard Deployment - COMPLETE
+## Session 75: Visual Verification + Railway Deployment + Bug Fixes - COMPLETE
 
 **Date:** November 25, 2025
 **Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Session 74 merged, bugs fixed, Railway deployment ready
+**Status:** COMPLETE - Visual verification ready, Railway fixed, bugs resolved
 
 ### Accomplishments
 
 **1. Merged Session 74 Branch**
 - Reviewed all changes from Claude Code for Web
 - Verified strategy skeletons import correctly
-- Confirmed no emoji violations
 - Clean fast-forward merge to main
 
-**2. Fixed Railway Deployment Issues**
-- `config/settings.py`: Handle missing .env gracefully for cloud deployments
-- `config/settings.py`: Made credential validation non-blocking (warn only)
-- `dashboard/config.py`: Use PORT env var for Railway dynamic port binding
-- `dashboard/config.py`: Default debug=False for production safety
-- `dashboard/config.py`: Graceful fallback when Alpaca credentials missing
-
-**3. Fixed HIGH Priority Options Module Bugs**
+**2. Fixed Options Module Bugs (HIGH Priority)**
 - Added `_convert_to_naive_et()` helper for proper UTC->ET timezone conversion
-- Fixed DTE calculations that stripped timezone without conversion (lines 266-273, 927-934)
-- Added minimum expected_move threshold to handle entry==target edge case (line 553-557)
+- Fixed DTE calculations that stripped timezone without conversion
+- Added minimum expected_move threshold for entry==target edge case
 - All 59 options tests passing
 
-**4. Dashboard Status**
-- **Railway (Plotly Dash)**: Ready for deployment, push to main will trigger rebuild
-- **Deephaven**: Running on port 10000, but needs full codebase mount for portfolio_tracker.py
+**3. Created Visual Trade Verification Script**
+- `scripts/visual_trade_verification.py` for TradingView cross-reference
+- Uses PAID data sources: Tiingo (daily/weekly/monthly), Alpaca (1H intraday)
+- Outputs trade details: date, entry, stop, target, R:R, continuation bars
+- Tests all 4 patterns (3-1-2, 2-1-2, 2-2, 3-2) across all timeframes (1H, 1D, 1W, 1M)
+- 31 trade examples generated for next session review
 
-### Files Modified This Session
+**4. Fixed Railway Deployment**
+- Created `requirements-railway.txt` (dashboard-only dependencies)
+- Created `nixpacks.toml` with proper pip configuration
+- Updated `railway.toml` for production start command
+- Fixed `regime_loader.py` to fall back to Tiingo when VBT Pro unavailable
 
-| File | Changes |
-|------|---------|
-| `config/settings.py` | Cloud deployment compatibility, graceful validation |
-| `dashboard/config.py` | Railway PORT env var, debug=False default |
-| `strat/options_module.py` | Timezone fix, entry==target guard, +58/-20 lines |
+### Files Modified/Created
+
+| File | Status | Changes |
+|------|--------|---------|
+| `scripts/visual_trade_verification.py` | NEW | 500+ lines visual verification |
+| `requirements-railway.txt` | NEW | Dashboard-only dependencies |
+| `nixpacks.toml` | NEW | Railway build config |
+| `strat/options_module.py` | Modified | Timezone fix, edge case guard |
+| `dashboard/data_loaders/regime_loader.py` | Modified | Tiingo fallback |
 
 ### Git Commits
 
 ```
-fc3411c - Merge Session 74: strategy skeletons, bug documentation, dashboard fixes
-d0e97df - fix: Railway deployment compatibility for dashboard
-c4d0de4 - fix: correct timezone handling and edge case in options module
+25afdba - feat: add STRAT visual trade verification script for TradingView validation
 ```
 
-### Next Session Priority
+### NEXT SESSION PRIORITY: Visual Trade Verification
 
-With bugs fixed and Railway ready, focus on:
-1. **Deploy to Railway** - Set env vars (TIINGO_API_KEY, ALPACA_MID_KEY, ALPACA_MID_SECRET)
-2. **Run paper trading scans** - Monitor for Tier 1 patterns weekly
-3. **Position management** - Add tracking database for open positions
-4. **Deephaven full mount** - Update docker-compose to mount full codebase
+**CRITICAL:** User discovered all validation data has 2+ continuation bars (no 0-1 bar baseline).
+This means the continuation bar filter analysis is invalid - need visual verification.
+
+**Action Items:**
+1. Review `reports/visual_verification_trades.csv` (31 trades)
+2. Cross-reference each trade on TradingView charts
+3. Verify bar classifications match TradingView
+4. Confirm entry/stop/target levels are correct
+5. Note which trades would have hit target vs stop
+
+**Usage:**
+```bash
+# Full verification (all patterns, all timeframes)
+uv run python scripts/visual_trade_verification.py
+
+# Deep dive single pattern
+uv run python scripts/visual_trade_verification.py --pattern 2-2 --timeframe 1D --examples 10
+```
 
 ---
 
-## Session 74: Bug Scan + UI/Alert Design + Railway Fix - COMPLETE
+## Session 74: Bug Scan + Strategy Skeletons - COMPLETE
 
-**Date:** November 25, 2025
-**Environment:** Claude Code for Web
-**Status:** COMPLETE - Analysis done, fixes pushed, ready for merge
+**Date:** November 25, 2025 | **Environment:** Claude Code for Web
 
-**User Philosophy:** "Accuracy over speed. No time limit."
-
-### Task 1: Options Module Bug Scan (HIGH Priority) ✅
-
-**Files Analyzed:**
-- `strat/options_module.py` (1078 lines)
-- `strat/greeks.py` (538 lines)
-
-**Findings Summary:**
-
-| Severity | Count | Key Issues |
-|----------|-------|------------|
-| HIGH | 2 | Timezone stripping, Entry==Target edge case |
-| MEDIUM | 2 | Column validation, Position sizing |
-| LOW | 5 | Hardcoded values, logging gaps |
-
-**HIGH Severity Bugs (Require Fix):**
-
-1. **Timezone Handling** (`options_module.py:223-231, 886-902`)
-   - `tz_localize(None)` strips timezone without conversion
-   - Risk: Timestamps could shift by hours affecting DTE calculations
-   - Fix: Convert to UTC first, then strip: `.tz_convert('UTC').tz_localize(None)`
-
-2. **Entry==Target Edge Case** (`options_module.py:509`)
-   - `if entry >= target` for calls misses exact equality
-   - Risk: Division by zero if entry exactly equals target
-   - Fix: Add guard: `if abs(target - entry) < 0.001: return None`
-
-**Detailed bug analysis:** See `docs/IMPLEMENTATION_PLAN_SESSION_74.md`
-
-### Task 2: UI/Alert System Design (MEDIUM Priority) ✅
-
-**Created:** `docs/SYSTEM_ARCHITECTURE/UI_ALERT_SYSTEM_SPECIFICATION.md`
-
-**Architecture Components:**
-- `AlertEngine` - Rule-based alert processing with priority queuing
-- `NotificationChannel` (Abstract) → Console, Email, Pushover, Webhook
-- `PortfolioMonitor` - Real-time P/L tracking with 8% heat limit
-- `PatternAlertIntegration` - STRAT pattern completion alerts
-- `AlertDashboard` - React-based UI with TradingView charts
-
-**3-Phase Implementation:**
-1. Phase 1: Core AlertEngine + Console notifications
-2. Phase 2: Email/Pushover + PortfolioMonitor
-3. Phase 3: Web dashboard + historical analytics
-
-### Task 3: Strategy Skeletons (MEDIUM Priority) ✅
-
-**Created 3 strategy files:**
-
-| Strategy | File | Priority | Description |
-|----------|------|----------|-------------|
-| Quality-Momentum | `strategies/quality_momentum.py` | Phase 1 | All-weather, ROE+earnings quality scoring |
-| Semi-Vol Momentum | `strategies/semi_vol_momentum.py` | Phase 2 | Moreira & Muir (2017), vol-scaled positions |
-| IBS Mean Reversion | `strategies/ibs_mean_reversion.py` | Phase 2 | Internal Bar Strength, 65-75% win rate target |
-
-**Updated:** `strategies/__init__.py` with new exports
-
-### Task 4: Railway Deployment Fix ✅
-
-**Problem:** Railway build failing with:
-```
-error: No interpreter found for Python 3.12.11 in managed installations or system path
-```
-
-**Root Cause:** `.python-version` specified `3.12.11` exactly, but Railway/Nixpacks doesn't have that patch version.
-
-**Fix Applied:**
-- `.python-version`: `3.12.11` → `3.12`
-- `dashboards/deephaven/portfolio_tracker.py:249`: Removed non-existent `Volume` from join
-
-**Railway Environment Variables Needed:**
-- `TIINGO_API_KEY`
-- `ALPACA_MID_KEY`
-- `ALPACA_MID_SECRET`
+### Key Deliverables
+1. **Options Module Bug Scan**: Found 2 HIGH bugs (timezone, entry==target edge case) - FIXED in Session 75
+2. **UI/Alert System Design**: Created `docs/SYSTEM_ARCHITECTURE/UI_ALERT_SYSTEM_SPECIFICATION.md`
+3. **Strategy Skeletons**: Created 3 strategies (quality_momentum.py, semi_vol_momentum.py, ibs_mean_reversion.py)
+4. **Railway Fix**: Changed `.python-version` from `3.12.11` to `3.12`
 
 ---
 
@@ -1383,86 +1325,7 @@ Result: CAPITAL EFFICIENT, FULL STRATEGY DEPLOYMENT POSSIBLE
 
 ---
 
-**End of HANDOFF.md - Last updated Session 51 (Nov 21, 2025)**
-**Target length: <1000 lines (current: ~700 lines, well under target)**
-**Next archive: Sessions 37-42 when adding Sessions 52-54**
-
----
-
-## Session 66: 3-2 Pattern Implementation + Tiingo/Alpaca Data Integration
-
-**Date:** November 23, 2025  
-**Duration:** ~2 hours  
-**Status:** 3-2 patterns implemented, Tiingo data integration complete, ready for comprehensive validation
-
-**Objective:** Expand pattern coverage beyond 2-1-2 and 2-2, implement 3-2 reversal patterns, and migrate to paid data sources (Tiingo/Alpaca) for production-quality backtesting.
-
-**What We Accomplished:**
-
-1. **✓ Reverted Session 65 2D Changes**
-   - Removed all 2D hybrid optimizations that degraded Hourly 2-2 Up R:R (-19%)
-   - Restored Session 64 baseline: 21 patterns, 90.5% hit, 1.53:1 R:R
-   - Verified perfect match with hardcoded Session 64 values
-
-2. **✓ Implemented 3-2 Reversal Patterns**
-   - Added `detect_32_patterns_nb()` to `strat/pattern_detector.py` (~204 lines)
-   - Pattern types: 3D-2U (bullish), 3U-2D (bearish), 3-2U, 3-2D
-   - Entry: Previous outside bar high/low (live entry concept)
-   - Target: Previous outside bar extreme with geometric validation
-   - Fallback: 1.5x measured move if no valid previous outside bar
-   - Updated VBT indicator from 12 to 16 outputs
-
-3. **✓ Fixed Integration Bugs**
-   - Bug #1: AttributeError on `self.continuity_checker` (doesn't exist)
-     - Fixed: Create local `TimeframeContinuityChecker` instance like 2-2 patterns
-   - Bug #2: NameError on `continuity_strength` (undefined variable)
-     - Fixed: Extract from `continuity['strength']` like other patterns
-
-4. **✓ Migrated to Paid Data Sources**
-   - Replaced `vbt.YFData` with Tiingo + Alpaca
-   - Tiingo: 30+ years historical data (Session 38 implementation)
-   - Alpaca: 7 years high-quality recent data
-   - Auto-selection: Tiingo for >6 year backtests, Alpaca for recent
-   - Added `load_dotenv()` with explicit `.env` path to avoid placeholder keys
-   - Tested successfully: Tiingo working, Alpaca configured with fallback
-
-**Files Modified:**
-- `strat/pattern_detector.py`: Added 3-2 detection logic
-- `scripts/backtest_strat_equity_validation.py`: Tiingo/Alpaca integration, 3-2 processing
-- `scripts/test_3stock_validation.py`: Added 3-2 to pattern list
-
-**Validation Results (3-stock test: AAPL, MSFT, GOOGL, 2024):**
-- 1H: 55 patterns total (no 3-2 detected - rare pattern type)
-- 1D: 35 patterns total (no 3-2 detected)  
-- 1W: 12 patterns total (no 3-2 detected)
-- 1M: 0 patterns found
-
-**Critical Insight:**
-3-2 patterns are RARE (require outside bar → directional bar sequence with continuity). This is expected behavior. Comprehensive 50-stock validation in Session 67 will provide statistical significance.
-
-**Strategic Shift:**
-User identified critical oversight: We've been optimizing 2-1-2 and 2-2 in isolation when we should test ALL patterns (3-1-2, 2-1-2, 2-2, 3-2) across ALL timeframes (1H, 1D, 1W, 1M) with SAME rigorous methodology.
-
-**Focus:** P/L expectancy > win rate  
-Example: 99 losses × $1 + 1 win × $1000 = 1% win rate but $901 profit = GOOD
-
-**Next Session (67) - Comprehensive Pattern Validation:**
-
-**Phase 1: Pattern Analysis Script**
-- Test all 8 patterns (3-1-2/2-1-2/2-2/3-2 Up/Down) on all 4 timeframes (1H/1D/1W/1M)
-- Metrics: P/L expectancy (primary), R:R ratio, win rate (secondary)
-- Identify highest expectancy patterns
-
-**Phase 2: 50-Stock Universe Validation**  
-- Diversified 50 stocks across 9 sectors
-- Market condition features: Volume, Volatility (ATR), Regime
-- Find which conditions favor which patterns
-
-**Phase 3: Rank & Decide**
-- Rank ALL patterns by P/L expectancy
-- Select top 2-3 patterns for options module
-- GO/NO-GO decision based on actual performance
-
-**Data Quality Note:**
-Tiingo provides 30+ years of historical data (free tier: 3 symbols, Power plan $30/mo: 98K symbols). This enables validation across multiple market cycles (2000 dot-com, 2008 crisis, 2020 COVID) for robust expectancy calculations.
+**End of HANDOFF.md - Last updated Session 75 (Nov 25, 2025)**
+**Target length: <1500 lines**
+**Sessions 1-66 archived to archives/sessions/
 
