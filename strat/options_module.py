@@ -37,9 +37,53 @@ from dataclasses import dataclass, field
 from enum import Enum
 import vectorbtpro as vbt
 
+try:
+    import pytz
+    ET_TIMEZONE = pytz.timezone('America/New_York')
+except ImportError:
+    ET_TIMEZONE = None
+
 from config.settings import get_alpaca_credentials
 from strat.tier1_detector import PatternSignal, PatternType, Timeframe
 from strat.greeks import calculate_greeks, Greeks, estimate_iv_from_history
+
+
+def _convert_to_naive_et(dt) -> datetime:
+    """
+    Convert a datetime to naive Eastern Time.
+
+    This is critical for DTE calculations - all market operations should use ET.
+    Simply stripping timezone without conversion causes date shifts (UTC midnight
+    = previous day 7PM ET).
+
+    Args:
+        dt: datetime object (may be timezone-aware or naive)
+
+    Returns:
+        Naive datetime in Eastern Time
+    """
+    # Handle pandas Timestamp
+    if hasattr(dt, 'to_pydatetime'):
+        dt = dt.to_pydatetime()
+
+    # If already naive, assume it's ET (local market time)
+    if not hasattr(dt, 'tzinfo') or dt.tzinfo is None:
+        return dt
+
+    # Convert to ET then strip timezone
+    if ET_TIMEZONE is not None:
+        dt_et = dt.astimezone(ET_TIMEZONE)
+        return dt_et.replace(tzinfo=None)
+    else:
+        # Fallback: approximate UTC-5 offset if pytz not available
+        # This is less accurate but better than raw stripping
+        utc_offset = dt.utcoffset()
+        if utc_offset is not None:
+            dt_utc = dt - utc_offset
+            # Approximate ET as UTC-5 (ignores DST)
+            dt_et = dt_utc - timedelta(hours=5)
+            return dt_et.replace(tzinfo=None)
+        return dt.replace(tzinfo=None)
 
 
 class OptionType(Enum):
@@ -220,13 +264,11 @@ class OptionsExecutor:
             expiration = self._calculate_expiration(signal.timeframe, signal.timestamp)
 
             # Calculate DTE from signal timestamp to expiration
+            # Use proper ET conversion to avoid UTC date shift issues
             try:
-                signal_dt = signal.timestamp
-                if hasattr(signal_dt, 'tzinfo') and signal_dt.tzinfo is not None:
-                    signal_dt = signal_dt.replace(tzinfo=None)
-                if hasattr(signal_dt, 'to_pydatetime'):
-                    signal_dt = signal_dt.to_pydatetime()
-                dte = (expiration - signal_dt).days
+                signal_dt = _convert_to_naive_et(signal.timestamp)
+                expiration_dt = _convert_to_naive_et(expiration)
+                dte = (expiration_dt - signal_dt).days
             except Exception:
                 dte = None  # Will use default
 
@@ -507,6 +549,13 @@ class OptionsExecutor:
         # EXPANDED RANGE: Include ITM strikes to achieve higher deltas (0.50-0.80)
         # For higher deltas: Calls need lower strikes (ITM), Puts need higher strikes (ITM)
         expected_move = abs(target - entry)
+
+        # Guard against entry == target edge case
+        # Use minimum 1% of underlying price to create a valid strike range
+        min_expected_move = underlying_price * 0.01
+        if expected_move < min_expected_move:
+            expected_move = min_expected_move
+
         itm_expansion = expected_move * 1.0  # Search 100% into ITM territory (full move size)
 
         if option_type == OptionType.CALL:
@@ -883,21 +932,10 @@ class OptionsBacktester:
                 option_type = 'call' if trade.contract.option_type == OptionType.CALL else 'put'
 
                 # Calculate DTE at entry (approximate from expiration)
-                # Handle timezone-aware vs naive datetime comparison
+                # Use proper ET conversion to avoid UTC date shift issues
                 try:
-                    expiration_dt = trade.contract.expiration
-                    entry_dt = price_data.index[entry_idx]
-
-                    # Convert to naive datetime if needed
-                    if hasattr(expiration_dt, 'tzinfo') and expiration_dt.tzinfo is not None:
-                        expiration_dt = expiration_dt.replace(tzinfo=None)
-                    if hasattr(entry_dt, 'tzinfo') and entry_dt.tzinfo is not None:
-                        entry_dt = entry_dt.tz_localize(None) if hasattr(entry_dt, 'tz_localize') else entry_dt.replace(tzinfo=None)
-                    if hasattr(entry_dt, 'to_pydatetime'):
-                        entry_dt = entry_dt.to_pydatetime()
-                        if hasattr(entry_dt, 'tzinfo') and entry_dt.tzinfo is not None:
-                            entry_dt = entry_dt.replace(tzinfo=None)
-
+                    expiration_dt = _convert_to_naive_et(trade.contract.expiration)
+                    entry_dt = _convert_to_naive_et(price_data.index[entry_idx])
                     dte_at_entry = (expiration_dt - entry_dt).days
                 except Exception:
                     dte_at_entry = 35  # Default if can't calculate
