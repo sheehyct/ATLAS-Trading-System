@@ -1,0 +1,534 @@
+"""
+Tier 1 Pattern Detector for ATLAS Trading System.
+
+Session 70: Implements validated Tier 1 STRAT patterns for options trading.
+
+CRITICAL SESSION 69 FINDINGS:
+- 2-2 Down (2U-2D) has NEGATIVE expectancy without continuation bar filters
+- Continuation bar filter (2+ bars) is THE major filter (~82% pattern reduction)
+- Continuity strength alone has NO effect on pattern quality
+
+TIER 1 PATTERNS (all require continuation bar filters):
+1. 2-1-2 Up/Down @ 1W - Best balance (80.7% win, 563.6% exp, 57 patterns)
+2. 2-2 Up (2D-2U only) @ 1W - High frequency (86.2% win, 409.5% exp, 123 patterns)
+3. 3-1-2 Up/Down @ 1W - Highest quality (72.7% win, 462.7% exp, 11 patterns)
+4. 2-1-2 Up @ 1M - Moonshot (88.2% win, 1,570.9% exp, 17 patterns)
+
+WARNING: Do NOT include 2-2 Down (2U-2D) without filters.
+
+Usage:
+    from strat.tier1_detector import Tier1Detector
+
+    detector = Tier1Detector()
+    signals = detector.detect_weekly_patterns(data)
+    filtered = detector.apply_continuation_filter(signals, data, min_bars=2)
+"""
+
+import numpy as np
+import pandas as pd
+from typing import Dict, List, Optional, Tuple, Union
+from dataclasses import dataclass
+from enum import Enum
+
+from strat.pattern_detector import (
+    detect_312_patterns_nb,
+    detect_212_patterns_nb,
+    detect_22_patterns_nb,
+)
+from strat.bar_classifier import classify_bars_nb
+
+
+class PatternType(Enum):
+    """Tier 1 pattern types."""
+    PATTERN_312_UP = "3-1-2U"
+    PATTERN_312_DOWN = "3-1-2D"
+    PATTERN_212_UP = "2-1-2U"
+    PATTERN_212_DOWN = "2-1-2D"
+    PATTERN_22_UP = "2D-2U"  # Bullish reversal (2D-2U) - SAFE
+    PATTERN_22_DOWN = "2U-2D"  # Bearish reversal (2U-2D) - DANGEROUS without filters
+
+
+class Timeframe(Enum):
+    """Supported timeframes for Tier 1 patterns."""
+    WEEKLY = "1W"
+    MONTHLY = "1M"
+    DAILY = "1D"
+
+
+@dataclass
+class PatternSignal:
+    """
+    Represents a detected Tier 1 pattern signal.
+
+    Attributes:
+        pattern_type: Type of pattern (312, 212, 22)
+        direction: 1 for bullish, -1 for bearish
+        entry_price: Entry trigger price
+        stop_price: Stop loss price
+        target_price: Target price (measured move or magnitude)
+        timestamp: Pattern detection timestamp
+        timeframe: Pattern timeframe (weekly, monthly)
+        continuation_bars: Number of continuation bars detected
+        is_filtered: Whether pattern passes continuation bar filter
+        risk_reward: Calculated risk/reward ratio
+    """
+    pattern_type: PatternType
+    direction: int
+    entry_price: float
+    stop_price: float
+    target_price: float
+    timestamp: pd.Timestamp
+    timeframe: Timeframe
+    continuation_bars: int = 0
+    is_filtered: bool = False
+    risk_reward: float = 0.0
+
+    def __post_init__(self):
+        """Calculate risk/reward after initialization."""
+        if self.stop_price and self.entry_price:
+            risk = abs(self.entry_price - self.stop_price)
+            reward = abs(self.target_price - self.entry_price)
+            if risk > 0:
+                self.risk_reward = reward / risk
+
+
+class Tier1Detector:
+    """
+    Tier 1 Pattern Detector with mandatory continuation bar filtering.
+
+    IMPORTANT: This detector only outputs patterns that meet Tier 1 criteria:
+    - Continuation bar filter (min 2 bars)
+    - 2-2 Up patterns only (excludes dangerous 2-2 Down without filters)
+    - Weekly or Monthly timeframes
+
+    Attributes:
+        min_continuation_bars: Minimum continuation bars required (default: 2)
+        include_22_down: Whether to include 2-2 Down patterns (default: False)
+    """
+
+    def __init__(
+        self,
+        min_continuation_bars: int = 2,
+        include_22_down: bool = False
+    ):
+        """
+        Initialize Tier 1 Detector.
+
+        Args:
+            min_continuation_bars: Minimum continuation bars (default: 2)
+            include_22_down: Include 2U-2D patterns? (default: False - dangerous!)
+
+        Raises:
+            ValueError: If min_continuation_bars < 2 (violates Session 69 findings)
+        """
+        if min_continuation_bars < 2:
+            raise ValueError(
+                "min_continuation_bars must be >= 2. "
+                "Session 69 findings: continuation bar filter is mandatory for profitability."
+            )
+
+        self.min_continuation_bars = min_continuation_bars
+        self.include_22_down = include_22_down
+
+        if include_22_down:
+            import warnings
+            warnings.warn(
+                "WARNING: Including 2-2 Down (2U-2D) patterns. "
+                "Session 69 found these have NEGATIVE expectancy without filters. "
+                "Ensure continuation bar filter is applied.",
+                UserWarning
+            )
+
+    def detect_patterns(
+        self,
+        data: pd.DataFrame,
+        timeframe: Timeframe = Timeframe.WEEKLY,
+        pattern_types: Optional[List[str]] = None
+    ) -> List[PatternSignal]:
+        """
+        Detect all Tier 1 patterns in OHLC data.
+
+        Args:
+            data: DataFrame with Open, High, Low, Close columns (or lowercase)
+            timeframe: Pattern timeframe (default: WEEKLY)
+            pattern_types: Optional list of patterns to detect
+                         (default: all Tier 1 patterns)
+
+        Returns:
+            List of PatternSignal objects (filtered by continuation bars)
+
+        Raises:
+            ValueError: If data doesn't have required columns
+        """
+        # Normalize column names
+        data = self._normalize_columns(data)
+
+        # Classify bars
+        classifications = classify_bars_nb(
+            data['high'].values,
+            data['low'].values
+        )
+
+        all_signals = []
+
+        # Detect each pattern type
+        if pattern_types is None or '312' in pattern_types:
+            signals_312 = self._detect_312(data, classifications, timeframe)
+            all_signals.extend(signals_312)
+
+        if pattern_types is None or '212' in pattern_types:
+            signals_212 = self._detect_212(data, classifications, timeframe)
+            all_signals.extend(signals_212)
+
+        if pattern_types is None or '22' in pattern_types:
+            signals_22 = self._detect_22(data, classifications, timeframe)
+            all_signals.extend(signals_22)
+
+        # Apply continuation bar filter
+        filtered_signals = self._apply_continuation_filter(
+            all_signals,
+            data,
+            classifications
+        )
+
+        return filtered_signals
+
+    def _normalize_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Normalize column names to lowercase."""
+        data = data.copy()
+        data.columns = [col.lower() for col in data.columns]
+
+        required = ['open', 'high', 'low', 'close']
+        missing = [col for col in required if col not in data.columns]
+
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+
+        return data
+
+    def _detect_312(
+        self,
+        data: pd.DataFrame,
+        classifications: np.ndarray,
+        timeframe: Timeframe
+    ) -> List[PatternSignal]:
+        """Detect 3-1-2 patterns."""
+        entries, stops, targets, directions = detect_312_patterns_nb(
+            classifications,
+            data['high'].values,
+            data['low'].values
+        )
+
+        signals = []
+        for i in range(len(entries)):
+            if entries[i]:
+                direction = int(directions[i])
+                pattern_type = (
+                    PatternType.PATTERN_312_UP if direction == 1
+                    else PatternType.PATTERN_312_DOWN
+                )
+
+                signal = PatternSignal(
+                    pattern_type=pattern_type,
+                    direction=direction,
+                    entry_price=float(data['high'].iloc[i-1] if direction == 1
+                                     else data['low'].iloc[i-1]),
+                    stop_price=float(stops[i]),
+                    target_price=float(targets[i]),
+                    timestamp=data.index[i],
+                    timeframe=timeframe,
+                )
+                signals.append(signal)
+
+        return signals
+
+    def _detect_212(
+        self,
+        data: pd.DataFrame,
+        classifications: np.ndarray,
+        timeframe: Timeframe
+    ) -> List[PatternSignal]:
+        """Detect 2-1-2 patterns."""
+        entries, stops, targets, directions = detect_212_patterns_nb(
+            classifications,
+            data['high'].values,
+            data['low'].values
+        )
+
+        signals = []
+        for i in range(len(entries)):
+            if entries[i]:
+                direction = int(directions[i])
+                pattern_type = (
+                    PatternType.PATTERN_212_UP if direction == 1
+                    else PatternType.PATTERN_212_DOWN
+                )
+
+                signal = PatternSignal(
+                    pattern_type=pattern_type,
+                    direction=direction,
+                    entry_price=float(data['high'].iloc[i-1] if direction == 1
+                                     else data['low'].iloc[i-1]),
+                    stop_price=float(stops[i]),
+                    target_price=float(targets[i]),
+                    timestamp=data.index[i],
+                    timeframe=timeframe,
+                )
+                signals.append(signal)
+
+        return signals
+
+    def _detect_22(
+        self,
+        data: pd.DataFrame,
+        classifications: np.ndarray,
+        timeframe: Timeframe
+    ) -> List[PatternSignal]:
+        """
+        Detect 2-2 patterns.
+
+        CRITICAL: Excludes 2-2 Down (2U-2D) by default per Session 69 findings.
+        """
+        entries, stops, targets, directions = detect_22_patterns_nb(
+            classifications,
+            data['high'].values,
+            data['low'].values
+        )
+
+        signals = []
+        for i in range(len(entries)):
+            if entries[i]:
+                direction = int(directions[i])
+
+                # Determine pattern type
+                if direction == 1:
+                    pattern_type = PatternType.PATTERN_22_UP
+                else:
+                    pattern_type = PatternType.PATTERN_22_DOWN
+
+                    # CRITICAL: Skip 2-2 Down unless explicitly enabled
+                    if not self.include_22_down:
+                        continue
+
+                signal = PatternSignal(
+                    pattern_type=pattern_type,
+                    direction=direction,
+                    entry_price=float(data['high'].iloc[i-1] if direction == 1
+                                     else data['low'].iloc[i-1]),
+                    stop_price=float(stops[i]),
+                    target_price=float(targets[i]),
+                    timestamp=data.index[i],
+                    timeframe=timeframe,
+                )
+                signals.append(signal)
+
+        return signals
+
+    def _apply_continuation_filter(
+        self,
+        signals: List[PatternSignal],
+        data: pd.DataFrame,
+        classifications: np.ndarray
+    ) -> List[PatternSignal]:
+        """
+        Apply continuation bar filter to signals.
+
+        Continuation bars are directional bars (2 or -2) following the pattern
+        in the same direction as the trade.
+
+        Args:
+            signals: Raw pattern signals
+            data: OHLC data
+            classifications: Bar classifications
+
+        Returns:
+            Filtered signals with continuation bar counts
+        """
+        filtered = []
+
+        for signal in signals:
+            # Find pattern index in data
+            try:
+                idx = data.index.get_loc(signal.timestamp)
+            except KeyError:
+                continue
+
+            # Count continuation bars after pattern
+            continuation_count = 0
+            lookforward = min(5, len(data) - idx - 1)  # Look up to 5 bars forward
+
+            for j in range(1, lookforward + 1):
+                bar_class = classifications[idx + j] if idx + j < len(classifications) else 0
+
+                # For bullish patterns, look for 2U continuation
+                if signal.direction == 1 and bar_class == 2:
+                    continuation_count += 1
+                # For bearish patterns, look for 2D continuation
+                elif signal.direction == -1 and bar_class == -2:
+                    continuation_count += 1
+                else:
+                    break  # Stop on first non-continuation bar
+
+            # Update signal with continuation count
+            signal.continuation_bars = continuation_count
+            signal.is_filtered = continuation_count >= self.min_continuation_bars
+
+            # Only include filtered signals
+            if signal.is_filtered:
+                filtered.append(signal)
+
+        return filtered
+
+    def get_tier1_weekly(self, data: pd.DataFrame) -> List[PatternSignal]:
+        """
+        Convenience method for weekly Tier 1 patterns.
+
+        Patterns included:
+        - 2-1-2 Up/Down
+        - 2-2 Up (2D-2U only)
+        - 3-1-2 Up/Down
+        """
+        return self.detect_patterns(data, timeframe=Timeframe.WEEKLY)
+
+    def get_tier1_monthly(self, data: pd.DataFrame) -> List[PatternSignal]:
+        """
+        Convenience method for monthly Tier 1 patterns.
+
+        Patterns included:
+        - 2-1-2 Up (moonshot pattern)
+        """
+        return self.detect_patterns(
+            data,
+            timeframe=Timeframe.MONTHLY,
+            pattern_types=['212']
+        )
+
+    def signals_to_dataframe(
+        self,
+        signals: List[PatternSignal]
+    ) -> pd.DataFrame:
+        """
+        Convert signals to DataFrame for analysis.
+
+        Args:
+            signals: List of PatternSignal objects
+
+        Returns:
+            DataFrame with signal details
+        """
+        if not signals:
+            return pd.DataFrame()
+
+        records = []
+        for sig in signals:
+            records.append({
+                'timestamp': sig.timestamp,
+                'pattern_type': sig.pattern_type.value,
+                'direction': sig.direction,
+                'entry_price': sig.entry_price,
+                'stop_price': sig.stop_price,
+                'target_price': sig.target_price,
+                'risk_reward': sig.risk_reward,
+                'continuation_bars': sig.continuation_bars,
+                'is_filtered': sig.is_filtered,
+                'timeframe': sig.timeframe.value,
+            })
+
+        return pd.DataFrame(records)
+
+    def generate_summary(self, signals: List[PatternSignal]) -> Dict:
+        """
+        Generate summary statistics for detected signals.
+
+        Args:
+            signals: List of PatternSignal objects
+
+        Returns:
+            Dictionary with summary statistics
+        """
+        if not signals:
+            return {'total_signals': 0}
+
+        df = self.signals_to_dataframe(signals)
+
+        summary = {
+            'total_signals': len(signals),
+            'by_pattern_type': df['pattern_type'].value_counts().to_dict(),
+            'by_direction': {
+                'bullish': len(df[df['direction'] == 1]),
+                'bearish': len(df[df['direction'] == -1]),
+            },
+            'avg_risk_reward': df['risk_reward'].mean(),
+            'avg_continuation_bars': df['continuation_bars'].mean(),
+            'filtered_count': len(df[df['is_filtered']]),
+            'filter_rate': len(df[df['is_filtered']]) / len(df) if len(df) > 0 else 0,
+        }
+
+        return summary
+
+
+# Convenience function for quick detection
+def detect_tier1_patterns(
+    data: pd.DataFrame,
+    timeframe: str = '1W',
+    min_continuation_bars: int = 2
+) -> pd.DataFrame:
+    """
+    Quick function to detect Tier 1 patterns.
+
+    Args:
+        data: OHLC DataFrame
+        timeframe: '1W' for weekly, '1M' for monthly
+        min_continuation_bars: Minimum continuation bars (default: 2)
+
+    Returns:
+        DataFrame with detected signals
+    """
+    tf = Timeframe.WEEKLY if timeframe == '1W' else Timeframe.MONTHLY
+    detector = Tier1Detector(min_continuation_bars=min_continuation_bars)
+    signals = detector.detect_patterns(data, timeframe=tf)
+    return detector.signals_to_dataframe(signals)
+
+
+if __name__ == "__main__":
+    # Test the detector
+    print("=" * 60)
+    print("Tier 1 Pattern Detector Test")
+    print("=" * 60)
+
+    # Create sample data
+    import numpy as np
+
+    dates = pd.date_range('2024-01-01', periods=100, freq='W')
+    np.random.seed(42)
+
+    # Generate realistic OHLC data
+    close = 100 + np.cumsum(np.random.randn(100) * 2)
+    high = close + np.random.rand(100) * 3
+    low = close - np.random.rand(100) * 3
+    open_ = close + np.random.randn(100)
+
+    data = pd.DataFrame({
+        'open': open_,
+        'high': high,
+        'low': low,
+        'close': close,
+    }, index=dates)
+
+    # Initialize detector
+    detector = Tier1Detector(min_continuation_bars=2)
+
+    # Detect patterns
+    signals = detector.detect_patterns(data, timeframe=Timeframe.WEEKLY)
+
+    print(f"\nDetected {len(signals)} Tier 1 patterns")
+
+    if signals:
+        df = detector.signals_to_dataframe(signals)
+        print(f"\nSignals DataFrame:")
+        print(df.head(10))
+
+        summary = detector.generate_summary(signals)
+        print(f"\nSummary:")
+        for key, value in summary.items():
+            print(f"  {key}: {value}")

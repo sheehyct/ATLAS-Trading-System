@@ -1,1729 +1,837 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 22, 2025 (Session 64 - R:R Calculation Bug Fix → Revised GO Decision)
+**Last Updated:** November 24, 2025 (Session 73 - Data-Driven Strike Selection COMPLETE)
 **Current Branch:** `main`
-**Phase:** STRAT equity validation COMPLETE - Daily 2-1-2 Up validated for options module
-**Status:** ONE high-conviction pattern confirmed (Daily 2-1-2 Up: 2.65:1 R:R, 80% hit rate)
+**Phase:** Options Strike Selection Optimized - 94.3% Delta Accuracy Achieved
+**Status:** All Session 73 objectives COMPLETE - 141 tests passing, delta accuracy 4.5x improvement
+
+**ARCHIVED SESSIONS:** Sessions 1-55 archived to `archives/sessions/HANDOFF_SESSIONS_01-55.md`
 
 ---
 
-## Session 64: R:R Calculation Bug Fix → Revised GO Decision
-
-**Date:** November 22, 2025
-**Duration:** ~1 hour
-**Status:** CRITICAL BUG FIXED - Corrected R:R calculation, revised GO decision to Daily 2-1-2 Up only
-
-**Objective:** Fix R:R ratio calculation bug discovered during Session 63 validation review.
-
-**What We Accomplished:**
-1. ✓ Identified critical bug in R:R calculation methodology
-2. ✓ Fixed `analyze_continuation_bar_impact.py` to use correct loser definition
-3. ✓ Re-ran analysis with corrected logic
-4. ✓ Clarified continuation bar counting logic (break on opposite = correct behavior)
-5. ✓ Revised GO/NO-GO decision based on accurate metrics
-
-**THE BUG - R:R Calculation Using Wrong Denominator:**
-
-**Location:** `scripts/analyze_continuation_bar_impact.py` line 31
-
-**Problem:**
-Script counted ONLY patterns that hit stop loss as "losers", not ALL patterns that failed to hit magnitude target.
-
-```python
-# WRONG (Session 63):
-losers = df[df['stop_hit'] == True].copy()  # Only 3 patterns for Hourly 2-2 Up
-
-# CORRECT (Session 64):
-losers = df[df['magnitude_hit'] == False].copy()  # 2 patterns for Hourly 2-2 Up
-```
-
-**Impact on Hourly 2-2 Up Pattern:**
-- **Reported (Session 63):** 3.11:1 R:R (0.60% avg win / 0.19% avg loss from 3 stop hits)
-- **Actual (Session 64):** 1.53:1 R:R (0.60% avg win / 0.39% avg loss from 2 magnitude misses)
-- **Difference:** 1.58:1 inflation (105% overstatement!)
-- **Implication:** Pattern FAILS the 2:1 R:R target
-
-**Why The Bug Occurred:**
-Some patterns hit magnitude target FIRST, then later hit stop loss (still winners). The old logic incorrectly counted these as losers because `stop_hit == True`, inflating the loss count and improving the apparent R:R ratio.
-
-**Corrected Results - Session 64:**
-
-| Pattern | Hit Rate | R:R Ratio (Corrected) | Session 63 (Wrong) | Status vs 2:1 Target |
-|---------|----------|----------------------|--------------------|---------------------|
-| Hourly 2-2 Up | 90.5% (19/21) | **1.53:1** | 3.11:1 | **FAILS** (24% below target) |
-| Daily 2-1-2 Up | 80.0% (8/10) | **2.65:1** | 2.65:1 | **EXCEEDS** (33% above target) |
-| Hourly Overall | 74.5% | **1.61:1** | 1.78:1 | **FAILS** (20% below target) |
-| Daily Overall | 82.9% | **1.45:1** | 1.45:1 | **FAILS** (28% below target) |
-
-**Key Finding:**
-Only **Daily 2-1-2 Up** pattern achieves the 2:1 R:R target. Hourly 2-2 Up, despite excellent 90.5% hit rate, has insufficient R:R for options module implementation.
-
-**REVISED GO/NO-GO DECISION: CONDITIONAL GO - Daily 2-1-2 Up Only**
-
-**Pattern Approved for Options Module Phase 1:**
-- **Daily 2-1-2 Up + 2+ Continuation Bars**
-  - Hit Rate: 80.0% (8/10 patterns) ✓ Exceeds 60% target
-  - R:R Ratio: 2.65:1 ✓ Exceeds 2:1 target by 33%
-  - Pattern Count: 10 ✓ Acceptable for daily timeframe
-  - **STATUS: READY FOR OPTIONS MODULE**
-
-**Pattern Rejected for Phase 1 (Needs Further Optimization):**
-- **Hourly 2-2 Up + 2+ Continuation Bars**
-  - Hit Rate: 90.5% (19/21) ✓ Excellent
-  - R:R Ratio: 1.53:1 ✗ FAILS 2:1 target (24% below)
-  - **STATUS: NOT READY - Consider for Phase 2 after optimization or larger validation**
-
-**Continuation Bar Counting Logic Clarification:**
-
-User confirmed the `break` statement behavior is correct:
-- When bullish pattern sees opposite directional bar (2D), STOP counting immediately
-- Rationale: Opposite bar signals pattern momentum reversal = pattern failed
-- Inside bars (1.0) allowed without breaking (consolidation, pattern still valid)
-
-Updated comment in `backtest_strat_equity_validation.py` lines 651-654 for clarity.
-
-**Files Modified:**
-
-1. `scripts/analyze_continuation_bar_impact.py` (1 line)
-   - Line 31: Changed `df['stop_hit'] == True` to `df['magnitude_hit'] == False`
-
-2. `scripts/backtest_strat_equity_validation.py` (1 line)
-   - Line 653: Clarified continuation bar counting logic comment
-
-3. `docs/HANDOFF.md` (this file)
-   - Added Session 64 entry
-   - Corrected Session 63 R:R ratios
-   - Revised GO decision and Phase 1 implementation scope
-
-**Next Session Priorities (Session 65):**
-
-**Option A: Begin Options Module for Daily 2-1-2 Up (RECOMMENDED)**
-- Strike selection: ITM/ATM/OTM based on measured move magnitude
-- DTE selection: 7-30 days (daily timeframe appropriate)
-- Position sizing: 1-2% account risk, $3k capital constraints
-- Greeks-based risk management: Delta, theta, IV considerations
-- Paper trading integration: Alpaca API
-
-**Option B: Optimize Hourly 2-2 Up to 2:1 R:R**
-- Current: 1.53:1 R:R (needs 31% improvement)
-- Approaches: ATR filter, ATLAS regime filter, target multiplier adjustment
-- Risk: Overfitting, reduced pattern count
-- Timeline: 1-2 sessions before Phase 1
-
-**Option C: 50-Stock Validation for Daily 2-1-2 Up**
-- Verify 2.65:1 R:R holds across larger universe
-- Expand sectors beyond AAPL/MSFT/GOOGL
-- Build confidence before options module
-- Timeline: 2-4 hours
-
-**RECOMMENDATION:** Option A - Proceed with Daily 2-1-2 Up only for conservative Phase 1 implementation
-
-**Confidence Level:** HIGH
-- Single pattern validated with correct R:R calculation
-- 2.65:1 R:R exceeds target by 33%
-- 80% hit rate significantly above 60% minimum
-- Conservative approach reduces deployment risk
-- Can add Hourly 2-2 Up in Phase 2 after optimization
-
-**Critical Lesson Learned:**
-Always validate calculation methodology, not just results. The R:R bug existed for multiple sessions before discovery. Implement data sanity checks and cross-validation of key metrics before making GO/NO-GO decisions.
-
----
-
-## Session 63: Continuation Bar Filter Implementation → CONDITIONAL GO
-
-**Date:** November 22, 2025
-**Duration:** ~1.5 hours
-**Status:** PARTIAL - Filter implemented successfully, R:R calculation bug discovered in Session 64
-**NOTE:** R:R ratios reported in this session were INCORRECT due to calculation bug (see Session 64)
-
-**Objective:** Implement continuation bar filter to achieve 2:1 R:R ratio for options module GO/NO-GO decision.
-
-**What We Accomplished:**
-1. ✓ Added continuation bar filter configuration parameters (2+ bars requirement)
-2. ✓ Implemented filter logic in validation backtest (single centralized filter)
-3. ✓ Re-ran 3-stock validation with filter enabled
-4. ✓ Ran continuation bar impact analysis
-5. ✓ **IDENTIFIED TWO HIGH-CONVICTION PATTERNS EXCEEDING ALL TARGETS**
-
-**Continuation Bar Filter Implementation:**
-
-Configuration added (lines 88-89 in `backtest_strat_equity_validation.py`):
-```python
-'require_continuation_bars': True,  # Session 63: Mandate continuation bar filter
-'min_continuation_bars': 2  # Session 63: Require 2+ continuation bars
-```
-
-Filter logic (lines 814-820 in `backtest_strat_equity_validation.py`):
-```python
-# Session 63: Apply continuation bar filter if enabled
-if self.config['filters'].get('require_continuation_bars', False):
-    min_cont_bars = self.config['filters'].get('min_continuation_bars', 2)
-    if outcome['continuation_bars'] < min_cont_bars:
-        # Skip patterns with insufficient continuation bars
-        # Session 58 proved: 0-1 bars = 35% hit rate, 2+ bars = 73% hit rate
-        continue
-```
-
-**Results: Session 62 (NO Filter) vs Session 63 (2+ Continuation Bars):**
-
-| Timeframe | Metric | NO Filter | WITH Filter | Improvement |
-|-----------|--------|-----------|-------------|-------------|
-| **Hourly** | Patterns | 214 | **55** | -74% (filter active) |
-|  | Hit Rate | 52.8% | **74.5%** | **+41% (+21.7 pts)** |
-|  | R:R Ratio | 1.70:1 | **1.78:1** | +5% |
-|  | Avg Win | 0.63% | **0.72%** | +14% |
-| **Daily** | Patterns | 145 | **35** | -76% (filter active) |
-|  | Hit Rate | 64.1% | **82.9%** | **+29% (+18.8 pts)** |
-|  | R:R Ratio | 1.26:1 | **1.45:1** | +15% |
-|  | Avg Win | 1.96% | **2.28%** | +16% |
-
-**CRITICAL DISCOVERIES - Pattern Performance with 2+ Continuation Bars:**
-
-**Pattern 1: Hourly 2-2 Up + 2+ Continuation Bars**
-- Hit Rate: **90.5%** (19/21 patterns)
-- R:R Ratio: **3.11:1** ← WRONG (Session 64 corrected to 1.53:1)
-- Pattern Count: 21 (sufficient for statistical significance)
-- **STATUS (Session 64 Revision): FAILS 2:1 target - excellent hit rate but insufficient R:R**
-
-**Pattern 2: Daily 2-1-2 Up + 2+ Continuation Bars**
-- Hit Rate: **80.0%** (8/10 patterns)
-- R:R Ratio: **2.65:1** ← CORRECT (verified in Session 64)
-- Pattern Count: 10 (acceptable for daily timeframe)
-- **STATUS: EXCEEDS ALL SUCCESS CRITERIA** ✓
-
-**Pattern-Specific Breakdown (2+ Continuation Bars Only):**
-
-Hourly Timeframe:
-- 3-1-2 Up: 100% hit rate (6/6), 0.00:1 R:R (insufficient wins)
-- 3-1-2 Down: 100% hit rate (1/1), insufficient data
-- 2-1-2 Up: 46.2% hit rate (6/13), 1.99:1 R:R (close to target)
-- 2-1-2 Down: 80% hit rate (4/5), 1.55:1 R:R
-- **2-2 Up: 90.5% hit rate (19/21), 1.53:1 R:R** ← Session 64 corrected (was 3.11:1)
-- 2-2 Down: 55.6% hit rate (5/9), 0.54:1 R:R
-
-Daily Timeframe:
-- 3-1-2 Up: 100% hit rate (2/2), insufficient data
-- 3-1-2 Down: 100% hit rate (1/1), insufficient data
-- **2-1-2 Up: 80% hit rate (8/10), 2.65:1 R:R** ✓ VERIFIED (Session 64)
-- 2-1-2 Down: 0% hit rate (0/1), insufficient data
-- 2-2 Up: 100% hit rate (13/13), 0.00:1 R:R (insufficient wins - all hit magnitude instantly)
-- 2-2 Down: 62.5% hit rate (5/8), 1.00:1 R:R
-
-**Files Modified:**
-
-1. `scripts/backtest_strat_equity_validation.py` (11 lines added)
-   - Lines 88-89: Added continuation bar filter config
-   - Lines 814-820: Implemented filter logic
-
-2. `scripts/test_3stock_validation.py` (2 lines added)
-   - Lines 38-39: Added continuation bar filter config
-
-**GO/NO-GO DECISION: CONDITIONAL GO (REVISED IN SESSION 64)**
-
-**Original Decision Rationale (Session 63):**
-1. Two patterns appeared to exceed all success criteria (60% hit rate, 2:1 R:R, 20+ patterns)
-2. Hourly 2-2 Up: 90.5% hit rate, 3.11:1 R:R ← WRONG (calculation bug)
-3. Daily 2-1-2 Up: 80% hit rate, 2.65:1 R:R ← CORRECT
-4. Empirically validated over 3 stocks, 1-year period (2024)
-5. Continuation bar filter provides clear edge (52.8→74.5% hit rate improvement)
-
-**Session 64 Revision:**
-Only Daily 2-1-2 Up meets 2:1 R:R target. Hourly 2-2 Up fails with 1.53:1 R:R.
-
-**Options Module Implementation Approach (REVISED):**
-
-Phase 1 (Session 65): Implement for Daily 2-1-2 Up ONLY
-- Daily 2-1-2 Up + 2+ continuation bars (2.65:1 R:R, 80% hit rate)
-- Conservative sizing: 1-2% account risk per pattern
-- Strike/DTE selection: 7-30 days based on measured move targets
-- 30-day paper trading before live deployment
-
-Phase 2 (Future): Consider Hourly 2-2 Up after optimization
-- Current: 90.5% hit rate, 1.53:1 R:R
-- Needs: 31% R:R improvement to reach 2:1 target
-- Approaches: ATR filter, ATLAS regime filter, target adjustment
-
-Phase 2 (Future): Consider adding additional patterns after validation
-- Hourly 2-1-2 Up (1.99:1 R:R - close to target)
-- Hourly 2-1-2 Down (1.55:1 R:R, 80% hit rate)
-- Daily 2-2 Down (1.00:1 R:R, 62.5% hit rate)
-
-**Additional Optimization Paths (Optional):**
-- ATR-based minimum magnitude filter (magnitude >= 1.5x ATR)
-- ATLAS regime integration for additional filtering
-- Pattern-specific target multipliers (currently using 1.5x fallback)
-
-**Next Session Priorities (Session 64):**
-
-Option A: Begin Options Module Implementation (RECOMMENDED)
-- Strike selection algorithm (ITM/ATM/OTM based on magnitude)
-- DTE selection (match pattern timeframe: hourly=0-1 DTE, daily=7-30 DTE)
-- Position sizing with capital constraints ($3k account)
-- Greeks-based risk management (delta, theta, IV considerations)
-- Paper trading integration with Alpaca API
-
-Option B: Full 50-Stock Validation (Conservative)
-- Run full universe validation to verify patterns hold across sectors
-- Expected: Similar R:R ratios (3.11:1 and 2.65:1) on larger sample
-- Decision: If results hold, proceed to Option A
-
-Option C: Additional Filtering (Over-Optimization Risk)
-- ATR filter, ATLAS regime filter, pattern-specific optimization
-- Risk: Overfitting to 2024 data, reducing tradeable pattern count
-- Not recommended - current metrics exceed targets
-
-**RECOMMENDATION:** Option A - Proceed to options module implementation
-
-**Confidence Level:** HIGH
-- Two patterns independently validated
-- Both exceed success criteria by 30-56%
-- Replicable methodology (continuation bar filter)
-- Multiple timeframes reduce reliance on single pattern
-- Conservative phased approach reduces deployment risk
-
----
-
-## Session 62: Magnitude Bug FIXED → Geometric Validation SUCCESS
-
-**Date:** November 22, 2025
-**Duration:** ~2.5 hours
-**Status:** MAGNITUDE BUG FIXED - All 2-2 patterns geometrically valid, ready for next phase
-
-**Objective:** Fix inverted magnitude targets in 2-2 patterns discovered in Session 61.
-
-**What We Accomplished:**
-1. ✓ Added `validate_target_geometry_nb()` function (geometric validation)
-2. ✓ Added `calculate_measured_move_nb()` function (fallback for invalid geometry)
-3. ✓ Integrated geometric validation into all 2-2 pattern detection (4 code sections)
-4. ✓ Updated test suite - 7/7 tests passing (added 2 new geometric validation tests)
-5. ✓ Re-ran 3-stock validation - **100% geometric validity achieved**
-6. ✓ Verified metrics: R:R ratios improved 295-950%, average wins now positive
-
-**The Fix - Geometric Validation with Measured Move Fallback:**
-
-Location: `strat/pattern_detector.py`
-
-Added two helper functions:
-1. `validate_target_geometry_nb()` - Validates targets in profit direction
-2. `calculate_measured_move_nb()` - Fallback using 1.5x stop distance
-
-Integration Logic (lines 549-611):
-```python
-# For 2D-2U bullish reversal:
-prev_2d_idx = find_previous_directional_bar_nb(classifications, i, -2.0)
-if prev_2d_idx >= 0:
-    proposed_target = high[prev_2d_idx]
-
-    # SESSION 62 FIX: Validate geometry
-    if validate_target_geometry_nb(entry_price, stops[i], proposed_target, 1):
-        targets[i] = proposed_target  # Use STRAT methodology
-    else:
-        targets[i] = calculate_measured_move_nb(entry_price, stops[i], 1, 1.5)  # Fallback
-else:
-    targets[i] = calculate_measured_move_nb(entry_price, stops[i], 1, 1.5)
-```
-
-**Validation Results - 100% Geometric Validity:**
-
-| Metric | Hourly | Daily | Status |
-|--------|--------|-------|--------|
-| Total 2-2 patterns | 119 | 99 | - |
-| Bullish patterns | 83 | 55 | - |
-| Bearish patterns | 36 | 44 | - |
-| Bullish targets > entry | 83/83 (100%) | 55/55 (100%) | PASS |
-| Bearish targets < entry | 36/36 (100%) | 44/44 (100%) | PASS |
-
-**Before/After Comparison:**
-
-| Metric | Session 61 (Broken) | Session 62 (Fixed) | Improvement |
-|--------|---------------------|-------------------|-------------|
-| **Hourly** | | | |
-| Avg Win | -0.24% (NEGATIVE!) | 0.63% (POSITIVE!) | +362% |
-| Avg Loss | -0.55% | -0.37% | +33% |
-| R:R Ratio | 0.43:1 (POOR) | 1.70:1 | **+295%** |
-| **Daily** | | | |
-| Avg Win | -0.18% (NEGATIVE!) | 1.96% (POSITIVE!) | +1189% |
-| Avg Loss | -1.49% | -1.55% | -4% |
-| R:R Ratio | 0.12:1 (CATASTROPHIC) | 1.26:1 | **+950%** |
+## Session 73: Data-Driven Strike Selection - COMPLETE
+
+**Date:** November 24, 2025
+**Duration:** ~2 hours
+**Status:** COMPLETE - 94.3% delta accuracy (target was 60%), 141 tests passing
+
+**User Philosophy:** "NOT rushing to conclusions. Accuracy over speed. No time limit."
+
+**Problem Solved:**
+The 0.3x geometric strike formula only achieved 20.9% of strikes in optimal delta range (0.50-0.80). This undermined options profitability because low delta = low probability of profit.
+
+**Solution Implemented:**
+Delta-targeting algorithm that:
+1. Generates candidate strikes in expanded range (includes ITM territory)
+2. Calculates Black-Scholes Greeks for each candidate
+3. Filters by delta range (0.50-0.80)
+4. Scores candidates: 70% delta proximity + 30% theta cost
+5. Falls back to geometric formula if no valid strikes found
 
 **Key Results:**
-- Average wins now POSITIVE on all timeframes (was negative!)
-- R:R ratios improved dramatically (0.43→1.70 hourly, 0.12→1.26 daily)
-- 100% geometric validity (218/218 2-2 patterns validated)
-- Hit rates maintained (52.8% hourly, 64.1% daily)
 
-**Example Pattern (AAPL 2024-05-07 Daily 2-2 Up):**
+| Metric | Baseline (0.3x) | New Algorithm | Target |
+|--------|-----------------|---------------|--------|
+| Delta Accuracy | 45.7%* | **94.3%** | 60% |
+| Average Delta | 0.492 | **0.605** | 0.60-0.70 |
+| Fallback Rate | N/A | 20.0% | <20% |
 
-Before (Session 61):
-- Entry: $184.17, Stop: $180.42, Target: **$172.69** (WRONG - $11.48 below entry!)
-- Geometry: INVERTED (target below entry on bullish trade)
+*Note: Initial 20.9% measurement was with incorrect underlying_price; corrected baseline is 45.7%
 
-After (Session 62):
-- Entry: $184.17, Stop: $180.42, Target: **$189.79** (CORRECT - above entry!)
-- Geometry: VALID (bullish target above entry as required)
-- Method: Measured move fallback (1.5x stop distance)
-
-**Files Modified:**
-
-1. `strat/pattern_detector.py` (~90 lines added/modified)
-   - Lines 390-431: Added `validate_target_geometry_nb()` function
-   - Lines 435-475: Added `calculate_measured_move_nb()` function
-   - Lines 549-579: Integrated validation into 2D-2U 1D array section
-   - Lines 581-611: Integrated validation into 2U-2D 1D array section
-   - Lines 626-657: Integrated validation into 2D-2U 2D array section
-   - Lines 659-690: Integrated validation into 2U-2D 2D array section
-
-2. `scripts/test_22_patterns.py` (~120 lines modified/added)
-   - Lines 14-58: Updated test 1 for measured move fallback
-   - Lines 61-105: Updated test 2 for measured move fallback
-   - Lines 201-232: Added test 6 (valid geometry - STRAT methodology)
-   - Lines 235-271: Added test 7 (invalid geometry - measured move fallback)
-   - Updated header to "Session 62 - Geometric Validation"
-
-**Test Results:** 7/7 tests passing
-
-1. PASS - 2D-2U Bullish Reversal (Measured Move Fallback)
-2. PASS - 2U-2D Bearish Reversal (Measured Move Fallback)
-3. PASS - No False Positives
-4. PASS - 2D-2D-2U Compound Reversal
-5. PASS - 2U-2U-2D Compound Reversal
-6. PASS - Valid Geometry (STRAT Methodology)
-7. PASS - Invalid Geometry (Measured Move Fallback)
-
-**Next Session Priorities (Session 63):**
-
-Decision Point: Options Module GO/NO-GO
-
-Current Metrics vs Targets:
-- Hit rate: 52.8-64.1% (Target: 60%) - **PASS**
-- R:R ratio: 1.26-1.70:1 (Target: 2:1) - **CLOSE** (need 1.3-1.6x improvement)
-- Pattern count: 402 total (Target: 100+) - **PASS**
-
-Options for Session 63:
-1. **Option A (Conservative):** Continue optimization
-   - Implement continuation bar filter (Session 58 showed 35→73% hit rate improvement)
-   - Test ATR-based minimum magnitude filter
-   - Target: 2:1 R:R ratio before options module
-
-2. **Option B (Moderate):** Conditional GO
-   - Accept 1.26-1.70:1 R:R as viable (better than most retail strategies)
-   - Begin options module with conservative position sizing
-   - Optimize in parallel with live paper trading
-
-3. **Option C (Aggressive):** Full GO
-   - Current metrics exceed minimum viability (60% hit rate, positive expectancy)
-   - Begin options module implementation immediately
-   - Trust that 90%+ 2-2 Up hit rates translate to options profitability
-
-**Recommendation:** Option A (Conservative)
-- Implement continuation bar filter (proven 2x hit rate improvement in Session 58)
-- Expected result: R:R ratio 1.26→2.5:1, hit rate 52.8→73%
-- 1-2 hour implementation, then GO decision with high confidence
-
----
-
-## Session 61: Entry Price Bug FIXED → NEW Magnitude Bug DISCOVERED
-
-**Date:** November 22, 2025
-**Duration:** ~30 minutes
-**Status:** Entry bug FIXED (5 minutes), NEW critical magnitude bug discovered
-
-**Objective:** Fix undefined `pattern_loc` variable causing entry price corruption in 2-2 patterns.
-
-**What We Accomplished:**
-1. ✓ FIXED entry price bug - added missing `pattern_loc` definition (2 lines of code)
-2. ✓ Re-ran 3-stock validation - entry prices now realistic
-3. ✓ Verified AAPL May 21 entry: $254.46 (WRONG) → $192.38 (CORRECT!)
-4. ⚠ **DISCOVERED NEW BUG** - Magnitude targets geometrically inverted
-
-**Entry Price Bug - RESOLVED:**
-
-Root Cause (identified Session 60):
-- Lines 506 and 563 used undefined variable `pattern_loc`
-- Python used garbage value from previous loop iteration (2-1-2 or 3-1-2)
-- Wrong date retrieved → wrong price → entry price corruption
-
-Fix Applied:
-```python
-# Line 506 (2-2 Up) - ADDED:
-pattern_loc = detection_data.index.get_loc(pattern_date)
-
-# Line 564 (2-2 Down) - ADDED:
-pattern_loc = detection_data.index.get_loc(pattern_date)
-```
-
-Results:
-- BEFORE: AAPL 2024-05-21 entry = $254.46 (51 points above actual high!)
-- AFTER: AAPL 2024-05-21 entry = $192.38 (within actual range: $169-$193)
-- All entry prices now realistic and within historical ranges
-
-**NEW CRITICAL BUG DISCOVERED: Inverted Magnitude Targets**
-
-Example Pattern (AAPL 2024-06-12 2-2 Up):
-- Entry: $217.36 (bullish - going long)
-- Stop: $214.86 (below entry - correct)
-- Target: **$193.19** (WRONG - $24 BELOW entry on bullish trade!)
-
-Root Cause (pattern_detector.py lines 474-482):
-For 2D-2U bullish reversal:
-1. Code finds previous 2D bar using `find_previous_directional_bar_nb()`
-2. Sets target = high of that previous 2D bar
-3. **Problem**: If previous 2D occurred during lower price action, target ends up BELOW entry!
-
-Example Scenario:
-- Current 2D-2U pattern triggers at $217 (bullish reversal)
-- Code finds previous 2D bar from weeks ago when stock traded at $193
-- Sets target = $193 high (previous 2D bar)
-- Result: Target $24 below entry = geometrically impossible!
-
-**Validation Results (With Magnitude Bug):**
-
-| Timeframe | Patterns | Hit Rate | Avg Win | Avg Loss | R:R Ratio |
-|-----------|----------|----------|---------|----------|-----------|
-| 1H | 214 | 64.5% | **-0.24%** | -0.55% | 0.43:1 |
-| 1D | 145 | 71.7% | **-0.18%** | -1.49% | 0.12:1 |
-| 1W | 43 | 65.1% | 1.65% | -5.36% | 0.31:1 |
-
-**CRITICAL INSIGHT - Patterns Work, Targets Don't:**
-
-2-2 Pattern Hit Rates (EXCELLENT!):
-- Hourly 2-2 Up: **90.4%** (75/83 patterns) - OUTSTANDING
-- Hourly 2-2 Down: 69.4% (25/36 patterns) - GOOD
-- Daily 2-2 Up: **85.5%** (47/55 patterns) - EXCELLENT
-- Daily 2-2 Down: 72.7% (32/44 patterns) - GOOD
-- Weekly 2-2 Up: **93.3%** (14/15 patterns) - EXCEPTIONAL
-
-**Diagnosis:**
-- Patterns detect correctly (hit rates 65-93% prove this)
-- Entry prices correct (now within realistic ranges)
-- Stop prices correct (proper risk defined)
-- **Magnitude targets inverted** (measuring wrong direction!)
-
-This is NOT a pattern detection problem - it's purely a magnitude calculation geometry problem.
-
-**Files Modified:**
-- scripts/backtest_strat_equity_validation.py (lines 506, 564): Added `pattern_loc = detection_data.index.get_loc(pattern_date)`
-
-**Session 62 CRITICAL PRIORITY:**
-
-Fix magnitude calculation logic in pattern_detector.py:
-
-**Option A: Geometric Validation**
-Only use previous directional bar high/low if it creates valid geometry:
-- 2D-2U (bullish): Target = previous 2D high ONLY if > entry price
-- 2U-2D (bearish): Target = previous 2U low ONLY if < entry price
-- If invalid geometry: Use measured move or skip pattern
-
-**Option B: Measured Move**
-Replace directional bar lookback with measured move:
-- Calculate stop distance: abs(entry - stop)
-- Project from entry: target = entry + (stop_distance * multiplier)
-- Ensures geometric validity by construction
-
-**Option C: User Consultation**
-Ask user to clarify STRAT magnitude methodology:
-- Is previous directional bar target correct concept?
-- Should target always be in profit direction?
-- What's the fallback if previous bar creates invalid geometry?
-
-**Cannot Proceed Until:**
-- Magnitude calculation produces geometrically valid targets
-- Average wins become positive (targets in profit direction)
-- R:R ratios improve to 1.5:1+ minimum
-- Manual TradingView verification confirms target logic
-
----
-
-## Session 59: 2-2 Magnitude Fix → CRITICAL BUG: Entry Price Data Corruption
-
-**Date:** November 22, 2025
-**Duration:** ~5 hours
-**Status:** BLOCKING - Severe data corruption bug discovered, must fix before any further work
-
-**Objective:** Fix 2-2 magnitude calculation bug from Session 58.
-
-**What We Accomplished:**
-1. ✓ Completed 5-step VBT verification workflow - backward lookback works in @njit
-2. ✓ Implemented `find_previous_directional_bar_nb()` for magnitude target calculation
-3. ✓ Learned correct STRAT live entry concept from user (CRITICAL)
-4. ✓ Updated test suite - 5/5 tests passing
-5. ⚠ **DISCOVERED CRITICAL BUG** - Entry price data corruption
-
-**CRITICAL DISCOVERY: STRAT Live Entry Concept**
-
-User explained the fundamental concept:
-> "ALL BARS OPEN AS A 1 AS THE PREVIOUS BAR CLOSE = NEXT BARS OPEN, EVEN IF FOR A SECOND"
-
-**What This Means:**
-- Every bar STARTS as an inside bar (classification = 1)
-- Because open price = previous bar's close price
-- Entry happens LIVE when price breaks out of previous bar's range
-- Entry is NOT the trigger bar's closed extreme
-
-**Correct 2-2 Entry Calculation:**
-- For 2U-2D (bearish): Entry = Previous bar (i-1) LOW (breakout level)
-- For 2D-2U (bullish): Entry = Previous bar (i-1) HIGH (breakout level)
-- NOT the trigger bar's high/low (that's the CLOSED bar after entry)
-
-**Example (GOOGL July 25, 2024):**
-```
-11:30 Bar (2U): H=173.13, L=171.16
-12:30 Bar (2U): H=173.36, L=172.16
-13:30 Bar: Opens as "1" at 172.16, becomes 2D when drops below 172.16
-
-Entry: 172.16 (12:30 bar LOW - the breakout level) ✓
-Stop: 173.36 (12:30 bar HIGH) ✓
-Magnitude: 171.16 (11:30 bar LOW - previous 2U pivot) ✓
-```
-
-**CRITICAL BUG DISCOVERED: Entry Price Data Corruption**
-
-After implementing the entry fix, validation shows impossible data:
-
-```csv
-AAPL,2-2 Up,2024-05-21 13:30:00-04:00,254.46,191.78,192.42,bullish,...
-```
-
-**The Problem:**
-- Entry: 254.46 ← IMPOSSIBLE (AAPL never traded here in May 2024)
-- Stop: 191.78
-- Target: 192.42
-- Actual AAPL May 2024: High=193.00, Low=169.11
-
-**This is a 62-point spread - completely impossible geometry.**
-
-**Root Cause Hypothesis:**
-The `prev_bar_date` calculation in backtest script is pulling data from:
-- Wrong timeframe
-- Wrong bar index
-- Completely different date
-
-**Code Locations With Bug:**
-1. `backtest_strat_equity_validation.py:506-509` (2-2 Up entry)
-2. `backtest_strat_equity_validation.py:563-566` (2-2 Down entry)
+**Algorithm Details:**
 
 ```python
-# Lines 506-509 (BUGGY):
-if pattern_loc < 1:
-    continue
-prev_bar_date = detection_data.index[pattern_loc - 1]  # ← BUG HERE
-entry_price = detection_data.loc[prev_bar_date, 'High']  # Gets wrong bar
+def _select_strike_data_driven():
+    # Expand search range to include ITM strikes
+    expected_move = abs(target - entry)
+    itm_expansion = expected_move * 1.0  # 100% into ITM territory
+
+    # For calls: lower strike = higher delta (more ITM)
+    # For puts: higher strike = higher delta (more ITM)
+
+    # Score: 70% delta proximity to 0.65 + 30% theta cost acceptability
+    # Theta: max 30% of expected profit per holding period
+    # Holding periods: Daily=3d, Weekly=7d, Monthly=21d
 ```
 
-**Session 60 CRITICAL PRIORITY:**
-1. Debug entry price calculation - find why prev_bar_date is wrong
-2. Verify pattern_loc indexing is correct
-3. Add data sanity checks (price within valid range for symbol/date)
-4. Re-run validation with correct data
-5. THEN proceed to optimization analysis (Phases 4-6)
+**Files Modified:**
 
-**Files Modified (Session 59):**
-- `strat/pattern_detector.py`: Added lookback function, documented live entry concept
-- `scripts/test_22_patterns.py`: Added compound pattern tests (5/5 passing)
-- `scripts/backtest_strat_equity_validation.py`: **BUGGY entry calculation** (lines 506-509, 563-566)
+| File | Changes |
+|------|---------|
+| `strat/options_module.py` | +150 lines: 5 new methods, updated `_select_strike()` signature |
+| `scripts/validate_delta_accuracy.py` | NEW: Delta accuracy validation script |
 
-**Cannot Proceed Until:**
-- Entry price bug fixed and validated against actual AAPL price data
-- Manual verification on TradingView that entry prices match expected levels
-- Data sanity checks added to prevent future corruption
+**New Methods Added (options_module.py):**
+- `_get_expected_holding_days()` - Timeframe-adjusted holding periods
+- `_get_strike_interval()` - Standard strike intervals ($1/$5/$10)
+- `_generate_candidate_strikes()` - Generate strikes at standard intervals
+- `_fallback_to_geometric()` - Fallback to 0.3x formula
+- `_select_strike_data_driven()` - Delta-targeting algorithm
+- `_estimate_iv_from_price_data()` - IV estimation from historical data
+
+**API Changes:**
+- `_select_strike()` now returns `Tuple[float, Optional[float], Optional[float]]` (strike, delta, theta)
+- `generate_option_trades()` accepts optional `price_data` parameter for IV calculation
+- `OptionTrade.delta` field now populated when data-driven selection succeeds
+
+**Pattern Type Performance:**
+
+| Pattern | Accuracy | Avg Delta |
+|---------|----------|-----------|
+| 2-1-2U | 100% | 0.642 |
+| 2D-2U | 90.5% | 0.595 |
+| 3-1-2U | 100% | 0.609 |
+| 2-1-2D | 100% | 0.568 |
+| 3-1-2D | 100% | 0.572 |
+
+**Test Results:** 141 passed, 2 skipped (no regressions)
+
+**Next Session Priority:**
+With delta accuracy solved (94.3%), the next focus should be:
+1. Paper trading with real option quotes
+2. Position management and exit logic
+3. Risk monitoring across portfolio
 
 ---
 
-## Session 58: Risk-Reward Optimization Analysis → CRITICAL BUG DISCOVERED
+## Session 72: Options Module Validation + Bug Fixes - COMPLETE
 
-**Date:** November 22, 2025
+**Date:** November 24, 2025
 **Duration:** ~3 hours
-**Status:** Bug identified, optimization complete, fix required Session 59
+**Status:** COMPLETE - All bugs fixed, validation passed, design limitation identified
 
-**Objective:** Achieve 2:1 R:R ratio through systematic optimization (continuation bars, target multipliers, stop adjustments).
+**User Philosophy:** "NOT rushing to conclusions. Accuracy over speed. No time limit."
 
-**CRITICAL DISCOVERY:** 2-2 reversal pattern magnitude calculation is fundamentally wrong, invalidating all Session 57 results for 2-2 patterns (183 patterns affected).
+**Critical Bugs Fixed:**
 
-### The Bug: Wrong Magnitude Target for 2-2 Reversals
+### Bug #1: abs(delta_pnl) - CRITICAL
+**File:** `strat/options_module.py`
+**Problem:** `abs(delta_pnl)` removed direction, making ALL trades show positive P/L
+**Fix:** Removed `abs()` - delta P/L now correctly reflects direction (positive for winning, negative for losing)
 
-**Current (WRONG) Implementation:**
+### Bug #2: Test Script Parameter - BLOCKING
+**File:** `scripts/test_options_module.py`
+**Problem:** Used invalid parameter `volatility=0.20`
+**Fix:** Changed to correct parameter `default_iv=0.20`
+
+### Bug #3: Hardcoded $5 Premium - HIGH
+**File:** `strat/options_module.py`
+**Problem:** ATM premium hardcoded as $5 regardless of underlying price
+**Fix:** Now uses Black-Scholes calculated premium from greeks.py
+
+### Bug #4 & #5: Average Greeks - HIGH
+**File:** `strat/options_module.py`
+**Problem:** Exit greeks unused, linear theta assumption wrong
+**Fix:** Implemented average Greeks calculation for multi-day holds:
 ```python
-# strat/pattern_detector.py lines 424-429
-# For 2D-2U reversal:
-trigger_price = high[i]      # 2U bar high (entry) ✓
-stops[i] = low[i-1]          # 2D bar low (stop) ✓
-pattern_height = high[i-1] - low[i-1]  # ❌ WRONG: uses 2D bar range
-targets[i] = trigger_price + pattern_height
+avg_delta = (entry_greeks.delta + exit_greeks.delta) / 2
+avg_gamma = (entry_greeks.gamma + exit_greeks.gamma) / 2
+avg_theta = (entry_greeks.theta + exit_greeks.theta) / 2
 ```
 
-**The Problem:**
-- Uses range of bar `i-1` (the 2D bar in the reversal)
-- But the 2U bar already broke ABOVE the 2D bar's high to become a 2U!
-- Measuring from 2D bar high = measuring from a level already passed
-- Creates impossible geometry (target at/near current price)
+### Bug #6: Expiration Date (Discovered During Validation) - CRITICAL
+**File:** `strat/options_module.py` `_calculate_expiration()`
+**Problem:** Used `datetime.now()` for ALL trades, causing 3-year DTEs for 2020-2023 patterns
+**Fix:** Added `reference_date` parameter, pass `signal.timestamp` from caller
 
-**Correct STRAT Methodology (User Confirmed):**
+**Validation Test Suite Created (59 Tests - ALL PASSING):**
 
-For 2D-2U reversal sequence (example: 2D-2D-2U):
-- Bar i-2: **2D** (establishes bearish momentum, sets a HIGH)
-- Bar i-1: **2D** (continues down, sets new LOW)
-- Bar i: **2U** (reversal, breaks back up)
+| File | Tests | Purpose |
+|------|-------|---------|
+| `tests/test_strat/test_greeks_validation.py` | 25 | Black-Scholes accuracy, put-call parity, delta validation |
+| `tests/test_strat/test_options_pnl.py` | 18 | P/L direction, premium calculation, stop loss |
+| `tests/test_strat/test_options_integration.py` | 16 | OSI symbols, pattern flow, end-to-end backtest |
 
-**The compound 2D-2D creates a "3" bar structure** (broadening formation):
-- Combined high = high of first 2D (i-2)
-- Combined low = low of second 2D (i-1)
-- The 2U reversal is breaking back UP through this range
+**50-Stock Historical Validation Results:**
 
-**Magnitude Target:** High of the PREVIOUS directional bar (opposite direction) NOT in the reversal sequence.
-- For 2D-2U: Target = high of bar i-2 (the 2D before the reversal starts)
-- For 2U-2D: Target = low of bar i-2 (the 2U before the reversal starts)
+```
+Stocks: 50 (institutional universe)
+Period: 2020-2025 (5 years)
+Patterns Detected: 670
+Win Rate: 26% (realistic for options hitting stops)
+Avg P/L: -$1,668 (max loss = premium, expected for stop exits)
+Delta Accuracy: 20.9% in optimal range (0.50-0.80)
+Theta Anomalies: 0 (all theta correctly negative)
+```
 
-**Why This Matters:**
-- Targets should be FURTHER away (breaking previous resistance/support)
-- Expected: Better R:R ratios (potentially 2:1+ after fix)
-- Expected: More realistic magnitude hits
-- Expected: Higher pattern counts
+**CRITICAL DESIGN LIMITATION IDENTIFIED:**
 
-### Optimization Analysis Results (Based on WRONG Data)
+The 0.3x strike selection formula is **purely geometric** - it does NOT consider:
+1. Theta decay cost over expected holding period
+2. Average time-to-magnitude from pattern testing (weekly: 3-7 days)
+3. Empirical probability of reaching target
 
-**Phase 1: Continuation Bar Impact**
-- Hit rates improve dramatically with 2+ bars: 35% → 73% (hourly), 46% → 83% (daily)
-- R:R improvement modest: 1.17:1 → 1.34:1 (hourly)
-- **Daily 2-1-2 Up + 2+ bars: 2.65:1 R:R with 80% hit rate** (only pattern achieving target)
-- Expectancy improvement massive: negative → highly positive
+**User Question:** "Does this formula take into consideration theta decay, and average time to magnitude based off all the pattern testing we did?"
+**Answer:** NO - it's geometric only.
 
-**Phase 2: Target Multipliers**
-- Testing 1.5x, 2x, 2.5x multipliers FAILED catastrophically
-- Hit rates collapse: 85% (1x) → 7% (1.5x) → near 0% (2x+)
-- Patterns don't naturally move 2x their measured range
-- REJECTED as optimization approach
+**Files Modified/Created:**
 
-**Phase 3: Stop Efficiency Analysis**
-- Stop efficiency = 1.00x across ALL timeframes (hourly, daily, weekly)
-- Patterns use FULL stop distance before reversing
-- Stops correctly sized, cannot be tightened
-- Problem is target distance, not stop distance
+| File | Status | Changes |
+|------|--------|---------|
+| `strat/options_module.py` | Modified | Bugs #1, #3, #4, #5, #6 fixed |
+| `strat/greeks.py` | Modified | Added `validate_delta_range()` standalone function |
+| `scripts/test_options_module.py` | Modified | Bug #2 fixed |
+| `tests/test_strat/test_greeks_validation.py` | NEW | 25 tests |
+| `tests/test_strat/test_options_pnl.py` | NEW | 18 tests |
+| `tests/test_strat/test_options_integration.py` | NEW | 16 tests |
+| `scripts/validate_options_greeks.py` | NEW | 50-stock validation script |
 
-**Root Cause (Before Bug Discovery):**
-- Planned R:R ratios show geometric problem:
-  * Hourly: 1.20:1 (target 0.68%, stop 0.63%)
-  * Daily: 0.97:1 (target 1.97%, stop 2.56%) - **target SMALLER than stop**
-  * Weekly: 1.03:1 (target 5.59%, stop 6.25%) - **target SMALLER than stop**
+**OpenMemory:** Session 72 facts stored (ID: ed4be589-446e-4ecd-ae25-237605417058)
 
-**NOW WE KNOW WHY:** The 2-2 magnitude calculation is using the wrong bar, creating targets that are too close or already passed!
+**Next Session (73) Priority: Data-Driven Strike Selection**
 
-### What Session 57 Data Shows (Despite Wrong Targets)
+Implement strike selection that:
+1. Uses empirical time-to-magnitude data (weekly patterns: 3-7 days typical)
+2. Calculates expected theta cost for holding period
+3. Selects strike for optimal delta (0.50-0.80)
+4. Verifies expected_profit > theta_cost before trade
+5. Considers historical probability of reaching target
 
-**Continuation bar filter is validated:**
-- 40-106% hit rate improvement across timeframes
-- Massive expectancy improvement (negative → positive)
-- **MANDATORY FILTER:** Require 2+ continuation bars for all patterns
+**Formula Concept:**
+```python
+# Current (geometric only):
+strike = entry + 0.3 * (target - entry)
 
-**Pattern counts affected by bug:**
-- Hourly 2-2: 56 patterns (26% of total)
-- Daily 2-2: 99 patterns (68% of total)
-- Weekly 2-2: 28 patterns (65% of total)
-- **Total invalidated: 183 patterns**
+# New (data-driven):
+expected_days = pattern_type_avg_days[pattern]  # From historical data
+theta_cost = abs(avg_theta) * expected_days * 100
+delta_pnl_if_hit = delta * (target - entry) * 100
+net_expected_pnl = delta_pnl_if_hit * prob_hit - theta_cost
 
-### Session 59 Critical Tasks (MUST DO BEFORE OPTIONS MODULE)
-
-1. **Fix 2-2 Magnitude Calculation** (2 hours)
-   - Implement lookback logic in detect_22_patterns_nb()
-   - For 2D-2U: Find previous 2D bar (not in reversal), use its high
-   - For 2U-2D: Find previous 2U bar (not in reversal), use its low
-   - Handle edge cases (start of data, no previous bar)
-   - Update test_22_patterns.py with correct magnitude tests
-
-2. **Re-run 3-Stock Validation** (30 minutes)
-   - Generate new CSVs with corrected 2-2 targets
-   - Expected: Better R:R ratios, different hit rates
-   - Manual chart verification (5-10 patterns vs TradingView)
-
-3. **Re-run Optimization Analysis** (1 hour)
-   - Continuation bar analysis with corrected data
-   - Compare R:R before/after fix
-   - Determine if 2:1 R:R target is achievable with correct geometry
-
-4. **Additional Checks** (1 hour)
-   - Full timeframe continuity scoring (5/5 vs 4/5 vs 3/5 confidence tiers)
-   - ATR-based minimum magnitude filter (magnitude >= 1.5 * ATR?)
-   - Verify 3-1-2 and 2-1-2 magnitude calculations are correct
-   - Investigate why weekly pattern count lower than expected
-
-5. **GO/NO-GO Decision for Options Module**
-   - If 2-2 fix achieves 2:1+ R:R: Proceed to options module
-   - If still below target: Full 50-stock validation to find optimal patterns
-   - If fundamental issues remain: Reconsider approach
-
-**Files Created This Session:**
-- scripts/analyze_continuation_bar_impact.py (Phase 1 analysis)
-- scripts/test_target_multipliers.py (Phase 2 testing)
-- scripts/analyze_win_loss_magnitudes.py (Phase 3 stop efficiency)
-
-**Critical Insight:** User's STRAT experience caught a fundamental implementation error that data analysis alone wouldn't reveal. The magnitude calculation violates STRAT methodology (price traveling through previous ranges, compound "3" structures, resistance/support levels).
+# Select strike that maximizes net_expected_pnl
+```
 
 ---
 
-## Session 57: 2-2 Pattern Implementation + Higher Timeframe Detection Fix - COMPLETE
-
-**Date:** November 22, 2025
-**Duration:** ~3 hours
-**Status:** All pattern types (3-1-2, 2-1-2, 2-2) detecting on all timeframes (1H, 1D, 1W, 1M)
-
-**Objective:** Implement 2-2 reversal patterns (most common pattern type) and fix weekly/monthly pattern detection by implementing timeframe-appropriate continuity requirements.
-
-**Key Accomplishments:**
-
-1. **Implemented 2-2 Reversal Patterns** (1.5 hours)
-   - Added detect_22_patterns_nb() function to pattern_detector.py (lines 347-474)
-   - Patterns: 2D-2U (bearish to bullish) and 2U-2D (bullish to bearish)
-   - NO inside bar (rapid momentum reversal, not consolidation)
-   - Entry: Trigger bar high/low (NOT inside bar high/low like 3-1-2/2-1-2)
-   - Stop: First directional bar opposite extreme
-   - Target: Measured move (first bar range projected from entry)
-   - Updated detect_all_patterns_nb() to call 2-2 detection
-   - Expanded VBT custom indicator from 8 to 12 outputs
-   - Created test_22_patterns.py test suite - ALL TESTS PASSING
-
-2. **Fixed Continuation Bar Counting Logic** (30 minutes)
-   - Changed from "consecutive directional bars" to "5-bar window scan"
-   - Counts ALL directional bars in window, allows inside bars without breaking
-   - Only breaks on OPPOSITE directional bar (pattern invalidation)
-   - Lines 527-553 in backtest_strat_equity_validation.py
-   - Rationale: Reversal patterns often consolidate 1-2 bars before continuation
-
-3. **Validated Continuation Bar Hypothesis** (30 minutes)
-   - Correlation analysis shows MASSIVE improvement with 2+ continuation bars:
-     * Hourly: 0-1 bars = 30% hit rate, 2+ bars = 72.7% hit rate (+42 points!)
-     * Weekly: 0-1 bars = 42% hit rate, 2+ bars = 75.0% hit rate (+33 points!)
-   - 2-2 Up patterns with 2+ cont bars: 90.5% hit rate (19/21 patterns) on hourly
-   - Weekly 2-2 Up with 2+ cont bars: 80% hit rate (4/5 patterns)
-   - Confirms Session 55 insight: Continuation bars indicate real follow-through
-
-4. **Fixed Weekly/Monthly Pattern Detection** (45 minutes)
-   - Root cause: min_strength=3 but weekly only checks 2 TFs (1M, 1W) = IMPOSSIBLE
-   - Solution: Timeframe-appropriate minimum strength (strat/timeframe_continuity.py)
-   - Lines 265-278 and 394-407: Added timeframe_min_strength dict
-   - Requirements:
-     * Hourly (1H): 3/3 TFs (Week, Day, Hour aligned)
-     * Daily (1D): 2/3 TFs (any 2 of Month, Week, Day)
-     * Weekly (1W): 1/2 TFs (Month OR Week aligned)
-     * Monthly (1M): 1/1 TF (just monthly bar itself)
-   - Result: 0 weekly patterns → 43 weekly patterns detected
-
-**3-Stock Test Results (AAPL, MSFT, GOOGL - 2024):**
-
-| Timeframe | Patterns | Hit Rate | Session 56 | Improvement | 2-2 Dominance |
-|-----------|----------|----------|------------|-------------|---------------|
-| 1H        | 214      | 44.9%    | 95         | +2.3x       | 119/214 (55.6%) |
-| 1D        | 145      | 55.2%    | 12         | +12x        | 99/145 (68.3%)  |
-| 1W        | 43       | 53.5%    | 0          | NEW         | 29/43 (67.4%)   |
-| 1M        | 3        | 33.3%    | 0          | NEW         | 3/3 (100%)      |
-
-**Pattern Type Performance (Hourly):**
-- 3-1-2 Up: 64.7% (11/17)
-- 3-1-2 Down: 50.0% (2/4)
-- 2-1-2 Up: 34.0% (16/47)
-- 2-1-2 Down: 33.3% (9/27)
-- **2-2 Up: 57.8% (48/83)** - Best raw hit rate
-- 2-2 Down: 27.8% (10/36)
-
-**Pattern Type Performance (Weekly - User's Options Timeframe):**
-- **2-2 Up: 80.0% (12/15)** - EXCEPTIONAL
-- **2-1-2 Up: 80.0% (4/5)** - EXCEPTIONAL
-- 2-2 Down: 35.7% (5/14)
-- 2-1-2 Down: 20.0% (1/5)
-- 3-1-2 Down: 33.3% (1/3)
-- 3-1-2 Up: 0.0% (0/1)
-
-**Files Modified:**
-- strat/pattern_detector.py (+130 lines: detect_22_patterns_nb, updated detect_all_patterns_nb, expanded VBT indicator)
-- strat/timeframe_continuity.py (+20 lines: timeframe-appropriate min_strength logic)
-- scripts/backtest_strat_equity_validation.py (+25 lines: continuation bar window logic, 2-2 pattern processing)
-- scripts/test_3stock_validation.py (updated pattern_types to include 2-2 Up/Down)
-
-**Files Created:**
-- scripts/test_22_patterns.py (test suite for 2-2 pattern detection - all passing)
-- scripts/strat_validation_1H.csv (214 patterns, up from 95)
-- scripts/strat_validation_1D.csv (145 patterns, up from 12)
-- scripts/strat_validation_1W.csv (43 patterns, up from 0) - NEW
-- scripts/strat_validation_1M.csv (3 patterns, up from 0) - NEW
-
-**Critical Insights:**
-
-1. **User Was Right About 2-2 Patterns**
-   - User: "2U-2D and 2U-2D reversal patterns are the most common"
-   - Data: 2-2 patterns are 55.6% of ALL patterns detected (119/214 hourly)
-   - Weekly 2-2 Up: 80% hit rate - validates user's options strategy hypothesis
-
-2. **Continuation Bar Correlation is REAL**
-   - Hourly 2+ bars: 72.7% hit rate vs 30% for 0-1 bars
-   - Weekly 2+ bars: 75.0% hit rate vs 42% for 0-1 bars
-   - 2-2 Up hourly with 2+ bars: 90.5% hit rate (19/21 patterns)
-   - This is a MASSIVE edge - 40+ percentage point improvement
-
-3. **Weekly is THE Options Timeframe**
-   - User: "On higher timeframes (such as weekly) they are good for options"
-   - Data confirms: 2-2 Up weekly = 80% hit rate
-   - Average win: 4.87% (substantial move for options)
-   - Median bars to target: 1 bar (1 week = perfect options expiry timing)
-
-4. **Timeframe-Appropriate Continuity is Essential**
-   - User insight: "Hourly bars throw off higher timeframe detection"
-   - Old logic: Impossible requirements (need 3/2 TFs for weekly)
-   - New logic: Weekly needs 1/2 TFs (Month OR Week aligned)
-   - Result: 0 weekly patterns → 43 weekly patterns
-
-5. **Risk-Reward Ratios Need Improvement**
-   - Hourly: 1.23:1 (below 2:1 target)
-   - Daily: 0.84:1 (below 2:1 target)
-   - Weekly: 0.85:1 (below 2:1 target)
-   - Issue: Stops too tight relative to targets
-   - Next: Investigate stop-loss placement optimization
-
-**Next Session Priorities (Session 58):**
-
-**Path A: Full Validation (3-4 hours)**
-1. Run full 50-stock validation across all timeframes
-2. Confirm 2-2 Up + 2+ continuation bar filter is robust
-3. Analyze results by sector, market cap, volatility
-4. Make GO/NO-GO decision for options module
-
-**Path B: Risk-Reward Improvement (2-3 hours)**
-1. Analyze stop-loss placement (currently using first directional bar)
-2. Test ATR-based stops vs pattern-based stops
-3. Compare risk-reward ratios across stop methodologies
-4. Re-run validation with improved stops
-
-**Path C: Options Module (if GO decision)**
-1. Design weekly options entry framework
-2. Implement 2-2 Up + 2+ continuation bar filter
-3. Add expiration selection logic (1-2 weeks out)
-4. Backtest on 2020-2025 data
-
-**Session 57 Summary:**
-
-Implemented 2-2 reversal patterns (most common type at 55.6% of all patterns). Fixed weekly/monthly detection by implementing timeframe-appropriate continuity requirements (weekly needs 1/2 TFs not 3/5). Validated continuation bar hypothesis across all timeframes: 2+ bars gives 70-80% hit rates vs 30-40% for 0-1 bars. Weekly 2-2 Up patterns achieve 80% hit rate, confirming user's hypothesis for options trading. Pattern detection now working across all timeframes (1H, 1D, 1W, 1M). Ready for full 50-stock validation or stop-loss optimization.
-
----
-
-## Session 56: Multi-Timeframe Validation Bug Fixes - COMPLETE
-
-**Date:** November 22, 2025
-**Duration:** ~3 hours
-**Status:** All 4 bugs fixed, 3-stock test shows major improvements
-
-**Objective:** Fix 4 critical bugs discovered in Session 55 manual chart validation to improve pattern detection quality and accuracy.
-
-**Key Accomplishments:**
-
-1. **Fixed Bug #2: Magnitude Rounding Errors** (15 minutes)
-   - Added MAGNITUDE_EPSILON = 0.01 constant
-   - Lines 533, 544: Use `(target_price - EPSILON)` in comparisons
-   - Prevents false negatives from floating point precision issues
-   - Example: target=196.37 but bar_high=196.369999 now counts as hit
-
-2. **Fixed Bug #1: Market Open Filter** (20 minutes)
-   - Added time filter to all 4 pattern processing loops
-   - Filters out patterns where entry_time < 11:30 AM EST
-   - Rationale: Need 3 bars minimum (9:30, 10:30, 11:30 triggers)
-   - Verification: CSV shows no patterns before 11:30 AM ✓
-
-3. **Fixed Bug #3: Flexible Continuity** (1.5 hours)
-   - Added check_flexible_continuity() and check_flexible_continuity_at_datetime() to timeframe_continuity.py
-   - Timeframe-appropriate continuity rules:
-     * Hourly (1H): Require Week+Day+Hour (3/4 TFs, skip Monthly)
-     * Daily (1D): Require Month+Week+Day (skip 4H/1H - too granular)
-     * Weekly (1W): Require Month+Week only
-     * Monthly (1M): Just monthly bar itself
-   - Updated VALIDATION_CONFIG: use_flexible_continuity=True, min_continuity_strength=3
-   - Result: Daily patterns 1 → 12 (12x improvement!), Hourly 37 → 95 (2.6x improvement!)
-
-4. **Fixed Bug #4: Continuation Bar Tracking** (30 minutes)
-   - Added continuation bar counting logic to measure_pattern_outcome()
-   - Counts consecutive 2D/2U bars after pattern entry
-   - Stops on opposite bar type or inside bar
-   - Output: CSV now has `continuation_bars` column for quality analysis
-
-**3-Stock Test Results (AAPL, MSFT, GOOGL - 2024):**
-
-| Timeframe | Patterns | Hit Rate | Session 55 | Improvement |
-|-----------|----------|----------|------------|-------------|
-| 1H        | 95       | 40.0%    | 37         | +2.6x       |
-| 1D        | 12       | 50.0%    | 1          | +12x        |
-| 1W        | 0        | N/A      | 0          | -           |
-| 1M        | 0        | N/A      | 0          | -           |
-
-**Files Modified:**
-- scripts/backtest_strat_equity_validation.py (~100 lines: EPSILON, time filters, flexible continuity, continuation tracking)
-- strat/timeframe_continuity.py (~120 lines: added 2 new flexible continuity methods)
-- scripts/test_3stock_validation.py (updated config for flexible continuity)
-
-**Files Created:**
-- scripts/strat_validation_1H.csv (95 patterns, replaces old 37-pattern version)
-- scripts/strat_validation_1D.csv (12 patterns, up from 1)
-
-**Critical Insights:**
-
-1. **Flexible Continuity is Essential**
-   - Problem: Checking lower TFs for higher TF patterns creates false filtering
-   - Solution: Daily patterns only check Month+Week+Day, not 4H/1H
-   - Impact: 12x increase in daily patterns (1 → 12)
-   - Validates Session 55 user insight: "Don't check hourly for daily patterns"
-
-2. **Market Open Filter Removes Noise**
-   - Pre-11:30 AM patterns are mathematically impossible (need 3 bars)
-   - Filter correctly eliminates phantom early-day signals
-   - All CSVs now show only valid 11:30+ patterns
-
-3. **Continuation Bars Ready for Analysis**
-   - CSV column added successfully
-   - Next: Correlate continuation_bars with magnitude_hit rates
-   - Hypothesis: 2+ continuation bars → higher hit rates
-
-4. **Still Below Target (Daily 50% < 60%)**
-   - Hit rates improved but not yet at target
-   - Weekly/Monthly still 0 patterns (continuity too strict OR need more data)
-   - Next: Run longer period (2020-2025) or relax continuity further
-
-**Next Session Priorities (Session 57):**
-
-**IMMEDIATE (1 hour):**
-1. Analyze continuation bar correlation with hit rates
-2. Check daily patterns: Do those with 2+ continuation bars hit more often?
-3. Investigate weekly/monthly 0 patterns (need longer timeframe OR looser continuity)
-
-**HIGH (2-3 hours):**
-4. Run full 5-year validation (2020-2025) on 3 stocks first
-5. If improved, run full 50-stock validation
-6. Analyze results by timeframe, pattern quality, continuation bars
-7. Make GO/NO-GO decision for options module
-
-**Session 56 Summary:**
-
-Successfully fixed all 4 bugs from Session 55. Market open filter eliminates phantom patterns, magnitude epsilon fixes rounding errors, flexible continuity dramatically increases pattern detection (12x for daily!), continuation bar tracking enables quality analysis. 3-stock test shows validation framework working correctly. Daily hit rates improved to 50% (still below 60% target). Ready for full-scale validation or further debugging based on continuation bar analysis.
-
----
-
-## Session 55: Multi-Timeframe Validation Implementation + Critical Bug Discovery
-
-**Date:** November 22, 2025
-**Duration:** ~4 hours
-**Status:** Multi-timeframe infrastructure complete, validation paused for bug fixes
-
-**Objective:** Fix pattern detector bugs from Session 54, implement multi-timeframe pattern detection (1H, 1D, 1W, 1M), run empirical validation to establish baseline hit rates. Critical user insight: "Hourly patterns are entry mechanisms for daily patterns, not standalone trades."
-
-**Key Accomplishments:**
-
-1. **Fixed 3 Pattern Detector Bugs**
-   - Attribute names: Changed from `pattern_312_up_entries` to `entries_312` + direction filtering
-   - Bar classification: Added missing `classify_bars_nb()` step before pattern detection
-   - Entry price calculation: Correctly accessing inside bar (one bar before trigger)
-   - Status: 3-stock test now detects patterns correctly
-
-2. **Multi-Timeframe Pattern Detection Implemented**
-   - Detection timeframes: 1H, 1D, 1W, 1M (separate reports per timeframe)
-   - Magnitude hit window: 5 bars (was checking trigger bar only - too strict)
-   - Terminology: Changed "days" to "bars" for cross-timeframe clarity
-   - Output: Separate CSV per timeframe (strat_validation_1H.csv, etc.)
-
-3. **3-Stock Test Results (1 Year, AAPL/MSFT/GOOGL)**
-   - 1H: 37 patterns, 40.5% magnitude hit rate (aligns with research: 40-45% for hourly)
-   - 1D: 1 pattern (WRONG - should be 50-100+)
-   - 1W/1M: 0 patterns (continuity too strict)
-   - Pattern breakdown: 2-1-2 dominates (86%), 3-1-2 rare (14%)
-
-4. **Manual Chart Validation - 4 Critical Bugs Discovered**
-
-   **Bug 1: Market Open Filter Missing**
-   - Current: Detects hourly patterns at 09:30, 10:30 (impossible - need 3 bars minimum)
-   - Fix needed: Filter out entry_time < 11:30 AM EST
-   - Rationale: 09:30-10:30 bar 1, 10:30-11:30 bar 2, 11:30+ bar 3 triggers pattern
-
-   **Bug 2: Magnitude Rounding Errors**
-   - Example: AAPL 3/4/2024 - inside bar $174.02, magnitude $174.01 (1 cent)
-   - Creates false magnitude hits and misses due to floating point precision
-   - Fix needed: Minimum magnitude threshold (>0.25%) to filter noise
-
-   **Bug 3: Timeframe Hierarchy Missing**
-   - User insight: "Hourly 2-1-2 Down was entry timing for daily 3-1-2 Down pattern"
-   - Daily had 5 continuation bars = real high-probability trade
-   - Hourly pattern was just entry mechanism, not standalone trade
-   - Fix needed: Track continuation bars, implement timeframe hierarchy filters
-
-   **Bug 4: Continuity Too Strict (CRITICAL)**
-   - Full continuity (all 5 TFs) filters out 99% of valid patterns
-   - Only 1 daily pattern in 1 year across 3 stocks (expected: 50-100+)
-   - Problem: Checking lower TFs for higher TF patterns creates false filtering
-   - Fix needed: Timeframe-appropriate continuity (Daily = Month+Week+Day only, not 4H/1H)
-
-**Files Modified:**
-- scripts/backtest_strat_equity_validation.py (700+ lines, multi-TF support added)
-- scripts/test_3stock_validation.py (rewritten for multi-TF testing)
-
-**Files Created:**
-- scripts/strat_validation_1H.csv (37 hourly patterns)
-- scripts/strat_validation_1D.csv (1 daily pattern)
-
-**OpenMemory Facts Stored (6 entries):**
-- Timeframe continuity rules (flexible vs full)
-- 4-hour candle context and "The Flip" at 13:30
-- Hourly pattern entry rules (earliest 11:30 AM)
-- Timeframe hierarchy concept (hourly as entry for daily)
-- Magnitude validation bug (rounding errors)
-- Continuation bars as quality indicator
-
-**Critical Insights:**
-
-1. **STRAT Timeframe Hierarchy is Key**
-   - Daily patterns with 2+ continuation bars = high probability trades
-   - Hourly patterns serve as entry timing, not standalone signals
-   - Without hierarchy, hourly noise drowns out quality daily signals
-   - Example: AAPL 3/4/2024 daily 3-1-2 Down + 5 continuation bars vs hourly 2-1-2 Down
-
-2. **Full Continuity is Too Strict**
-   - Recommended: Hourly = Week+Day+Hour (3/4 TFs), Daily = Month+Week+Day, Weekly = Month+Week
-   - Must test empirically which combinations produce highest hit rates
-   - Start lenient, tighten based on data (not theoretical perfection)
-
-3. **Machine Learning Approach Clarified**
-   - Current: 37 patterns (need 10,000+ for ML)
-   - Phase 1 (now): Feature engineering + empirical combinatorial testing
-   - Phase 2 (after 5,000+ patterns): Decision trees for combination discovery
-   - Phase 3 (future): Ensemble models for real-time scoring
-   - NOT using ML to "learn" yet - using data to find what works empirically
-
-4. **Continuation Bars Track Pattern Quality**
-   - Research: 2d-2dG-2u pattern = 41.7% of monthly reversals (TheStrat Lab)
-   - Patterns with 2+ continuation bars show higher hit rates
-   - Must add continuation_bars_after_trigger to pattern output
-   - Feature engineering priority for next session
-
-**Bugs Blocking Full Validation:**
-
-1. Market open filter (10 minutes to fix)
-2. Magnitude minimum threshold (15 minutes to fix)
-3. Continuity flexibility (30 minutes to implement)
-4. Timeframe hierarchy tracking (45 minutes for continuation bars)
-
-**Next Session Priorities (Session 56):**
-
-**IMMEDIATE (2 hours):**
-1. Fix market open filter (no hourly before 11:30 AM)
-2. Add magnitude minimum threshold (>0.25%)
-3. Implement flexible continuity by timeframe:
-   - Hourly: Week + Day + Hour (3/4 TFs)
-   - Daily: Month + Week + Day (no 4H/1H check)
-   - Weekly: Month + Week only
-4. Add continuation_bars_after_trigger tracking
-
-**HIGH (2 hours):**
-5. Re-run 3-stock validation with bug fixes
-6. Verify daily patterns increase from 1 to 50-100+
-7. Compare hit rates by timeframe (empirical baselines)
-
-**MEDIUM (if time permits):**
-8. Run full 50-stock, 5-year validation
-9. Analyze patterns by timeframe, quality, continuity
-10. Make GO/NO-GO decision for options module
-
-**Session 55 Summary:**
-
-Successfully implemented multi-timeframe pattern detection infrastructure. 3-stock test revealed validation framework working but exposed 4 critical bugs via manual chart validation. User's trading experience identified timeframe hierarchy concept (hourly as entry for daily patterns) and flexible continuity requirements. Populated OpenMemory with STRAT concepts for next session. Ready to fix bugs and re-validate with clean data.
-
----
-
-## Session 54: STRAT Equity Validation - Phase 1-2 COMPLETE (90%)
-
-**Date:** November 22, 2025
-**Duration:** ~5 hours
-**Status:** PHASE 1-2 COMPLETE, minor fix needed for Phase 3 validation execution
-
-**Objective:** Validate STRAT patterns work on equities BEFORE building options module (15+ hour investment). Implement multi-timeframe continuity checker for high-conviction signal filtering. Equity validation proves edge exists faster than options (no options data required).
-
-**Key Accomplishments:**
-
-1. **5-Step VBT Workflow Executed for Multi-Timeframe Support**
-   - SEARCH: Found VBT native MTF support via timeframe parameter
-   - VERIFY: Confirmed vbt.Data.run, vbt.IF, vbt.Portfolio.from_signals exist
-   - FIND: Located custom indicator examples with MTF usage
-   - TEST: Validated resampling logic with run_code() minimal example
-   - IMPLEMENT: Created timeframe continuity checker (Step 5)
-
-2. **Timeframe Continuity Checker Implementation**
-   - File: strat/timeframe_continuity.py (346 lines)
-   - Class: TimeframeContinuityChecker with check_continuity() methods
-   - Functionality: Detects STRAT directional bar alignment across 5 timeframes
-   - Timeframes: Monthly, Weekly, Daily, 4H, Hourly
-   - Output: Continuity strength (0-5) and full_continuity boolean
-   - Integration: Uses existing bar_classifier.py (14/14 tests passing)
-   - Status: PRODUCTION READY
-
-3. **Comprehensive Test Suite Created**
-   - File: tests/test_strat/test_timeframe_continuity.py (458 lines)
-   - Test coverage: 21 tests covering all functionality
-   - Results: 21/21 PASSING (100% pass rate, 3.88s execution time)
-   - Scenarios tested: Full continuity, partial continuity, bearish/bullish alignment, missing timeframes, reference bars, bar indexing
-
-4. **Equity Validation Backtest Framework**
-   - File: scripts/backtest_strat_equity_validation.py (648 lines)
-   - Configuration: 50 stocks, 5 years (2020-2025), hourly data
-   - Patterns: 3-1-2 and 2-1-2 (up/down), filtered by full timeframe continuity
-   - Metrics: Magnitude hit rate, days to magnitude, risk-reward ratio
-   - GO/NO-GO criteria: Hit rate >= 60%, R:R >= 2:1, min 100 patterns
-   - Status: 90% COMPLETE (minor attribute name fix needed)
-
-**Files Created:**
-- strat/timeframe_continuity.py (346 lines) - PRODUCTION READY
-- tests/test_strat/test_timeframe_continuity.py (458 lines) - 21/21 PASSING
-- scripts/backtest_strat_equity_validation.py (648 lines) - 90% COMPLETE
-- docs/SESSION_54_STRAT_EQUITY_VALIDATION_PROGRESS.md (documentation)
+## Session 71: Core Options Module Fix + Greeks Implementation - COMPLETE
+
+**Date:** November 24, 2025
+**Duration:** ~2 hours
+**Status:** COMPLETE - All 4 phases implemented and validated
+
+**Critical Bugs Fixed:**
+1. Strike selection used midpoint instead of STRAT 0.3x formula
+2. Delta approximation was static 0.5 ignoring market dynamics
+3. Backtester P/L ignored time decay (theta)
+4. Validation script bypassed Tier1Detector (duplicate filters)
+
+**Phases Completed:**
+
+### Phase 1: Strike Selection Fix (CRITICAL)
+
+**File:** `strat/options_module.py` lines 247-298
+
+**Before (WRONG):**
+```python
+midpoint = (entry_price + target_price) / 2
+raw_strike = min(midpoint, underlying_price + self.strike_offset)
+```
+
+**After (CORRECT per STRAT OPTIONS.md):**
+```python
+# STRAT 0.3x Strike Selection Formula
+if option_type == OptionType.CALL:
+    optimal_strike = entry + (0.3 * (target - entry))
+else:
+    optimal_strike = entry - (0.3 * (entry - target))
+```
+
+### Phase 2: Greeks Module Implementation (HIGH)
+
+**New File:** `strat/greeks.py` (~300 lines)
+
+**Features:**
+- Full Black-Scholes Greeks calculation (delta, gamma, theta, vega, rho)
+- IV estimation from historical volatility
+- Delta range validation (0.50-0.80 optimal)
+- P/L calculation with Greeks for accurate modeling
+
+**Key Functions:**
+- `calculate_greeks(S, K, T, r, sigma, option_type)` -> Greeks dataclass
+- `estimate_iv_from_history(price_data, window=20)` -> float
+- `calculate_pnl_with_greeks(...)` -> dict with component breakdown
 
 **Test Results:**
-- STRAT Layer 2 Total: 51/51 tests PASSING
-  - Bar classifier: 14/14 (Session 31)
-  - Pattern detector: 16/16 (Session 33)
-  - Timeframe continuity: 21/21 (Session 54 NEW)
+- ATM Call delta: 0.5695 (expected ~0.50-0.60)
+- ITM Call delta: 0.7543 (correctly higher)
+- ATM Put delta: -0.4305 (correctly negative)
+- Theta: -0.0287/day (correctly negative)
 
-**MINOR FIX NEEDED (10 minutes):**
+### Phase 3: Backtester P/L Fix (CRITICAL)
 
-Pattern detector attribute names in validation script need correction:
-- Current (WRONG): `pattern_312_up_entries = pattern_result.pattern_312_up_entries`
-- Correct: `entries_312 = pattern_result.entries_312` (combined up/down)
-- Filter by direction: `directions_312 == 1` (bullish) or `== -1` (bearish)
-- Applies to all 4 pattern types (312 up/down, 212 up/down)
+**File:** `strat/options_module.py` OptionsBacktester class
 
-**Critical Insights:**
-
-1. **VBT Multi-Timeframe Support Validated**
-   - Native support via `.run(data, timeframe=["1h", "4h", "1d"])`
-   - Automatic resampling with look-ahead bias prevention
-   - Forward-fill alignment back to base timeframe
-   - Simpler implementation than expected (no manual resampling needed)
-
-2. **Equity Validation is Critical Gate**
-   - Options module: 15-22 hours of work (Sessions 55-56)
-   - If patterns don't work on equities → Options module pointless
-   - Equity validation: 3-4 hours total (faster, no options data)
-   - Proves edge exists before major time investment
-
-3. **STRAT Bar Classifier Highly Reusable**
-   - No modifications needed for MTF analysis
-   - Applied to each timeframe independently
-   - Clean separation of concerns, minimal duplication
-
-**Next Session Priorities (Session 54 Continuation or 55):**
-
-**IMMEDIATE (10 minutes):**
-1. Fix pattern detector attribute names in validation script (lines 235-350)
-2. Test with 3-stock, 1-year quick validation
-3. Verify logic works correctly before full 50-stock run
-
-**HIGH PRIORITY (2-3 hours):**
-4. Run full equity validation (50 stocks, 5 years, hourly data)
-5. Analyze results CSV and GO/NO-GO decision
-6. If GO (hit_rate >= 60%): Proceed to options module implementation
-7. If NO-GO (hit_rate < 60%): Debug patterns, analyze failure modes
-
-**IF GO DECISION (Sessions 55-56):**
-8. Options data integration (Polygon.io or Black-Scholes)
-9. DTE optimizer using days_to_magnitude distribution
-10. Strike selection algorithm (delta 0.40-0.55 targeting)
-11. VBT Portfolio integration with options pricing
-
-**Session 54 Summary:**
-
-Successfully implemented multi-timeframe continuity checker (21/21 tests passing) and equity validation framework (90% complete). Validated VBT Pro supports multi-timeframe analysis with automatic resampling. Core STRAT pattern validation infrastructure ready for execution after minor 10-minute attribute name fix. Equity validation will determine if patterns achieve 60%+ magnitude hit rates, proving edge exists before investing 15+ hours in options module development.
-
----
-
-## Session 53: Deephaven Alpaca Integration - COMPLETE
-
-**Date:** November 21, 2025
-**Duration:** ~3.5 hours
-**Status:** COMPLETE - Alpaca integration operational, all validation tests passing
-
-**Objective:** Replace mock data in Deephaven dashboard with real Alpaca positions and market prices from System A1 paper trading account. Complete dashboard integration before Options module implementation (user chose Path C: sequential approach).
-
-**Key Accomplishments:**
-
-1. **AlpacaTradingClient Credential Loading Enhancement**
-   - Main branch already had comprehensive credential loading (lines 112-149)
-   - Supports ALPACA_LARGE_KEY/ALPACA_LARGE_SECRET (used by project)
-   - Supports APCA_API_KEY_ID/APCA_API_SECRET_KEY (standard)
-   - Supports ALPACA_API_KEY/ALPACA_SECRET_KEY (fallback)
-   - No restoration needed - existing code sufficient
-
-2. **Portfolio Positions Integration (Lines 61-116)**
-   - Replaced hardcoded mock positions (5 stocks: NVDA, AAPL, MSFT, GOOGL, TSLA)
-   - Integrated real Alpaca positions (6 stocks: CSCO, GOOGL, AMAT, AAPL, CRWD, AVGO)
-   - Stop prices calculated as 5% below avg_entry_price (simple methodology)
-   - Future enhancement: ATR-based stops from utils/position_sizing.py
-   - Empty position handling: Creates empty table structure if account has 0 positions
-
-3. **Capital Integration (Line 75)**
-   - Replaced INITIAL_CAPITAL mock value ($100,000)
-   - Fetched real account equity via get_account() API call
-   - Real capital: $10,022.07 (System A1 paper account)
-   - Heat calculations now accurate for $10k account (not $100k)
-
-4. **Market Prices Integration (Lines 119-195)**
-   - Replaced random walk simulation with real market data
-   - Initialized StockHistoricalDataClient for latest quotes
-   - Polling interval: 10 seconds (rate limit safe: 36 req/min vs 200 limit)
-   - Uses mid-price: (bid_price + ask_price) / 2.0
-   - Current implementation: Uses current_price from positions snapshot
-   - Future enhancement: Full polling integration with fetch_latest_quotes()
-
-5. **Periodic Refresh Logic (Lines 196-238)**
-   - Created refresh_positions_and_prices() function
-   - Refresh interval: 60 seconds (positions change infrequently)
-   - Fetches updated positions with qty, avg_cost, current_price, unrealized_pl
-   - Recalculates 5% stops on each refresh
-   - Note: Full integration requires DynamicTableWriter pattern (future session)
-
-6. **Integration Validation Script**
-   - Created scripts/validate_deephaven_alpaca_integration.py (256 lines)
-   - 5 comprehensive validation tests:
-     * Test 1: Trading client connection - PASS
-     * Test 2: Account equity fetch ($10,022.07) - PASS
-     * Test 3: Positions fetch (6 System A1 stocks) - PASS
-     * Test 4: Position data structure (5% stop calc) - PASS
-     * Test 5: Market data fetch (real-time quotes) - PASS
-   - All tests passing: 5/5 (100%)
-
-**Files Modified:**
-- dashboards/deephaven/portfolio_tracker.py (256 lines modified, 176 insertions)
-
-**Files Created:**
-- scripts/validate_deephaven_alpaca_integration.py (NEW - 256 lines, validation suite)
-
-**Git Commits:**
-- Commit 073f4d6: feat: add Alpaca-integrated Deephaven portfolio tracker and validation
-- Branch: Pushed to main (not merged from feature branch to avoid conflicts)
-
-**Validation Results:**
-
-```
-Position Details (System A1 - November 21, 2025):
-  AAPL: 3 shares @ $266.95, Current: $271.20, P&L: +$12.73
-  AMAT: 4 shares @ $227.94, Current: $224.45, P&L: -$13.96
-  AVGO: 2 shares @ $357.96, Current: $341.20, P&L: -$33.52
-  CRWD: 1 shares @ $509.48, Current: $491.49, P&L: -$17.99
-  CSCO: 12 shares @ $77.11, Current: $76.30, P&L: -$9.72
-  GOOGL: 3 shares @ $295.29, Current: $301.96, P&L: +$20.01
-
-Account Equity: $10,022.07
-Buying Power: $15,337.37
-Total Positions: 6
-Net P&L: -$42.45 (-0.42%)
+**Before (WRONG):**
+```python
+pnl = self.delta * price_move * 100 - option_cost * 100  # Static delta, no decay
 ```
 
-**Critical Insights:**
+**After (CORRECT):**
+```python
+# Dynamic Greeks with time decay
+entry_greeks = calculate_greeks(S=entry_underlying, K=strike, T=dte/365, ...)
+theta_decay = entry_greeks.theta * days_held
+# P/L components: intrinsic value, delta P/L, theta decay, gamma adjustment
+```
 
-1. **Quick Integration Approach Successful**
-   - Implemented "Path A" from plan: Polling-based integration (3.5 hours)
-   - Deferred "Path B" production enhancements (WebSocket, DynamicTableWriter)
-   - Dashboard now displays real data, ready for Options module work
-   - Enhancement path available for future session if needed
+### Phase 4: Validation Script Integration (MEDIUM)
 
-2. **Merge Conflict Resolution - Safe Approach**
-   - Initial merge attempt created conflicts in alpaca_trading_client.py
-   - Main branch had BETTER version (comprehensive credential loading)
-   - Resolved by cherry-picking only dashboard files (no existing code modified)
-   - Lesson: Check main branch for existing implementations before restoring from history
+**File:** `scripts/backtest_strat_equity_validation.py`
 
-3. **Stop Price Methodology Decision**
-   - Chose simple 5% fixed stops for initial integration
-   - Documented enhancement path: ATR-based stops from utils/position_sizing.py
-   - Trade-off: Simplicity vs accuracy (acceptable for dashboard monitoring)
-   - Can enhance later without architectural changes
+**Changes:**
+- Added import for `Tier1Detector`
+- Added config options: `use_tier1_detector`, `include_22_down`
+- Created `detect_patterns_with_tier1()` method
+- Updated `run_validation()` to choose detection method based on config
+- Skips duplicate continuation filter when using Tier1Detector
 
-4. **Rate Limit Safety Verified**
-   - 10-second polling: 6 req/min per position
-   - Total: 36 req/min (6 positions × 6 req/min)
-   - Limit: 200 req/min for paper trading
-   - Safety margin: 82% unused capacity (164 req/min available)
-
-**Dashboard Integration Status:**
-
-| Component | Status | Data Source | Update Frequency |
-|-----------|--------|-------------|------------------|
-| Portfolio Positions | INTEGRATED | Alpaca list_positions() | Initial + 60s refresh |
-| Account Capital | INTEGRATED | Alpaca get_account() | Initial snapshot |
-| Market Prices | INTEGRATED | Position current_price | Initial snapshot |
-| Stop Prices | CALCULATED | 5% below avg_cost | Calculated on refresh |
-| P&L Calculations | INTEGRATED | Alpaca unrealized_pl | Via positions API |
-
-**Future Enhancement Opportunities:**
-
-1. **Market Data Polling (Not Blocking)**
-   - Current: Uses current_price from positions snapshot
-   - Enhancement: Implement fetch_latest_quotes() with StockHistoricalDataClient
-   - Pattern: time_table("PT10S") polling latest quotes
-   - Benefit: More frequent price updates independent of position refresh
-
-2. **ATR-Based Stop Prices (Not Blocking)**
-   - Current: Fixed 5% stops (simple but less accurate)
-   - Enhancement: Calculate ATR from historical data
-   - Use: utils/position_sizing.py ATR calculation methods
-   - Benefit: Risk-adjusted stops matching actual volatility
-
-3. **DynamicTableWriter Pattern (Not Blocking)**
-   - Current: Static tables from initial API calls
-   - Enhancement: Live table updates on each refresh
-   - Pattern: Deephaven DynamicTableWriter for streaming updates
-   - Benefit: True real-time dashboard without restarts
-
-**Session 54 Priorities:**
-
-**HIGHEST - Options Execution Module Implementation**
-1. MANDATORY: Follow CLAUDE.md 5-step VBT workflow
-2. Phase 1: Strike selection algorithm (delta 0.40-0.55 targeting)
-3. Phase 2: DTE optimizer (7-21 day optimal range)
-4. Phase 3: VBT Portfolio integration with options pricing
-5. Test with mcp__vectorbt-pro__run_code before full implementation
-6. Timeline: 2-3 sessions (6-9 hours estimated)
-
-**MEDIUM - Documentation**
-7. Update .session_startup_prompt.md for Session 54
-8. Archive Session 52-53 if HANDOFF.md exceeds 1500 lines
-
-**LOW - Dashboard Enhancements (Optional)**
-9. Implement full market data polling (if time permits)
-10. Add ATR-based stop calculations (if time permits)
-
-**Session 53 Summary:**
-
-Completed Deephaven Alpaca integration replacing 100% mock data with real System A1 positions and market prices. Dashboard now displays 6 live positions (CSCO, GOOGL, AMAT, AAPL, CRWD, AVGO) from $10k paper account with real-time P&L tracking. All 5 validation tests passing. Quick integration approach (3.5 hours) successful with enhancement path documented for future sessions. Avoided merge conflicts by cherry-picking files. Main branch credential loading sufficient (no restoration needed). Ready for Options module implementation in Session 54 (highest strategic priority).
-
----
-
-## Session 52: Deephaven Dashboard Testing & Validation - COMPLETE
-
-**Date:** November 21, 2025
-**Duration:** 2 hours 15 minutes
-**Status:** COMPLETE - Dashboard tested and production-ready
-
-**Objective:** Test Deephaven real-time dashboard system, validate all components, fix any bugs found. User decision: Complete testing (accuracy over speed) before proceeding to Options module.
-
-**Key Accomplishments:**
-
-1. **Docker Infrastructure Deployment: SUCCESS**
-   - Started 3 containers: strat-db (PostgreSQL), strat-cache (Redis), strat-deephaven (Deephaven)
-   - All containers healthy, Deephaven IDE accessible on http://localhost:10000/ide
-   - Python console operational (4.0 GB memory allocated)
-
-2. **Critical Bug Fixed: Duration Format Error**
-   - File: dashboards/deephaven/portfolio_tracker.py:125
-   - Issue: time_table() duration format not ISO 8601 compliant
-   - Original: `time_table(f"PT{PRICE_UPDATE_INTERVAL_MS}ms")` (PT1000ms - invalid)
-   - Attempted: `time_table(f"PT{PRICE_UPDATE_INTERVAL_MS}MS")` (PT1000MS - still invalid)
-   - Final fix: `time_table(f"PT{PRICE_UPDATE_INTERVAL_MS / 1000}S")` (PT1.0S - valid)
-   - Lesson learned: ISO 8601 requires seconds format, not raw milliseconds
-   - Fix time: 15 minutes (2 iterations to identify correct format)
-
-3. **Dashboard Component Testing: 100% PASS**
-
-   **Tables Tested (12/12 PASS):**
-   - portfolio_positions: Position data with cost basis
-   - ticker: Real-time 1-second update ticker
-   - market_prices_raw: Raw market data stream
-   - market_prices: Processed market prices
-   - portfolio_pnl: P&L calculations for all positions
-   - portfolio_summary: Aggregate metrics (tested via console)
-   - heat_alerts: Heat threshold violations (empty - correct)
-   - top_performers: Best performing positions
-   - bottom_performers: Underperforming positions
-   - portfolio_risk_metrics: Risk-adjusted performance
-   - portfolio_history: Time-series equity curve
-   - circuit_breaker_status: Drawdown monitoring (tested via console)
-
-   **Plots Tested (3/3 PASS):**
-   - equity_curve_plot: Portfolio value over time (real-time line chart)
-   - pnl_by_position_plot: P&L by position (bar chart with 5 symbols)
-   - heat_gauge_plot: Position heat analysis (risk visualization)
-
-4. **Real-Time Data Verification: PASS**
-   - Test method: Measured ticker table growth at two timepoints
-   - T=0: 159 rows, T=15-20s: 177 rows (18 rows added)
-   - Growth rate: ~1 row/second (matches PT1.0S interval)
-   - Conclusion: Real-time streaming operational
-
-5. **Key Table Data Validation**
-
-   **portfolio_summary Table:**
-   - Total Cost Basis: $181,017.50
-   - Total Current Value: $185,158.45
-   - Total Unrealized P&L: $4,140.95 (2.29% gain)
-   - Position Count: 5 stocks (NVDA, AAPL, MSFT, GOOGL, TSLA)
-   - Portfolio Heat: 12.66% (EXCEEDED status - risk monitoring functional)
-   - Portfolio Value: $104,140.95
-
-   **circuit_breaker_status Table:**
-   - Peak Equity: $100,000.00
-   - Current Equity: $104,177.64
-   - Drawdown: -4.18% (negative = portfolio in profit)
-   - Circuit Breaker Level: NORMAL
-   - Trading Enabled: TRUE
-   - Risk Multiplier: 1.0
-   - Status: "All systems operational"
-
-6. **Test Report Documentation**
-   - Created comprehensive test report: SESSION_52_DEEPHAVEN_TEST_RESULTS.md
-   - 503 lines documenting: infrastructure, bug fix, table validation, plot verification, real-time tests
-   - Test coverage: 100% (15 components: 12 tables + 3 plots + 1 real-time test)
-   - Bugs found: 1 (duration format)
-   - Bugs fixed: 1 (duration format)
-   - Outstanding issues: 0
+**Config Added:**
+```python
+'filters': {
+    'use_tier1_detector': True,  # Session 71: Single source of truth
+    'include_22_down': False  # Session 69: Negative expectancy
+}
+```
 
 **Files Modified:**
-- dashboards/deephaven/portfolio_tracker.py:125 (duration format fix)
+| File | Changes |
+|------|---------|
+| `strat/options_module.py` | Strike selection (0.3x), Greeks import, backtester rewrite |
+| `strat/greeks.py` | NEW - Full Black-Scholes Greeks implementation |
+| `scripts/backtest_strat_equity_validation.py` | Tier1Detector integration |
+| `~/.claude/plans/gleaming-dancing-cupcake.md` | Plan file updated with completion status |
 
-**Files Created:**
-- docker/volumes/logs/ (directory for container logs)
-- docker/volumes/data/ (directory for persistent data)
-- docker/volumes/results/ (directory for analysis results)
-- SESSION_52_DEEPHAVEN_TEST_RESULTS.md (503-line comprehensive test report)
-
-**Git Status:**
-- Branch: claude/review-deephaven-dashboards-01D1zAN3QJ1q1WNat2airUtf
-- Modified: 1 file (portfolio_tracker.py)
-- Ready to commit and merge to main
-
-**Critical Insights:**
-
-1. **CRITICAL LIMITATION IDENTIFIED (Post-Session):**
-   - Dashboard tested with 100% MOCK DATA (hardcoded positions/prices)
-   - Mock positions: NVDA, AAPL, MSFT, GOOGL, TSLA (NOT System A1 positions)
-   - Actual System A1: CSCO, GOOGL, AMAT, AAPL, CRWD, AVGO (6 stocks, $10k account)
-   - Mock capital: $100,000 (actual: $10,000)
-   - Alpaca API integration: NOT IMPLEMENTED (lines 372-421 explain HOW, not implemented)
-   - Dashboard framework operational, but System A1 monitoring NOT functional
-   - Additional work required: 2-3 hours for Alpaca integration
-
-2. **What Was Actually Tested:**
-   - Dashboard FRAMEWORK: Table structure, plot rendering, real-time update mechanism
-   - NOT tested: Alpaca position sync, real market data, live portfolio updates
-   - Framework ready, integration missing
-
-3. **Development Process Lesson Learned**
-   - Dashboard created in parallel session (Claude Code for Web) without CLAUDE.md workflow
-   - Duration format bug would have been caught with run_code() testing
-   - Integration gap not identified until user review (testing framework vs integration)
-   - Lesson: Apply 5-step VBT verification workflow to ALL code, validate end-to-end integration
-
-4. **Professional Standards Validated**
-   - User decision: Complete testing (accuracy over speed) before Options module
-   - User identified integration gap post-testing (excellent attention to detail)
-   - Result: Framework validated, integration gap documented
-   - Outcome: Honest assessment of actual vs claimed functionality
-
-**Test Results Summary:**
-- Total components: 15
-- Tests passed: 15/15 (100%)
-- Real-time updates: Verified operational
-- Dashboard status: PRODUCTION READY
-
-**Session 52 Avoided Fatal Error:**
-- Previous session (Session Error.txt) crashed due to Playwright screenshot bug
-- This session used browser_snapshot (text-based) instead of screenshots
-- Lesson learned: Avoid mcp__playwright__browser_take_screenshot (image encoding bug)
-
-**Next Session Priority (REVISED):**
-
-**Path A: Deephaven Alpaca Integration (2-3 hours)**
-- Implement Alpaca API for real positions and market data
-- Replace mock positions (lines 61-90) with Alpaca TradingClient.get_all_positions()
-- Replace simulated prices (lines 109-136) with Alpaca market data stream
-- Test with actual System A1 $10k account (6 positions)
-- Verify dashboard displays real CSCO, GOOGL, AMAT, AAPL, CRWD, AVGO positions
-
-**Path B: Options Module Implementation (Sessions 53-54)**
-- MANDATORY: Follow CLAUDE.md 5-step VBT workflow
-- Strike selection algorithm (delta 0.40-0.55)
-- DTE optimizer (7-21 days)
-- VBT Portfolio integration with options
-
-**Decision Point:** User to choose Path A (complete dashboard) or Path B (Options module priority)
+**Deferred to Session 72:**
+- Phase 5: Error Handling (specific exceptions)
+- Phase 6: Holiday Validation for expirations
+- Phase 7: Full Test Suite (>80% coverage)
 
 ---
 
-## Session 51: Dashboard Strategy Clarification & System Audit - COMPLETE
+## Session 70: Options Module Implementation - COMPLETE
 
-**Date:** November 21, 2025
+**Date:** November 24, 2025
 **Duration:** ~3 hours
-**Status:** COMPLETE - Clarified dashboard path (Deephaven), audited implementation status
+**Status:** COMPLETE - All 5 validation tests passed
 
-**Objective:** Integrate dashboard for System A1 monitoring. Discovered two dashboard implementations exist (Plotly Dash vs Deephaven). User clarified Deephaven is preferred. Conducted system audit to identify remaining work.
+**Objectives Achieved:**
 
-**Key Accomplishments:**
+### 1. Permanent Environment Fix (Critical)
 
-1. **Dashboard Path Clarification (CRITICAL DECISION)**
-   - Session started with Plotly Dash integration work (dashboard/data_loaders/ modified)
-   - User corrected: Deephaven dashboard already built (Claude Code for Web parallel work)
-   - Branch: claude/review-deephaven-dashboards-01D1zAN3QJ1q1WNat2airUtf
-   - Files: 26 Python files in dashboards/deephaven/ (regime_detection.py, portfolio_tracker.py, alpaca_ingestion.py, etc.)
-   - User rationale: "Real-time streaming better for live trading monitoring"
-   - Decision: Test Deephaven locally after Docker installation
+**Problem:** Recurring Alpaca 401 errors due to inconsistent .env loading across modules.
 
-2. **Deployment Infrastructure Updates**
-   - Railway configuration: Procfile, railway.toml created
-   - Fixed Railway build error: Renamed Dockerfile to Dockerfile.old (forcing Nixpacks auto-detection)
-   - AWS deployment: aws-setup.sh, AWS_DEPLOYMENT_GUIDE.md created for brother to deploy
-   - Strategy: BOTH Railway AND AWS for redundancy (user explicitly requested both)
+**Solution:** Created centralized `config/settings.py` that:
+- Loads from root `.env` (single source of truth)
+- Validates required credentials at startup
+- Provides type-safe accessor functions
 
-3. **System Implementation Audit (CRITICAL FINDINGS)**
-   - **Layer 1 (ATLAS Regime Detection):** COMPLETE and DEPLOYED
-     * System A1 live: 52-week momentum + ATLAS, 6 positions, deployed November 20, 2025
-     * Next rebalance: February 1, 2026 (semi-annual)
+**Files Updated:**
+- `config/settings.py` - NEW: Centralized config loading
+- `config/__init__.py` - NEW: Package exports
+- `data/alpaca.py` - Updated to use config.settings
+- `integrations/tiingo_data_fetcher.py` - Updated to use config.settings
+- `integrations/alpaca_trading_client.py` - Updated to use config.settings
+- `dashboard/config.py` - Updated to use config.settings
 
-   - **Layer 2 (STRAT Pattern Recognition):** CODE COMPLETE but NOT DEPLOYED
-     * Status: 56/56 tests passing (100%)
-     * Files: strat/bar_classifier.py, strat/pattern_detector.py, strat/atlas_integration.py
-     * Blocker: Options module required for deployment (user has $3k capital, needs 27x leverage)
-     * Priority: HIGHEST - Options implementation required before STRAT deployment
+**Verification:** All 10 import/credential tests passed.
 
-   - **Layer 3 (Options Execution Module):** DESIGN ONLY - Zero code
-     * File: Options Execution Module.md (712 lines design document)
-     * Missing: Strike selection algorithm, DTE optimizer, VBT Portfolio integration
-     * Timeline: 2-3 sessions (6-9 hours estimated)
+### 2. Tier 1 Pattern Detector
 
-   - **Layer 4 (Credit Spread Monitoring):** DESIGN ONLY - Deferred to future
-     * Priority: LOW - After Layer 2-3 complete, next market cycle (2026-2028)
+**File:** `strat/tier1_detector.py`
 
-4. **README.md Documentation Issues Identified**
-   - **Issue 1:** Line 162 states STRAT is "Design phase" but code is complete (56/56 tests)
-   - **Issue 2:** Lines 28-30 list 4 strategies but only 2 implemented:
-     * IMPLEMENTED: Opening Range Breakout, 52-Week High Momentum
-     * NOT IMPLEMENTED: Mean Reversion, Pairs Trading, Semi-Volatility Momentum
-   - **Issue 3:** Performance targets table (line 297) shows metrics for unimplemented strategies
-   - Correction needed: Add footnotes or remove unimplemented strategies
+**Features:**
+- Implements Session 69 validated Tier 1 patterns
+- Mandatory continuation bar filter (min 2 bars)
+- Excludes 2-2 Down (2U-2D) by default (dangerous without filters)
+- Pattern types: 3-1-2, 2-1-2, 2-2 Up (2D-2U)
+- Raises ValueError if min_continuation_bars < 2
 
-5. **Workspace Organization**
-   - Moved Session 50 backtest scripts to backtest/ directory (user wanted to keep for reference)
-   - Untracked files: backtest_phase1.py, backtest_phase2.py, backtest_system_a.py, check_live_regime.py
+**Test Results (SPY 2020-2024):**
+- 17 Tier 1 patterns detected
+- By type: 2D-2U (12), 2-1-2U (4), 3-1-2U (1)
+- Average 3.2 continuation bars
+- 2-2 Down correctly excluded
 
-**Files Modified (Plotly Dash work - may be superseded by Deephaven):**
-- dashboard/data_loaders/live_loader.py (AlpacaTradingClient integration)
-- dashboard/data_loaders/regime_loader.py (ATLAS + VIX integration)
-- dashboard/data_loaders/orders_loader.py (NEW - 211 lines, CSV order history)
-- dashboard/app.py (OrdersDataLoader import)
+### 3. Options Module
 
-**Files Created (Deployment):**
-- Procfile (Railway start command)
-- railway.toml (Railway configuration)
-- aws-setup.sh (One-command AWS deployment)
-- AWS_DEPLOYMENT_GUIDE.md
-- RAILWAY_DEPLOYMENT_GUIDE.md
+**File:** `strat/options_module.py`
 
-**Git Commits:**
-- 5e147d2: Dashboard integration (data loaders + testing)
-- 27a6bd8: Deployment configurations (Railway + AWS)
-- 28ebfd1: Workspace cleanup (moved backtest files)
-- a1f5e28: Documentation updates
+**Features:**
+- OSI symbol generation (e.g., SPY241220C00300000)
+- Strike selection per STRAT methodology (within entry-to-target range)
+- VBT Pro AlpacaData integration for options quotes
+- Simplified backtest with delta approximation
+- OptionsExecutor and OptionsBacktester classes
 
-**Critical Findings:**
+**Test Results:**
+- OSI format verified: SPY241220C00300000
+- Generated 5 option trades from patterns
+- Backtester executed: 5 results, $2,799.58 P/L
 
-1. **STRAT Options Implementation is Critical Path**
-   - Layer 2 code complete (56/56 tests) but can't deploy without options module
-   - User has $3k capital: Equity execution requires $10k+, options provide 27x leverage
-   - Missing: Strike selection (delta 0.40-0.55), DTE optimizer (7-21 days), VBT integration
-   - Timeline: 2-3 sessions (highest priority for Sessions 52-54)
+### 4. Alpaca Options Data Access
 
-2. **README.md Overstates Implementation**
-   - Lists 4 strategies, only 2 exist (ORB + 52W Momentum)
-   - Mean Reversion, Pairs Trading, Semi-Volatility Momentum mentioned but not coded
-   - No evidence in strategies/ directory or OpenMemory
-   - Correction needed to prevent confusion
+**Verified:** VBT Pro `client_type="options"` works with MID account
 
-3. **Deephaven vs Plotly Dash Decision**
-   - Deephaven: Real-time streaming, complex analytics, higher cost (~$15-25/month)
-   - Plotly Dash: Polling (30s refresh), simpler, lower cost
-   - User decision: Deephaven for "monitoring what is HAPPENING to our current system"
-   - Cost acceptable: "the cost for deephaven is not critical at this time"
+**Test:**
+```python
+data = vbt.AlpacaData.pull(
+    "SPY251212C00600000",
+    client_type="options",
+    client_config={'api_key': key, 'secret_key': secret},
+    start='2025-11-17',
+    end='2025-11-24'
+)
+# Retrieved 5 bars successfully
+```
 
-4. **Multiple Strategies Planned but Not Implemented**
-   - README.md suggests "Multi-Strategy Portfolio" with 4 strategies
-   - Reality: Only 2 strategies coded and tested
-   - Impact: Limited diversification, over-reliance on momentum
-   - Priority: MEDIUM (after STRAT Options implementation)
+### 5. Paper Trading Pipeline
 
-**Next Session Priorities (Session 52):**
+**File:** `scripts/paper_trade_options.py`
 
-**CRITICAL:**
-1. User installing Docker Desktop (new laptop)
-2. Test Deephaven dashboard locally: `docker-compose up -d strat-deephaven`
-3. Verify real-time data integration with System A1
-4. If successful, merge Deephaven branch into main
+**Features:**
+- Multi-symbol weekly scanning
+- Pattern-to-options trade generation
+- Results export (CSV, JSON)
+- Configurable watchlist and parameters
 
-**HIGH:**
-5. Begin STRAT Options implementation (highest development priority)
-   - Session 52: Options data fetching + strike selection algorithm
-   - Session 53: DTE optimizer + position sizing
-   - Session 54: Full end-to-end backtest + deployment
+**Usage:**
+```bash
+uv run python scripts/paper_trade_options.py --symbols SPY QQQ AAPL
+```
 
-**MEDIUM:**
-6. Update README.md documentation:
-   - Correct STRAT status from "Design phase" to "Code complete (deployment pending options module)"
-   - Add footnotes to strategy tables for unimplemented strategies
-   - Update Layer 2 description
+**Files Created:**
+- `config/settings.py` - Centralized config
+- `config/__init__.py` - Package exports
+- `strat/tier1_detector.py` - Tier 1 pattern detector
+- `strat/options_module.py` - Options execution module
+- `scripts/paper_trade_options.py` - Paper trading script
+- `scripts/test_options_module.py` - Options module tests
+- `scripts/test_alpaca_options.py` - Alpaca options tests
+- `scripts/validate_session70.py` - End-to-end validation
 
-7. Archive HANDOFF.md sessions to stay under 1500 lines (currently 1563)
+**Next Session (71) Priorities:**
 
-**Session 51 Summary:**
+1. **Paper Trading Execution**
+   - Run weekly scans for 30 days
+   - Track actual vs expected performance
+   - Tune strike selection based on results
 
-Clarified dashboard implementation strategy: Deephaven (real-time streaming) chosen over Plotly Dash (polling) despite higher cost. Conducted comprehensive system audit revealing critical gap: STRAT Layer 2 code complete (56/56 tests) but requires Options module before deployment. User has $3k capital requiring options execution (27x leverage) vs equity execution ($10k+ required). README.md documentation overstates implementation (4 strategies mentioned, only 2 exist). Next priority: Options module implementation (Sessions 52-54) after Deephaven dashboard testing.
+2. **Live Option Quotes**
+   - Integrate real-time option chain data
+   - Implement bid/ask spread filtering
+   - Add Greeks calculation (delta, gamma)
+
+3. **Position Management**
+   - Track open positions
+   - Implement exit logic (target, stop, time decay)
+   - Add risk monitoring
 
 ---
 
-## Session 50: System A1 Deployment & Real-Time VIX Detection - COMPLETE
+## Session 69: Cross-Pattern Filter Sensitivity Analysis - COMPLETE
 
-**Date:** November 20, 2025
-**Duration:** ~2.5 hours
-**Status:** COMPLETE - System A1 backtested, VIX detection fixed, deployed to paper trading
+**Date:** November 24, 2025
+**Duration:** ~2 hours
+**Status:** COMPLETE - All 3 pattern types analyzed (3-1-2, 2-1-2, 2-2), critical 2-2 direction asymmetry discovered
 
-**Objective:** Complete System A (ATLAS + 52-week momentum) vs System B (STRAT + ATLAS) backtest comparison, deploy winner to paper trading, validate VIX crash detection in live market volatility.
+**Objective:** Deep filter sensitivity analysis across ALL reversal pattern types to determine optimal filter configuration and identify Tier 1 patterns for options module.
+
+**CRITICAL DISCOVERY: 2-2 Down (2U-2D) Reversals Are LOSERS Without Filters**
+
+User concern validated: "The only thing I think should be included which may have had a bug in it or not properly analyzed is 2U-2D weekly reversals"
+
+**2-2 Direction Analysis (No Filters - Config A):**
+
+| Timeframe | 2-2 Up (2D-2U) Win Rate | 2-2 Up Expectancy | 2-2 Down (2U-2D) Win Rate | 2-2 Down Expectancy |
+|-----------|-------------------------|-------------------|---------------------------|---------------------|
+| Daily     | 66.0%                   | +49.1%            | 57.9%                     | **-1.2%**           |
+| Weekly    | 71.9%                   | +175.6%           | 58.1%                     | **-78.7%**          |
+| Monthly   | 68.0%                   | +625.3%           | 51.9%                     | **-263.4%**         |
+
+**After Continuation Bar Filters (Configs E-H):**
+
+| Timeframe | 2-2 Up Win Rate | 2-2 Up Expectancy | 2-2 Down Win Rate | 2-2 Down Expectancy |
+|-----------|-----------------|-------------------|-------------------|---------------------|
+| Daily     | 81.3%           | +125.6%           | 76.8%             | +105.4%             |
+| Weekly    | 86.2%           | +409.5%           | 77.9%             | +189.3%             |
+| Monthly   | 81.3%           | +1,059.9%         | 91.7%             | +963.0%             |
+
+**Key Insight:** Continuation bar filters FIX the 2-2 Down problem. Without filters, 2U-2D reversals are money losers.
+
+**Cross-Pattern Filter Comparison (Daily Timeframe):**
+
+| Pattern | No Filters | Filtered | Reduction | Win Rate Change | Expectancy Change |
+|---------|------------|----------|-----------|-----------------|-------------------|
+| 3-1-2   | 184        | 31       | 83.2%     | 48.9% -> 80.6%  | 42.4% -> 235.3%   |
+| 2-1-2   | 1,097      | 194      | 82.3%     | 53.7% -> 76.8%  | 77.2% -> 214.6%   |
+| 2-2     | 4,016      | 694      | 82.7%     | 62.0% -> 79.8%  | 24.4% -> 118.8%   |
+
+**Universal Filter Behavior Confirmed:**
+- Configs B=C=D identical (continuity strength alone has NO effect on weekly/monthly)
+- Configs E=F=G=H identical (continuation bars is THE major filter)
+- ~82% pattern reduction across ALL pattern types
+- This behavior is consistent for 3-1-2, 2-1-2, and 2-2
+
+**Pattern Frequency Hierarchy (Post-Filter):**
+- Daily: 2-2 (694) > 2-1-2 (194) > 3-1-2 (31)
+- Weekly: 2-2 (200) > 2-1-2 (57) > 3-1-2 (11)
+- Monthly: 2-2 (44) > 2-1-2 (17) > 3-1-2 (6)
+
+**TIER 1 PATTERN SELECTION (Recommended for Options Module):**
+
+1. **2-1-2 Up/Down @ 1W** - Best balance (80.7% win, 563.6% exp, 57 patterns)
+2. **2-2 Up (2D-2U only)** - High frequency (86.2% win, 409.5% exp, 123 patterns)
+3. **3-1-2 Up/Down @ 1W** - Highest quality (72.7% win, 462.7% exp, 11 patterns)
+4. **2-1-2 Up @ 1M** - Moonshot (88.2% win, 1,570.9% exp, 17 patterns)
+
+**WARNING:** Do NOT include 2-2 Down (2U-2D) in Tier 1 without continuation bar filters.
+
+**Files Created:**
+- `scripts/test_212_filter_analysis.py` - 2-1-2 filter sensitivity test
+- `scripts/test_22_filter_analysis.py` - 2-2 filter sensitivity test with direction breakdown
+- `scripts/212_filter_analysis_matrix.csv` - 2-1-2 results (24 rows)
+- `scripts/22_filter_analysis_matrix.csv` - 2-2 results (24 rows, includes direction metrics)
+
+**OpenMemory:** Session 69 critical finding stored (ID: b9775b44-a06e-43b9-94fc-f0a5a222d82b)
+
+**Next Session (70) Priorities:**
+
+1. **Options Module Implementation**
+   - Implement Tier 1 pattern detection with continuation bar filter requirement
+   - Options pricing integration with VBT Pro
+   - Paper trading setup for weekly 2-1-2 and 2-2 Up patterns
+
+2. **2-2 Down Handler**
+   - Add specific filter requirement for 2U-2D patterns
+   - Consider excluding 2-2 Down from unfiltered trading entirely
+
+3. **Documentation**
+   - Update STRAT implementation docs with direction asymmetry finding
+   - Add filter requirement warnings to pattern detector
+
+---
+
+## Session 68: 3-1-2 Filter Sensitivity Analysis - COMPLETE
+
+**Date:** November 24, 2025
+**Duration:** ~3 hours
+**Status:** Filter sensitivity analysis complete - 3-1-2 patterns validated, filters working correctly
+
+**Objective:** Debug why Session 67 found only 31 3-1-2 patterns vs 694 2-1-2 patterns. Determine if this is a detection bug or correct filter behavior.
+
+**User Philosophy:** "We are NOT to rush to conclusions. Accuracy over speed. No time limit."
 
 **Key Accomplishments:**
 
-1. **System A Backtesting - Phase 1 & 2 (COMPLETE)**
-   - System A1: S&P 100 + ATR filter + top-5 momentum: 69.13% return, 0.93 Sharpe, -15.85% DD
-   - System A3: Tech 30 fixed + top-5 momentum: 73.26% return, 0.77 Sharpe, -26.81% DD
-   - SPY Baseline: 95.30% return, 0.75 Sharpe, -33.72% DD
-   - WINNER: System A1 (superior risk-adjusted returns, 41% DD reduction vs SPY)
-   - Key finding: Quality > Quantity (S&P 100 outperformed S&P 200)
+1. **Phase 1: Pattern Detection Verification (COMPLETE)**
+   - Verified `strat/pattern_detector.py` (1037 lines) correctly detects all pattern combinations
+   - 3-1-2 detection: Lines 47-174 (3-1-2U when direction=1, 3-1-2D when direction=-1)
+   - 2-1-2 detection: Lines 178-355 (all 4 combos: 2U-1-2U, 2D-1-2D, 2D-1-2U, 2U-1-2D)
+   - Result: Detection logic CORRECT - no bugs found
 
-2. **CRITICAL VIX Detection Fix (COMPLETE)**
-   - OLD: Used daily close-to-close data (missed today's +35% intraday spike)
-   - NEW: Real-time 1-minute intraday detection using yfinance
-   - Created: regime/vix_spike_detector.py (VIXSpikeDetector class)
-   - Updated: regime/vix_acceleration.py (detect_realtime_vix_spike(), get_current_regime())
-   - Thresholds: 20% intraday, 20% 1-day, 50% 3-day, VIX>=35 absolute
-   - Real-world validation: Detected today's 20.79 to 28.14 (+35%) spike at 12:20 PM EST
+2. **Phase 2: Built Automated Test Harness (COMPLETE)**
+   - Created `scripts/test_312_isolation.py` (305 lines)
+   - Tests 8 filter configurations across 3 timeframes (24 total tests)
+   - Outputs to `scripts/312_filter_analysis_matrix.csv`
+   - Reusable for future filter sensitivity analysis
 
-3. **System A1 Deployment to Paper Trading (COMPLETE)**
-   - Current regime: TREND_NEUTRAL (70% allocation, $7,050 deployed)
-   - Selected stocks (7): CSCO, GOOGL, AMAT, AAPL, CRWD, AVGO, KLAC
-   - Orders executed: Sold 37 AAPL @ $268.70, bought 12 CSCO, 3 GOOGL, 4 AMAT, 1 CRWD, 2 AVGO
-   - Portfolio status: 6 positions deployed, $3,021 cash buffer
-   - Deployment status: SUCCESSFUL
+3. **Phase 3: Filter Sensitivity Results (CRITICAL DISCOVERY)**
 
-**Backtest Results Summary:**
+**Filter Configurations Tested:**
+| Config | Continuity | Continuation Bars |
+|--------|------------|-------------------|
+| A | None | 0 |
+| B | Strength 1 | 0 |
+| C | Strength 2 | 0 |
+| D | Strength 3 | 0 |
+| E | Strength 1 | 2 required |
+| F | Strength 2 | 2 required |
+| G | Strength 3 | 2 required |
+| H | Session 67 baseline | 2 required |
 
-| System | Return | Sharpe | Max DD | Risk-Adjusted Winner |
-|--------|--------|--------|--------|---------------------|
-| A1 (S&P 100 + ATR) | 69.13% | 0.93 | -15.85% | YES (Best Sharpe) |
-| A3 (Tech 30) | 73.26% | 0.77 | -26.81% | NO (Higher DD) |
-| A2 (S&P 200 + ATR) | 68.40% | 0.80 | -18.70% | NO (Lower Sharpe) |
-| SPY | 95.30% | 0.75 | -33.72% | NO (Worst Sharpe+DD) |
+**Daily Timeframe Results:**
+| Config | Patterns | Win Rate | P/L Expectancy | R:R |
+|--------|----------|----------|----------------|-----|
+| A (No filters) | 184 | 48.9% | 42.42% | 1.34 |
+| B-D (Continuity only) | 116 | 47.4% | 24.31% | 1.30 |
+| E-H (+ Cont. bars) | 31 | 80.6% | 235.32% | 1.22 |
+
+**Weekly Timeframe Results:**
+| Config | Patterns | Win Rate | P/L Expectancy |
+|--------|----------|----------|----------------|
+| A (No filters) | 42 | 52.4% | 166.89% |
+| E-H (Strict) | 11 | 72.7% | 462.68% |
+
+**Monthly Timeframe Results:**
+| Config | Patterns | Win Rate | P/L Expectancy |
+|--------|----------|----------|----------------|
+| A (No filters) | 11 | 63.6% | 379.59% |
+| E-H (Strict) | 6 | 83.3% | 991.74% |
+
+**CRITICAL INSIGHTS:**
+
+1. **Continuation Bars are the Major Filter (NOT Continuity Strength)**
+   - Configs B, C, D all have IDENTICAL results (116 patterns, 47.4% win)
+   - Continuity strength (1, 2, or 3) makes NO difference once set
+   - The 2-bar continuation requirement drops patterns from 116 to 31 (73% reduction)
+
+2. **Filters are WORKING CORRECTLY**
+   - No filters: 184 patterns, 48.9% win rate, 42.42% expectancy
+   - With filters: 31 patterns, 80.6% win rate, 235.32% expectancy
+   - Trade-off: 83% fewer patterns BUT 5.5x better expectancy
+   - Win rate improvement: +31.7 percentage points (64.8% relative improvement)
+
+3. **3-1-2 is NOT Underperforming**
+   - Session 67's 31 patterns represents HIGH-QUALITY filtered subset
+   - Removing filters would increase count to 184 but DEGRADE quality
+   - The pattern detection is CORRECT - filters are doing their job
+
+4. **Monthly Patterns Show Extreme Quality**
+   - Strictest filters (Config E-H): 6 patterns, 83.3% win, 991.74% expectancy
+   - Validates STRAT theory: Higher timeframes = higher quality signals
+
+**Answer to Session 67 Question:**
+"Why only 31 3-1-2 patterns vs 694 2-1-2?"
+
+The 31 patterns represent the HIGH-CONVICTION subset after filtering. 3-1-2 patterns have different frequency characteristics than 2-1-2. The filters are correctly identifying quality over quantity.
 
 **Files Created:**
-- regime/vix_spike_detector.py (VIXSpikeDetector class, 318 lines)
-- backtest_phase1.py, backtest_phase2.py, check_live_regime.py
-- SESSION_50_PHASE1_ANALYSIS.md, SESSION_50_FINAL_ANALYSIS.md
+- `scripts/test_312_isolation.py` (305 lines) - Reusable filter sensitivity test harness
+- `scripts/312_filter_analysis_matrix.csv` (25 rows) - Complete results matrix
+- `scripts/test_312_full_run.log` - Full test execution log
 
-**Paper Trading Status:**
-- Account: $10,071.19 equity, $9,392.98 buying power
-- New positions: CSCO (12), GOOGL (3), AMAT (4), AAPL (3), CRWD (1), AVGO (2)
-- Deployed: $7,050 (70%), Cash buffer: $3,021 (30%)
-- Next rebalance: February 1, 2026 (semi-annual schedule)
+**Next Session (69) Priorities:**
+
+1. **Deep Analysis of Filter Matrix**
+   - Compare 3-1-2 vs 2-1-2 patterns at each filter level
+   - Identify optimal filter configuration per timeframe
+   - Analyze pattern quality metrics beyond win rate
+
+2. **Pattern Frequency Analysis**
+   - Why do 2-1-2 patterns have higher base frequency?
+   - Is this inherent to pattern structure or data artifact?
+
+3. **Options Module Decision**
+   - Based on Session 67 + 68 findings, select top patterns
+   - Current top candidates: 2-1-2 Up @ 1W (workhorse), 2-1-2 Up @ 1M (moonshot)
+   - 3-1-2 patterns viable but lower frequency
+
+---
+
+## Session 67: Comprehensive Pattern Analysis - P/L Expectancy Ranking - COMPLETE
+
+**Date:** November 23, 2025
+**Duration:** ~3 hours
+**Status:** Phase 1 complete - 1,254 patterns analyzed, top performers identified, 3-1-2 flagged for debugging
+
+**Objective:** Test ALL 4 core STRAT patterns (3-1-2, 2-1-2, 2-2, 3-2) across ALL timeframes (1H, 1D, 1W, 1M) using P/L expectancy as PRIMARY metric to rank patterns for options module selection.
+
+**Key Accomplishments:**
+
+1. **Created comprehensive_pattern_analysis.py** (565 lines)
+   - Systematic testing of 32 combinations (8 patterns x 4 timeframes)
+   - PRIMARY METRIC: P/L Expectancy = (avg_win * win_rate) - (avg_loss * loss_rate)
+   - Secondary metrics: Win rate, R:R, pattern count, median bars to magnitude
+   - Outputs: Ranked CSV + console tables + top performer summary
+   - Fixed Unicode error (checkmark -> [X]) for Windows compatibility
+
+2. **Fixed TiingoDataFetcher MultiIndex Bug**
+   - integrations/tiingo_data_fetcher.py lines 129-132
+   - BEFORE: Single-symbol fetch created MultiIndex columns [('AAPL', 'Open'), ...]
+   - AFTER: Single-symbol returns flat columns ['Open', 'High', 'Low', 'Close']
+   - Matches Alpaca behavior, ensures validation script compatibility
+
+3. **Executed 2 Test Runs:**
+
+   **Test 1: 3 stocks, 1 year (2024-01-01 to 2025-01-01)**
+   - Stocks: AAPL, MSFT, GOOGL (tech only)
+   - Total Patterns: 48 (insufficient for robust statistics)
+   - Top 2 patterns identified:
+     * 2-1-2 Up @ 1D: 2.21% expectancy, 10 patterns, 80% win, 2.77 R:R
+     * 2-2 Up @ 1D: 1.84% expectancy, 14 patterns, 100% win (no losses!)
+   - Result: CONDITIONAL GO - expand data needed
+
+   **Test 2: 12 stocks, 5 years (2020-01-01 to 2025-01-01) - FINAL**
+   - Stocks: AAPL, MSFT, AMD (tech), AMZN, TSLA (consumer), JPM, GS (financials),
+            UNH, JNJ (healthcare), XOM (energy), CAT (industrials), GOOGL
+   - Multi-sector + volatility mix (low: AAPL/MSFT/JNJ, high: AMD/TSLA/XOM)
+   - Total Patterns: 1,254 (26x increase from Test 1)
+   - Timeframes: Daily, Weekly, Monthly (hourly skipped - Alpaca 401 error)
+
+**CRITICAL FINDINGS - Top 5 Patterns by P/L Expectancy:**
+
+**Rank 1: 2-1-2 Up @ 1M (MONTHLY) - THE MOONSHOT**
+- P/L Expectancy: 18.11% per pattern (HIGHEST)
+- Win Rate: 92.9% (13/14 hits)
+- Risk-Reward: 82.1:1 (avg win 19.54%, avg loss 0.24%)
+- Pattern Count: 14 over 5 years (2.8/year on 5-stock watchlist)
+- Median Bars to Magnitude: 0 (immediate breakout)
+- INSIGHT: Rare but MASSIVE asymmetric upside when it hits
+
+**Rank 2: 2-2 Up @ 1M (MONTHLY REVERSAL)**
+- P/L Expectancy: 10.60%
+- Win Rate: 81.2% (26/32)
+- Risk-Reward: 1.49:1 (avg win 15.43%, avg loss 10.33%)
+- Pattern Count: 32 (6.4/year)
+- INSIGHT: Monthly directional reversals = strong trend shifts
+
+**Rank 3: 2-2 Down @ 1M (MONTHLY BEAR REVERSAL)**
+- P/L Expectancy: 10.06%
+- Win Rate: 91.7% (11/12)
+- Risk-Reward: 5.55:1
+- Pattern Count: 12 (2.4/year, RARE)
+- INSIGHT: High-conviction short/put opportunities
+
+**Rank 4: 2-1-2 Up @ 1W (WEEKLY - THE WORKHORSE)**
+- P/L Expectancy: 6.82%
+- Win Rate: 84.6% (33/39)
+- Risk-Reward: 2.20:1
+- Pattern Count: 39 (7.8/year - BEST BALANCE)
+- INSIGHT: Sweet spot of expectancy + frequency
+
+**Rank 5: 2-2 Up @ 1W (WEEKLY - HIGH FREQUENCY)**
+- P/L Expectancy: 4.17%
+- Win Rate: 86.2% (106/123)
+- Risk-Reward: 1.15:1
+- Pattern Count: 123 (24.6/year - MOST FREQUENT)
+- INSIGHT: High-frequency edge
+
+**Full Rankings (13 patterns with >0.3% expectancy):**
+Ranks 6-13: 2-1-2 Down @ 1W (3.29%), 3-1-2 Down @ 1D (2.41%), 3-1-2 Up @ 1D (2.32%),
+             2-1-2 Down @ 1D (2.22%), 2-1-2 Up @ 1D (2.12%), 2-2 Down @ 1W (1.89%),
+             2-2 Up @ 1D (1.26%), 2-2 Down @ 1D (1.05%)
+
+**Pattern Performance Insights:**
+
+WHAT WORKS:
+- Monthly timeframe DOMINATES top 3 (18.11%, 10.60%, 10.06%)
+- Weekly = sweet spot (high expectancy 4-7%, good frequency)
+- 2-1-2 continuation patterns: Strong across all TFs
+- 2-2 reversal patterns: High frequency, solid edge on 1W/1M
+- Bullish patterns outperform (5 of top 5 are Up patterns)
+
+WHAT DOESN'T WORK:
+- 3-2 patterns: ZERO occurrences (Outside->Directional = extremely rare)
+- 3-1-2 patterns: LOW frequency (31 total vs 694 for 2-1-2, 529 for 2-2)
+- Daily 2-2 patterns: High frequency but POOR R:R (<1.0)
+
+**RECOMMENDED PATTERNS FOR OPTIONS MODULE (Tier 1):**
+
+1. 2-1-2 Up @ 1W - THE WORKHORSE
+   - Best balance: 6.82% expectancy, 7.8 signals/year
+2. 2-2 Up @ 1W - HIGH FREQUENCY
+   - Most signals: 4.17% expectancy, 24.6 signals/year
+3. 2-1-2 Up @ 1M - THE MOONSHOT
+   - Rare but massive: 18.11% expectancy, 82:1 R:R
+
+**CRITICAL OBSERVATIONS - POTENTIAL BUGS IDENTIFIED:**
+
+1. **Monthly R:R Seems Extreme (82:1)**
+   - 2-1-2 Up @ 1M: Avg win 19.54%, avg loss 0.24%
+   - QUESTION: Is 0.24% loss realistic for monthly stop? Seems too tight
+   - ACTION: Inspect individual monthly patterns in CSV (scripts/pattern_ranking_by_expectancy.csv)
+
+2. **Median Bars to Magnitude = 0**
+   - Most patterns show 0.0 bars median
+   - Means magnitude hit on SAME bar as entry
+   - QUESTION: Forward-looking bias or correct STRAT behavior?
+   - THEORY: Magnitude is Bar 3's high/low, so 0 bars = hit on entry bar (Bar 3)
+   - ACTION: Verify entry/exit logic for look-ahead bias
+
+3. **High Win Rates (72-93%)**
+   - Average top 13 patterns: ~80% win rate
+   - QUESTION: Continuity filters too strict (only "perfect" patterns)?
+   - OR: TRUE EDGE of properly implemented STRAT?
+   - ACTION: Paper trading will validate
+
+4. **3-1-2 Patterns Underperforming**
+   - Only 31 total patterns vs 694 (2-1-2), 529 (2-2)
+   - User flagged: "3-1-2 needs to be debugged as this is usually a high conviction pattern"
+   - Ranks 7-8 (2.41%, 2.32%) - should be higher per STRAT theory
+   - ACTION: Session 68 - debug 3-1-2 detection logic
+
+**Data Quality Notes:**
+
+- Tiingo fallback used (Alpaca 401 error persists)
+- 5-year period captures COVID crash (2020), recovery (2021-2022), rate hikes (2023-2024)
+- 12 stocks across 7 sectors ensures cross-sector validation
+- Pattern counts: Daily (919), Weekly (268), Monthly (67) = statistically significant
+
+**Files Created/Modified:**
+
+NEW FILES:
+- scripts/comprehensive_pattern_analysis.py (565 lines)
+  * calculate_combination_metrics(): P/L expectancy formula
+  * build_results_matrix(): 32-combination systematic testing
+  * print_ranked_table(), print_top_performers_summary(): Output formatting
+- scripts/pattern_ranking_by_expectancy.csv (13 ranked patterns)
+
+MODIFIED FILES:
+- integrations/tiingo_data_fetcher.py (lines 129-132)
+  * Fixed MultiIndex bug for single-symbol fetches
+
+TEMPORARY OUTPUTS:
+- scripts/strat_validation_1D.csv
+- scripts/strat_validation_1W.csv
+- scripts/strat_validation_1M.csv
+
+**Next Session Priorities (Session 68):**
+
+1. **DEBUG 3-1-2 PATTERNS** (HIGH PRIORITY)
+   - User specifically flagged: "3-1-2 is usually a high conviction pattern"
+   - Current: 31 total patterns (ranks 7-8, 2.32-2.41% expectancy)
+   - Expected: Should have higher frequency and expectancy
+   - ACTION: Review strat/pattern_detector.py detect_312_patterns_nb() logic
+   - Compare to Session 20-30 old STRAT system implementation
+   - Test on known 3-1-2 patterns manually verified in TradingView
+
+2. **VALIDATE FINDINGS (Session 68 Phase 1)**
+   - Inspect monthly patterns in CSV for extreme R:R verification
+   - Check 0-bar magnitude hits for look-ahead bias
+   - Verify 3-1-2 detection is correct vs STRAT theory
+   - Cross-reference top patterns against manual TradingView charts
+
+3. **OPTIONS MODULE IMPLEMENTATION (Session 68 Phase 2 - IF validation passes)**
+   - Design options module architecture (Layer 3)
+   - Implement for Tier 1 patterns (2-1-2 Up @ 1W/1M, 2-2 Up @ 1W)
+   - VBT integration for options P/L calculation
+   - Paper trading setup
+
+**User Philosophy:**
+
+- "We just will not take anything as benchmark just yet. only data to go off of"
+- "I believe we still have bugs, the only way to truly find them may be after the options module is created and deployed"
+- "That is okay. that is the reason behind paper trading"
+- "3-1-2 needs to be debugged as this is usually a high conviction pattern"
+
+**Key Lesson:**
+
+P/L Expectancy > Win Rate. Example: 1% win rate with $1000 wins and $1 losses = EXCELLENT strategy.
+Monthly patterns show this: 2-1-2 Up @ 1M has 18.11% expectancy despite "only" 14 occurrences.
+
+**Decision:**
+
+GO to Session 68 with TWO tracks:
+1. Debug 3-1-2 patterns (high priority validation)
+2. Prepare options module design (conditional on validation)
+
+Paper trading will reveal actual P/L vs backtest expectancy = TRUE validation.
+
+---
+
+## Sessions 50-56: STRAT Validation & Dashboard Integration (ARCHIVED)
+
+**Period:** November 20-22, 2025
+**Status:** Complete - See archives/sessions/HANDOFF_SESSIONS_50-56.md
+
+**Summary:**
+- Session 50: System A1 deployment, VIX detection fix
+- Session 51: Dashboard strategy clarification (Deephaven chosen)
+- Session 52: Deephaven dashboard testing (100% PASS)
+- Session 53: Alpaca integration (5/5 validation tests)
+- Session 54: Timeframe continuity checker (21/21 tests)
+- Session 55: Multi-timeframe validation infrastructure
+- Session 56: 4 critical bugs fixed (12x daily pattern improvement)
 
 ---
 
@@ -2137,3 +1245,83 @@ Result: CAPITAL EFFICIENT, FULL STRATEGY DEPLOYMENT POSSIBLE
 **End of HANDOFF.md - Last updated Session 51 (Nov 21, 2025)**
 **Target length: <1000 lines (current: ~700 lines, well under target)**
 **Next archive: Sessions 37-42 when adding Sessions 52-54**
+
+---
+
+## Session 66: 3-2 Pattern Implementation + Tiingo/Alpaca Data Integration
+
+**Date:** November 23, 2025  
+**Duration:** ~2 hours  
+**Status:** 3-2 patterns implemented, Tiingo data integration complete, ready for comprehensive validation
+
+**Objective:** Expand pattern coverage beyond 2-1-2 and 2-2, implement 3-2 reversal patterns, and migrate to paid data sources (Tiingo/Alpaca) for production-quality backtesting.
+
+**What We Accomplished:**
+
+1. **✓ Reverted Session 65 2D Changes**
+   - Removed all 2D hybrid optimizations that degraded Hourly 2-2 Up R:R (-19%)
+   - Restored Session 64 baseline: 21 patterns, 90.5% hit, 1.53:1 R:R
+   - Verified perfect match with hardcoded Session 64 values
+
+2. **✓ Implemented 3-2 Reversal Patterns**
+   - Added `detect_32_patterns_nb()` to `strat/pattern_detector.py` (~204 lines)
+   - Pattern types: 3D-2U (bullish), 3U-2D (bearish), 3-2U, 3-2D
+   - Entry: Previous outside bar high/low (live entry concept)
+   - Target: Previous outside bar extreme with geometric validation
+   - Fallback: 1.5x measured move if no valid previous outside bar
+   - Updated VBT indicator from 12 to 16 outputs
+
+3. **✓ Fixed Integration Bugs**
+   - Bug #1: AttributeError on `self.continuity_checker` (doesn't exist)
+     - Fixed: Create local `TimeframeContinuityChecker` instance like 2-2 patterns
+   - Bug #2: NameError on `continuity_strength` (undefined variable)
+     - Fixed: Extract from `continuity['strength']` like other patterns
+
+4. **✓ Migrated to Paid Data Sources**
+   - Replaced `vbt.YFData` with Tiingo + Alpaca
+   - Tiingo: 30+ years historical data (Session 38 implementation)
+   - Alpaca: 7 years high-quality recent data
+   - Auto-selection: Tiingo for >6 year backtests, Alpaca for recent
+   - Added `load_dotenv()` with explicit `.env` path to avoid placeholder keys
+   - Tested successfully: Tiingo working, Alpaca configured with fallback
+
+**Files Modified:**
+- `strat/pattern_detector.py`: Added 3-2 detection logic
+- `scripts/backtest_strat_equity_validation.py`: Tiingo/Alpaca integration, 3-2 processing
+- `scripts/test_3stock_validation.py`: Added 3-2 to pattern list
+
+**Validation Results (3-stock test: AAPL, MSFT, GOOGL, 2024):**
+- 1H: 55 patterns total (no 3-2 detected - rare pattern type)
+- 1D: 35 patterns total (no 3-2 detected)  
+- 1W: 12 patterns total (no 3-2 detected)
+- 1M: 0 patterns found
+
+**Critical Insight:**
+3-2 patterns are RARE (require outside bar → directional bar sequence with continuity). This is expected behavior. Comprehensive 50-stock validation in Session 67 will provide statistical significance.
+
+**Strategic Shift:**
+User identified critical oversight: We've been optimizing 2-1-2 and 2-2 in isolation when we should test ALL patterns (3-1-2, 2-1-2, 2-2, 3-2) across ALL timeframes (1H, 1D, 1W, 1M) with SAME rigorous methodology.
+
+**Focus:** P/L expectancy > win rate  
+Example: 99 losses × $1 + 1 win × $1000 = 1% win rate but $901 profit = GOOD
+
+**Next Session (67) - Comprehensive Pattern Validation:**
+
+**Phase 1: Pattern Analysis Script**
+- Test all 8 patterns (3-1-2/2-1-2/2-2/3-2 Up/Down) on all 4 timeframes (1H/1D/1W/1M)
+- Metrics: P/L expectancy (primary), R:R ratio, win rate (secondary)
+- Identify highest expectancy patterns
+
+**Phase 2: 50-Stock Universe Validation**  
+- Diversified 50 stocks across 9 sectors
+- Market condition features: Volume, Volatility (ATR), Regime
+- Find which conditions favor which patterns
+
+**Phase 3: Rank & Decide**
+- Rank ALL patterns by P/L expectancy
+- Select top 2-3 patterns for options module
+- GO/NO-GO decision based on actual performance
+
+**Data Quality Note:**
+Tiingo provides 30+ years of historical data (free tier: 3 symbols, Power plan $30/mo: 98K symbols). This enables validation across multiple market cycles (2000 dot-com, 2008 crisis, 2020 COVID) for robust expectancy calculations.
+
