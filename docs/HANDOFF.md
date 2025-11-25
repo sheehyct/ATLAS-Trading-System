@@ -1,42 +1,68 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 25, 2025 (Session 74 - Claude Code Web Analysis + Railway Fix)
+**Last Updated:** November 25, 2025 (Session 75 - Merge + Bug Fixes + Dashboard Prep)
 **Current Branch:** `main`
-**Pending Merge:** `claude/verify-repository-01A9Cm8YvZBytpMcojWQeo8u`
-**Phase:** Bug Scan Complete, UI/Alert Designed, Strategy Skeletons Created
-**Status:** Ready for Desktop review and merge
+**Phase:** Options Module Bug Fixes Complete, Railway Ready
+**Status:** All tests passing (59 options tests), ready for paper trading deployment
 
 **ARCHIVED SESSIONS:** Sessions 1-55 archived to `archives/sessions/HANDOFF_SESSIONS_01-55.md`
 
 ---
 
-## 🔀 MERGE INSTRUCTIONS FOR CLAUDE CODE DESKTOP
+## Session 75: Merge Review + Bug Fixes + Dashboard Deployment - COMPLETE
 
-**Branch to Merge:** `claude/verify-repository-01A9Cm8YvZBytpMcojWQeo8u`
+**Date:** November 25, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Session 74 merged, bugs fixed, Railway deployment ready
 
-**Commits to Review:**
-1. `2eda50f` - docs: add Session 74 analysis - bug scan, UI/Alert design, strategy skeletons
-2. `9281578` - fix: Railway deployment Python version + Deephaven join error
+### Accomplishments
 
-**Merge Command:**
-```bash
-git fetch origin claude/verify-repository-01A9Cm8YvZBytpMcojWQeo8u
-git checkout main
-git merge origin/claude/verify-repository-01A9Cm8YvZBytpMcojWQeo8u --no-ff -m "Merge Session 74: Bug scan, UI/Alert design, strategy skeletons, Railway fix"
-git push origin main
+**1. Merged Session 74 Branch**
+- Reviewed all changes from Claude Code for Web
+- Verified strategy skeletons import correctly
+- Confirmed no emoji violations
+- Clean fast-forward merge to main
+
+**2. Fixed Railway Deployment Issues**
+- `config/settings.py`: Handle missing .env gracefully for cloud deployments
+- `config/settings.py`: Made credential validation non-blocking (warn only)
+- `dashboard/config.py`: Use PORT env var for Railway dynamic port binding
+- `dashboard/config.py`: Default debug=False for production safety
+- `dashboard/config.py`: Graceful fallback when Alpaca credentials missing
+
+**3. Fixed HIGH Priority Options Module Bugs**
+- Added `_convert_to_naive_et()` helper for proper UTC->ET timezone conversion
+- Fixed DTE calculations that stripped timezone without conversion (lines 266-273, 927-934)
+- Added minimum expected_move threshold to handle entry==target edge case (line 553-557)
+- All 59 options tests passing
+
+**4. Dashboard Status**
+- **Railway (Plotly Dash)**: Ready for deployment, push to main will trigger rebuild
+- **Deephaven**: Running on port 10000, but needs full codebase mount for portfolio_tracker.py
+
+### Files Modified This Session
+
+| File | Changes |
+|------|---------|
+| `config/settings.py` | Cloud deployment compatibility, graceful validation |
+| `dashboard/config.py` | Railway PORT env var, debug=False default |
+| `strat/options_module.py` | Timezone fix, entry==target guard, +58/-20 lines |
+
+### Git Commits
+
+```
+fc3411c - Merge Session 74: strategy skeletons, bug documentation, dashboard fixes
+d0e97df - fix: Railway deployment compatibility for dashboard
+c4d0de4 - fix: correct timezone handling and edge case in options module
 ```
 
-**Files Added (6):**
-- `docs/SYSTEM_ARCHITECTURE/UI_ALERT_SYSTEM_SPECIFICATION.md` - Complete UI/Alert architecture
-- `docs/IMPLEMENTATION_PLAN_SESSION_74.md` - Prioritized implementation roadmap
-- `strategies/quality_momentum.py` - Quality-Momentum strategy skeleton
-- `strategies/semi_vol_momentum.py` - Semi-Volatility Momentum skeleton
-- `strategies/ibs_mean_reversion.py` - IBS Mean Reversion skeleton
+### Next Session Priority
 
-**Files Modified (3):**
-- `strategies/__init__.py` - Added exports for new strategies
-- `.python-version` - Changed `3.12.11` → `3.12` (Railway fix)
-- `dashboards/deephaven/portfolio_tracker.py` - Fixed Volume join error (line 249)
+With bugs fixed and Railway ready, focus on:
+1. **Deploy to Railway** - Set env vars (TIINGO_API_KEY, ALPACA_MID_KEY, ALPACA_MID_SECRET)
+2. **Run paper trading scans** - Monitor for Tier 1 patterns weekly
+3. **Position management** - Add tracking database for open positions
+4. **Deephaven full mount** - Update docker-compose to mount full codebase
 
 ---
 
