@@ -1,11 +1,89 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 25, 2025 (Session 75 - Visual Verification + Railway Fix)
+**Last Updated:** November 25, 2025 (Session 76 - 2-2 Target Fix + 3-2-2 Pattern)
 **Current Branch:** `main`
-**Phase:** Visual Trade Verification Ready, Railway Deployment Fixed
-**Status:** All tests passing (59 options tests), verification script created
+**Phase:** Visual Trade Verification Complete, Pattern Detection Corrected
+**Status:** 39 trade examples generated, 2-2 and 3-2-2 patterns fixed
 
 **ARCHIVED SESSIONS:** Sessions 1-66 archived to `archives/sessions/HANDOFF_SESSIONS_01-66.md`
+
+---
+
+## Session 76: 2-2 Target Fix + 3-2-2 Pattern Implementation - COMPLETE
+
+**Date:** November 25, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Major bug fixes, new pattern type added
+
+### Critical Bug Discovery
+
+User discovered targets were pointing BACKWARD to historical bars instead of forward.
+
+**Example Bug (Trade 19 - 2-2 Bull on 11-24-2025):**
+- Target was $665.12 = HIGH of the 11-18 candle (6 bars BEHIND entry)
+- Old code used `find_previous_directional_bar_nb()` which searched unbounded backward
+
+### Fixes Implemented
+
+**1. 2-2 Reversal Target Fix**
+
+Per STRAT methodology, 2-2 reversal target = bar[i-2] extreme (bar PREVIOUS to the 2-bar reversal pattern).
+
+- **2D-2U Bullish:** Target = high[i-2]
+- **2U-2D Bearish:** Target = low[i-2]
+
+Changed from unbounded backward search to simple `high[i-2]` / `low[i-2]`.
+
+**2. 3-2-2 Pattern Implementation (NEW)**
+
+User identified that Nov 24 trade was actually a 3-2-2 pattern, not 2-2:
+- Bar i-2: Type 3 (Outside bar)
+- Bar i-1: Type 2D (directional)
+- Bar i: Type 2U (reversal)
+
+Added new `detect_322_patterns_nb()` function with:
+- 3-2D-2U Bullish: Target = outside bar high
+- 3-2U-2D Bearish: Target = outside bar low
+
+**3. Pattern Exclusion Logic**
+
+Updated 2-2 detector to skip when bar[i-2] is outside bar (prevents double-counting with 3-2-2).
+
+### Verification Results
+
+**Nov 24 (3-2-2 Bullish):**
+- Entry: $664.55
+- Stop: $650.85
+- Target: $675.56 (outside bar high - CORRECT)
+- Previously mislabeled as 2-2 with wrong target
+
+**Nov 19 (2-2 Bullish):**
+- Entry: $665.12
+- Stop: $655.86
+- Target: $673.71 (high of bar previous to reversal - CORRECT)
+- Bar sequence: 2D -> 2D -> 2D -> 2U (true 2-2 reversal)
+
+**Pattern Count Changes:**
+- 2-2 Daily: 58 -> 51 (7 reclassified as 3-2-2)
+- Total trade examples: 31 -> 39 (includes new 3-2-2 patterns)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/pattern_detector.py` | Fixed 2-2 target (high[i-2]), added detect_322_patterns_nb(), VBT indicator 16->20 outputs |
+| `scripts/visual_trade_verification.py` | Added 3-2-2 pattern support, CLI argument |
+| `~/.claude/skills/strat-methodology/PATTERNS.md` | Updated 2-2 reversal docs, added 3-2-2 pattern |
+
+### Key Insight from User
+
+"The target is the bar PREVIOUS to the reversal (the bar previous to the traded 2-2 pattern)" - This is bar[i-2], not an unbounded backward search.
+
+### Next Session (77) Priorities
+
+1. **User Review:** Verify all 39 trades on TradingView charts
+2. **If No Errors Found:** Continue to options module deployment
+3. **Options Data:** Determine if historical options data purchase required
 
 ---
 

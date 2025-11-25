@@ -486,6 +486,7 @@ def detect_22_patterns_nb(classifications, high, low):
     Detect 2-2 reversal patterns (2D-2U, 2U-2D).
 
     Pattern Structure:
+        - Bar at i-2: Any bar (establishes magnitude target)
         - Bar at i-1: First directional bar (classification = 2 or -2)
         - Bar at i: Opposite directional bar (classification = -2 or 2) - TRIGGER
         - NO inside bar - rapid momentum reversal
@@ -493,11 +494,13 @@ def detect_22_patterns_nb(classifications, high, low):
     2D-2U: Bearish → Bullish reversal (failed breakdown)
     2U-2D: Bullish → Bearish reversal (failed breakout)
 
-    CORRECTED Magnitude Calculation (Session 59):
-        - Uses PREVIOUS directional bar NOT in reversal sequence
-        - For 2D-2U: Target = high of previous 2D (resistance to break)
-        - For 2U-2D: Target = low of previous 2U (support to break)
-        - Fallback: If no previous bar found, use bar i-1 level directly
+    CORRECTED Magnitude Calculation (Session 76):
+        Target = Extreme of bar[i-2] (the bar PREVIOUS to the 2-bar reversal)
+        - For 2D-2U bullish: Target = high[i-2]
+        - For 2U-2D bearish: Target = low[i-2]
+
+        This is per STRAT methodology - the target is the structural level
+        established by the bar immediately before the reversal pattern.
 
     Parameters:
     -----------
@@ -518,23 +521,24 @@ def detect_22_patterns_nb(classifications, high, low):
 
     Examples:
     ---------
-    2D-2U Bullish Reversal (Compound):
-        Bar 0 (idx=0): 2D (H=105, L=95, classification=-2)
-        Bar 1 (idx=1): 2D (H=100, L=90, classification=-2)
-        Bar 2 (idx=2): 2U (H=107, L=96, classification=2) - TRIGGER
+    2D-2U Bullish Reversal (SPY Daily 2025-11-19):
+        Bar i-2 (Nov 14): 2D (H=$673.71) ← TARGET
+        Bar i-1 (Nov 18): 2D (H=$665.12, L=$655.86)
+        Bar i (Nov 19):   2U - TRIGGER
 
-        Entry: 107 (2U bar high)
-        Stop: 90 (2D bar i-1 low)
-        Target: 105 (high of bar 0, previous 2D NOT in reversal)
+        Entry: $665.12 (2D bar high)
+        Stop: $655.86 (2D bar low)
+        Target: $673.71 (high of bar i-2, previous to reversal)
         Direction: 1 (bullish)
 
-    2U-2D Bearish Reversal (Simple):
-        Bar 0 (idx=0): 2U (H=110, L=100, classification=2)
-        Bar 1 (idx=1): 2D (H=105, L=95, classification=-2) - TRIGGER
+    2U-2D Bearish Reversal:
+        Bar i-2: 2U (L=$100)
+        Bar i-1: 2U (H=$110, L=$105)
+        Bar i:   2D - TRIGGER
 
-        Entry: 95 (2D bar low)
-        Stop: 110 (2U bar high)
-        Target: 100 (low of bar 0, previous 2U)
+        Entry: $105 (2U bar low)
+        Stop: $110 (2U bar high)
+        Target: $100 (low of bar i-2, previous to reversal)
         Direction: -1 (bearish)
     """
     # Handle both 1D and 2D arrays from VBT
@@ -546,41 +550,37 @@ def detect_22_patterns_nb(classifications, high, low):
         targets = np.full(n, np.nan, dtype=np.float64)
         directions = np.zeros(n, dtype=np.int8)
 
-        # Pattern requires 2 bars minimum
-        for i in range(1, n):
+        # Pattern requires 3 bars minimum (i-2, i-1, i)
+        for i in range(2, n):
+            bar_prev = classifications[i-2]   # Bar before reversal (check for outside bar)
             bar1_class = classifications[i-1]  # First directional bar
             bar2_class = classifications[i]    # Opposite directional bar (trigger)
+
+            # Skip if this is a 3-2-2 pattern (outside bar at i-2)
+            # 3-2-2 patterns are detected separately by detect_322_patterns_nb
+            if abs(bar_prev) == 3:
+                continue
 
             # 2D-2U: Bearish to Bullish reversal (failed breakdown)
             if bar1_class == -2 and bar2_class == 2:
                 entries[i] = True
                 directions[i] = 1  # Bullish
 
-                # CORRECTED Entry/Stop/Magnitude (Session 59):
-                # CRITICAL: Entry is LIVE when bar i breaks ABOVE bar i-1 HIGH
-                # All bars open as "1" (inside bar, open = previous close)
-                # Entry happens when price breaks out of previous bar's range
+                # SESSION 76 CORRECTED Entry/Stop/Target:
                 # Entry Price = high[i-1] (2D bar high, the level that broke to create 2U)
                 # Stop Price = low[i-1] (2D bar low)
+                # Target = high[i-2] (bar PREVIOUS to the 2-bar reversal pattern)
                 entry_price = high[i-1]  # 2D bar high
                 stops[i] = low[i-1]      # 2D bar low
 
-                # CORRECTED: Find previous 2D bar for magnitude target
-                prev_2d_idx = find_previous_directional_bar_nb(classifications, i, -2.0)
+                # Target = high of bar[i-2] (bar previous to reversal)
+                proposed_target = high[i-2]
 
-                if prev_2d_idx >= 0:
-                    # Propose high of previous 2D bar (resistance/pivot level)
-                    proposed_target = high[prev_2d_idx]
-
-                    # SESSION 62 FIX: Validate geometry (target must be ABOVE entry for bullish)
-                    if validate_target_geometry_nb(entry_price, stops[i], proposed_target, 1):
-                        # Geometry valid - use STRAT methodology
-                        targets[i] = proposed_target
-                    else:
-                        # Geometry invalid - use measured move fallback
-                        targets[i] = calculate_measured_move_nb(entry_price, stops[i], 1, 1.5)
+                # Validate geometry (target must be ABOVE entry for bullish)
+                if validate_target_geometry_nb(entry_price, stops[i], proposed_target, 1):
+                    targets[i] = proposed_target
                 else:
-                    # Fallback: No previous 2D found, use measured move
+                    # Geometry invalid - use measured move fallback
                     targets[i] = calculate_measured_move_nb(entry_price, stops[i], 1, 1.5)
 
             # 2U-2D: Bullish to Bearish reversal (failed breakout)
@@ -588,31 +588,21 @@ def detect_22_patterns_nb(classifications, high, low):
                 entries[i] = True
                 directions[i] = -1  # Bearish
 
-                # CORRECTED Entry/Stop/Magnitude (Session 59):
-                # CRITICAL: Entry is LIVE when bar i breaks BELOW bar i-1 LOW
-                # All bars open as "1" (inside bar, open = previous close)
-                # Entry happens when price breaks out of previous bar's range
+                # SESSION 76 CORRECTED Entry/Stop/Target:
                 # Entry Price = low[i-1] (2U bar low, the level that broke to create 2D)
                 # Stop Price = high[i-1] (2U bar high)
+                # Target = low[i-2] (bar PREVIOUS to the 2-bar reversal pattern)
                 entry_price = low[i-1]   # 2U bar low
                 stops[i] = high[i-1]     # 2U bar high
 
-                # CORRECTED: Find previous 2U bar for magnitude target
-                prev_2u_idx = find_previous_directional_bar_nb(classifications, i, 2.0)
+                # Target = low of bar[i-2] (bar previous to reversal)
+                proposed_target = low[i-2]
 
-                if prev_2u_idx >= 0:
-                    # Propose low of previous 2U bar (support/pivot level)
-                    proposed_target = low[prev_2u_idx]
-
-                    # SESSION 62 FIX: Validate geometry (target must be BELOW entry for bearish)
-                    if validate_target_geometry_nb(entry_price, stops[i], proposed_target, -1):
-                        # Geometry valid - use STRAT methodology
-                        targets[i] = proposed_target
-                    else:
-                        # Geometry invalid - use measured move fallback
-                        targets[i] = calculate_measured_move_nb(entry_price, stops[i], -1, 1.5)
+                # Validate geometry (target must be BELOW entry for bearish)
+                if validate_target_geometry_nb(entry_price, stops[i], proposed_target, -1):
+                    targets[i] = proposed_target
                 else:
-                    # Fallback: No previous 2U found, use measured move
+                    # Geometry invalid - use measured move fallback
                     targets[i] = calculate_measured_move_nb(entry_price, stops[i], -1, 1.5)
 
     else:  # 2D array
@@ -623,42 +613,37 @@ def detect_22_patterns_nb(classifications, high, low):
         targets = np.full((n, 1), np.nan, dtype=np.float64)
         directions = np.zeros((n, 1), dtype=np.int8)
 
-        # Pattern requires 2 bars minimum
-        for i in range(1, n):
+        # Pattern requires 3 bars minimum (i-2, i-1, i)
+        for i in range(2, n):
+            bar_prev = classifications[i-2, 0]   # Bar before reversal (check for outside bar)
             bar1_class = classifications[i-1, 0]  # First directional bar
             bar2_class = classifications[i, 0]    # Opposite directional bar (trigger)
+
+            # Skip if this is a 3-2-2 pattern (outside bar at i-2)
+            # 3-2-2 patterns are detected separately by detect_322_patterns_nb
+            if abs(bar_prev) == 3:
+                continue
 
             # 2D-2U: Bearish to Bullish reversal
             if bar1_class == -2 and bar2_class == 2:
                 entries[i, 0] = True
                 directions[i, 0] = 1  # Bullish
 
-                # CORRECTED Entry/Stop/Magnitude (Session 59):
-                # CRITICAL: Entry is LIVE when bar i breaks ABOVE bar i-1 HIGH
-                # All bars open as "1" (inside bar, open = previous close)
-                # Entry happens when price breaks out of previous bar's range
-                # Entry Price = high[i-1] (2D bar high, the level that broke to create 2U)
+                # SESSION 76 CORRECTED Entry/Stop/Target:
+                # Entry Price = high[i-1] (2D bar high)
                 # Stop Price = low[i-1] (2D bar low)
+                # Target = high[i-2] (bar PREVIOUS to the 2-bar reversal pattern)
                 entry_price = high[i-1, 0]  # 2D bar high
                 stops[i, 0] = low[i-1, 0]   # 2D bar low
 
-                # CORRECTED: Find previous 2D bar for magnitude target
-                # Extract 1D column for lookback function
-                prev_2d_idx = find_previous_directional_bar_nb(classifications[:, 0], i, -2.0)
+                # Target = high of bar[i-2] (bar previous to reversal)
+                proposed_target = high[i-2, 0]
 
-                if prev_2d_idx >= 0:
-                    # Propose high of previous 2D bar (resistance/pivot level)
-                    proposed_target = high[prev_2d_idx, 0]
-
-                    # SESSION 62 FIX: Validate geometry (target must be ABOVE entry for bullish)
-                    if validate_target_geometry_nb(entry_price, stops[i, 0], proposed_target, 1):
-                        # Geometry valid - use STRAT methodology
-                        targets[i, 0] = proposed_target
-                    else:
-                        # Geometry invalid - use measured move fallback
-                        targets[i, 0] = calculate_measured_move_nb(entry_price, stops[i, 0], 1, 1.5)
+                # Validate geometry (target must be ABOVE entry for bullish)
+                if validate_target_geometry_nb(entry_price, stops[i, 0], proposed_target, 1):
+                    targets[i, 0] = proposed_target
                 else:
-                    # Fallback: No previous 2D found, use measured move
+                    # Geometry invalid - use measured move fallback
                     targets[i, 0] = calculate_measured_move_nb(entry_price, stops[i, 0], 1, 1.5)
 
             # 2U-2D: Bullish to Bearish reversal
@@ -666,32 +651,21 @@ def detect_22_patterns_nb(classifications, high, low):
                 entries[i, 0] = True
                 directions[i, 0] = -1  # Bearish
 
-                # CORRECTED Entry/Stop/Magnitude (Session 59):
-                # CRITICAL: Entry is LIVE when bar i breaks BELOW bar i-1 LOW
-                # All bars open as "1" (inside bar, open = previous close)
-                # Entry happens when price breaks out of previous bar's range
-                # Entry Price = low[i-1] (2U bar low, the level that broke to create 2D)
+                # SESSION 76 CORRECTED Entry/Stop/Target:
+                # Entry Price = low[i-1] (2U bar low)
                 # Stop Price = high[i-1] (2U bar high)
+                # Target = low[i-2] (bar PREVIOUS to the 2-bar reversal pattern)
                 entry_price = low[i-1, 0]   # 2U bar low
                 stops[i, 0] = high[i-1, 0]  # 2U bar high
 
-                # CORRECTED: Find previous 2U bar for magnitude target
-                # Extract 1D column for lookback function
-                prev_2u_idx = find_previous_directional_bar_nb(classifications[:, 0], i, 2.0)
+                # Target = low of bar[i-2] (bar previous to reversal)
+                proposed_target = low[i-2, 0]
 
-                if prev_2u_idx >= 0:
-                    # Propose low of previous 2U bar (support/pivot level)
-                    proposed_target = low[prev_2u_idx, 0]
-
-                    # SESSION 62 FIX: Validate geometry (target must be BELOW entry for bearish)
-                    if validate_target_geometry_nb(entry_price, stops[i, 0], proposed_target, -1):
-                        # Geometry valid - use STRAT methodology
-                        targets[i, 0] = proposed_target
-                    else:
-                        # Geometry invalid - use measured move fallback
-                        targets[i, 0] = calculate_measured_move_nb(entry_price, stops[i, 0], -1, 1.5)
+                # Validate geometry (target must be BELOW entry for bearish)
+                if validate_target_geometry_nb(entry_price, stops[i, 0], proposed_target, -1):
+                    targets[i, 0] = proposed_target
                 else:
-                    # Fallback: No previous 2U found, use measured move
+                    # Geometry invalid - use measured move fallback
                     targets[i, 0] = calculate_measured_move_nb(entry_price, stops[i, 0], -1, 1.5)
 
     return (entries, stops, targets, directions)
@@ -904,9 +878,140 @@ def detect_32_patterns_nb(classifications, high, low):
 
 
 @njit
+def detect_322_patterns_nb(classifications, high, low):
+    """
+    Detect 3-2-2 reversal patterns (3-2D-2U, 3-2U-2D).
+
+    Pattern Structure (Session 76):
+        - Bar at i-2: Outside bar (classification = 3 or abs = 3)
+        - Bar at i-1: First directional bar (failed breakdown/breakout from outside bar)
+        - Bar at i: Opposite directional bar - TRIGGER (reversal confirmed)
+
+    3-2D-2U: Outside bar → 2D (failed breakdown) → 2U (bullish reversal)
+    3-2U-2D: Outside bar → 2U (failed breakout) → 2D (bearish reversal)
+
+    Target Calculation:
+        Target = Outside bar extreme (bar i-2)
+        - For 3-2D-2U bullish: Target = high[i-2] (outside bar high)
+        - For 3-2U-2D bearish: Target = low[i-2] (outside bar low)
+
+    Parameters:
+    -----------
+    classifications : np.ndarray
+        Bar classifications from bar_classifier.py (1D or 2D array)
+    high : np.ndarray
+        Array of bar high prices
+    low : np.ndarray
+        Array of bar low prices
+
+    Returns:
+    --------
+    tuple of 4 np.ndarray:
+        entries : Boolean array (True at trigger bar index)
+        stops : Stop loss prices (np.nan where no pattern)
+        targets : Target prices (np.nan where no pattern)
+        directions : 1 for bullish, -1 for bearish, 0 for no pattern
+
+    Examples:
+    ---------
+    3-2D-2U Bullish Reversal (SPY Daily 2025-11-24):
+        Bar i-2 (Nov 20): Type 3 (Outside), H=$675.56 ← TARGET
+        Bar i-1 (Nov 21): Type 2D, H=$664.55, L=$650.85
+        Bar i (Nov 24):   Type 2U - TRIGGER
+
+        Entry: $664.55 (2D bar high)
+        Stop: $650.85 (2D bar low)
+        Target: $675.56 (outside bar high)
+        Direction: 1 (bullish)
+
+    3-2U-2D Bearish Reversal:
+        Bar i-2: Type 3 (Outside), L=$95
+        Bar i-1: Type 2U (failed breakout), H=$105, L=$100
+        Bar i:   Type 2D - TRIGGER
+
+        Entry: $100 (2U bar low)
+        Stop: $105 (2U bar high)
+        Target: $95 (outside bar low)
+        Direction: -1 (bearish)
+    """
+    # Handle both 1D and 2D arrays from VBT
+    if classifications.ndim == 1:
+        n = len(classifications)
+        # Initialize output arrays as 1D
+        entries = np.zeros(n, dtype=np.bool_)
+        stops = np.full(n, np.nan, dtype=np.float64)
+        targets = np.full(n, np.nan, dtype=np.float64)
+        directions = np.zeros(n, dtype=np.int8)
+
+        # Pattern requires 3 bars minimum (i-2, i-1, i)
+        for i in range(2, n):
+            bar_outside = classifications[i-2]  # Outside bar
+            bar1_class = classifications[i-1]   # First directional bar
+            bar2_class = classifications[i]     # Opposite directional bar (trigger)
+
+            # 3-2D-2U: Outside bar → 2D → 2U (Bullish reversal)
+            if abs(bar_outside) == 3 and bar1_class == -2 and bar2_class == 2:
+                entries[i] = True
+                directions[i] = 1  # Bullish
+
+                # Entry Price = high[i-1] (2D bar high)
+                # Stop Price = low[i-1] (2D bar low)
+                # Target = high[i-2] (outside bar high)
+                entry_price = high[i-1]  # 2D bar high
+                stops[i] = low[i-1]      # 2D bar low
+                targets[i] = high[i-2]   # Outside bar high (magnitude)
+
+            # 3-2U-2D: Outside bar → 2U → 2D (Bearish reversal)
+            elif abs(bar_outside) == 3 and bar1_class == 2 and bar2_class == -2:
+                entries[i] = True
+                directions[i] = -1  # Bearish
+
+                # Entry Price = low[i-1] (2U bar low)
+                # Stop Price = high[i-1] (2U bar high)
+                # Target = low[i-2] (outside bar low)
+                entry_price = low[i-1]   # 2U bar low
+                stops[i] = high[i-1]     # 2U bar high
+                targets[i] = low[i-2]    # Outside bar low (magnitude)
+
+    else:  # 2D array
+        n = classifications.shape[0]
+        # Initialize output arrays as 2D (n, 1)
+        entries = np.zeros((n, 1), dtype=np.bool_)
+        stops = np.full((n, 1), np.nan, dtype=np.float64)
+        targets = np.full((n, 1), np.nan, dtype=np.float64)
+        directions = np.zeros((n, 1), dtype=np.int8)
+
+        # Pattern requires 3 bars minimum (i-2, i-1, i)
+        for i in range(2, n):
+            bar_outside = classifications[i-2, 0]  # Outside bar
+            bar1_class = classifications[i-1, 0]   # First directional bar
+            bar2_class = classifications[i, 0]     # Opposite directional bar (trigger)
+
+            # 3-2D-2U: Outside bar → 2D → 2U (Bullish reversal)
+            if abs(bar_outside) == 3 and bar1_class == -2 and bar2_class == 2:
+                entries[i, 0] = True
+                directions[i, 0] = 1  # Bullish
+
+                entry_price = high[i-1, 0]  # 2D bar high
+                stops[i, 0] = low[i-1, 0]   # 2D bar low
+                targets[i, 0] = high[i-2, 0]  # Outside bar high
+
+            # 3-2U-2D: Outside bar → 2U → 2D (Bearish reversal)
+            elif abs(bar_outside) == 3 and bar1_class == 2 and bar2_class == -2:
+                entries[i, 0] = True
+                directions[i, 0] = -1  # Bearish
+
+                entry_price = low[i-1, 0]   # 2U bar low
+                stops[i, 0] = high[i-1, 0]  # 2U bar high
+                targets[i, 0] = low[i-2, 0]  # Outside bar low
+
+    return (entries, stops, targets, directions)
+
+
+@njit
 def detect_all_patterns_nb(classifications, high, low):
     """
-    Detect all pattern types (3-1-2, 2-1-2, 2-2, and 3-2) in a single pass.
+    Detect all pattern types (3-1-2, 2-1-2, 2-2, 3-2, and 3-2-2) in a single pass.
 
     Combines all pattern detectors for efficiency and returns all outputs.
 
@@ -921,7 +1026,7 @@ def detect_all_patterns_nb(classifications, high, low):
 
     Returns:
     --------
-    tuple of 16 np.ndarray:
+    tuple of 20 np.ndarray:
         entries_312 : Boolean array for 3-1-2 patterns
         stops_312 : Stop prices for 3-1-2 patterns
         targets_312 : Target prices for 3-1-2 patterns
@@ -938,6 +1043,10 @@ def detect_all_patterns_nb(classifications, high, low):
         stops_32 : Stop prices for 3-2 patterns
         targets_32 : Target prices for 3-2 patterns
         directions_32 : Directions for 3-2 patterns
+        entries_322 : Boolean array for 3-2-2 patterns
+        stops_322 : Stop prices for 3-2-2 patterns
+        targets_322 : Target prices for 3-2-2 patterns
+        directions_322 : Directions for 3-2-2 patterns
     """
     # Detect 3-1-2 patterns
     entries_312, stops_312, targets_312, directions_312 = detect_312_patterns_nb(
@@ -959,16 +1068,22 @@ def detect_all_patterns_nb(classifications, high, low):
         classifications, high, low
     )
 
-    # Return all 16 outputs as tuple (order MUST match output_names)
+    # Detect 3-2-2 patterns (Session 76)
+    entries_322, stops_322, targets_322, directions_322 = detect_322_patterns_nb(
+        classifications, high, low
+    )
+
+    # Return all 20 outputs as tuple (order MUST match output_names)
     return (
         entries_312, stops_312, targets_312, directions_312,
         entries_212, stops_212, targets_212, directions_212,
         entries_22, stops_22, targets_22, directions_22,
-        entries_32, stops_32, targets_32, directions_32
+        entries_32, stops_32, targets_32, directions_32,
+        entries_322, stops_322, targets_322, directions_322
     )
 
 
-# Create VBT custom indicator with 16 outputs (Session 66: Added 3-2 patterns)
+# Create VBT custom indicator with 20 outputs (Session 76: Added 3-2-2 patterns)
 StratPatternDetector = vbt.IF(
     class_name='StratPatternDetector',
     input_names=['classifications', 'high', 'low'],
@@ -976,7 +1091,8 @@ StratPatternDetector = vbt.IF(
         'entries_312', 'stops_312', 'targets_312', 'directions_312',
         'entries_212', 'stops_212', 'targets_212', 'directions_212',
         'entries_22', 'stops_22', 'targets_22', 'directions_22',
-        'entries_32', 'stops_32', 'targets_32', 'directions_32'
+        'entries_32', 'stops_32', 'targets_32', 'directions_32',
+        'entries_322', 'stops_322', 'targets_322', 'directions_322'
     ]
 ).with_apply_func(detect_all_patterns_nb)
 

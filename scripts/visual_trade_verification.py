@@ -138,6 +138,7 @@ def detect_patterns_for_verification(
         detect_212_patterns_nb,
         detect_22_patterns_nb,
         detect_32_patterns_nb,
+        detect_322_patterns_nb,
     )
 
     # Normalize columns
@@ -168,6 +169,10 @@ def detect_patterns_for_verification(
         )
     elif pattern_type == '3-2':
         entries, stops, targets, directions = detect_32_patterns_nb(
+            classifications, df['high'].values, df['low'].values
+        )
+    elif pattern_type == '3-2-2':
+        entries, stops, targets, directions = detect_322_patterns_nb(
             classifications, df['high'].values, df['low'].values
         )
     else:
@@ -319,7 +324,7 @@ def run_full_verification():
     }
 
     # Pattern types to verify
-    pattern_types = ['3-1-2', '2-1-2', '2-2', '3-2']
+    pattern_types = ['3-1-2', '2-1-2', '2-2', '3-2', '3-2-2']
 
     # Timeframes to test
     timeframes = ['1H', '1D', '1W', '1M']
@@ -441,7 +446,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--pattern', '-p',
         type=str,
-        choices=['3-1-2', '2-1-2', '2-2', '3-2', 'all'],
+        choices=['3-1-2', '2-1-2', '2-2', '3-2', '3-2-2', 'all'],
         default='all',
         help='Pattern type to verify (default: all)'
     )
