@@ -9,32 +9,13 @@ Provides wrapper around alpaca-py SDK with:
 - Rate limit handling (200 req/min for paper trading)
 - Connection validation and health checks
 
-Account Configuration:
+Account Configuration (via centralized config.settings):
 - LARGE: $10,000 paper trading account (primary deployment)
+- MID: $5,000 paper trading account
 - SMALL: $3,000 paper trading account (future options deployment)
 
-Environment Variables Required:
-- APCA_API_KEY_ID: Alpaca API key (paper or live)
-- APCA_API_SECRET_KEY: Alpaca secret key
-- APCA_API_BASE_URL: Paper trading URL (default: https://paper-api.alpaca.markets)
-
-CRITICAL TODO (Before Session 44-45 - Account 2 Deployment):
-    User has THREE separate Alpaca accounts. Current implementation only supports
-    ONE set of credentials. MUST enhance to support multiple account credentials:
-
-    Required .env structure:
-        APCA_API_KEY_ID_ACCOUNT1=...      # LARGE account
-        APCA_API_SECRET_KEY_ACCOUNT1=...
-        APCA_API_KEY_ID_ACCOUNT2=...      # SMALL account (options deployment)
-        APCA_API_SECRET_KEY_ACCOUNT2=...
-        APCA_API_KEY_ID_ACCOUNT3=...      # EXPERIMENTAL account
-        APCA_API_SECRET_KEY_ACCOUNT3=...
-
-    Required API change:
-        client = AlpacaTradingClient(account_id='ACCOUNT1')  # Loads correct credentials
-
-    See: HANDOFF.md "CRITICAL: Multi-Account Architecture Required Before Session 44-45"
-    See: OpenMemory tag "multi-account", "deployment-blocker"
+Session 70: Updated to use centralized config.settings for all credentials.
+All environment variables are loaded from root .env via config.settings.
 
 Usage:
     client = AlpacaTradingClient(account='LARGE')
@@ -43,11 +24,13 @@ Usage:
         print(f"Order submitted: {order['id']}")
 """
 
-import os
 import time
 import logging
 from typing import Optional, Dict, List, Any, Callable
 from datetime import datetime
+
+# Use centralized config (loads from root .env with all credentials)
+from config.settings import get_alpaca_credentials
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
@@ -77,6 +60,10 @@ class AlpacaTradingClient:
             'capital': 10000,
             'description': 'Primary paper trading account for equity strategies'
         },
+        'MID': {
+            'capital': 5000,
+            'description': 'Mid-tier paper trading account'
+        },
         'SMALL': {
             'capital': 3000,
             'description': 'Future options deployment account'
@@ -92,7 +79,7 @@ class AlpacaTradingClient:
         Initialize Alpaca trading client.
 
         Args:
-            account: Account identifier ('LARGE' or 'SMALL')
+            account: Account identifier ('LARGE', 'MID', or 'SMALL')
             logger: Optional logger instance (creates default if None)
         """
         if account not in self.ACCOUNT_CONFIGS:
@@ -107,55 +94,19 @@ class AlpacaTradingClient:
         # Set up logging
         self.logger = logger or self._create_default_logger()
 
-        # API credentials from environment
-        # Try multiple naming conventions for flexibility
-        if account == 'LARGE':
-            self.api_key = (
-                os.getenv('APCA_API_KEY_ID') or
-                os.getenv('ALPACA_LARGE_KEY') or
-                os.getenv('ALPACA_API_KEY')
-            )
-            self.secret_key = (
-                os.getenv('APCA_API_SECRET_KEY') or
-                os.getenv('ALPACA_LARGE_SECRET') or
-                os.getenv('ALPACA_SECRET_KEY')
-            )
-            self.base_url = (
-                os.getenv('APCA_API_BASE_URL') or
-                os.getenv('ALPACA_LARGE_ENDPOINT') or
-                os.getenv('ALPACA_BASE_URL') or
-                'https://paper-api.alpaca.markets'
-            )
-        elif account == 'SMALL':
-            self.api_key = (
-                os.getenv('APCA_API_KEY_ID') or
-                os.getenv('ALPACA_API_KEY')
-            )
-            self.secret_key = (
-                os.getenv('APCA_API_SECRET_KEY') or
-                os.getenv('ALPACA_SECRET_KEY')
-            )
-            self.base_url = (
-                os.getenv('APCA_API_BASE_URL') or
-                os.getenv('ALPACA_ENDPOINT') or
-                'https://paper-api.alpaca.markets'
-            )
-        else:
-            # Default: standard APCA_* variables
-            self.api_key = os.getenv('APCA_API_KEY_ID')
-            self.secret_key = os.getenv('APCA_API_SECRET_KEY')
-            self.base_url = os.getenv(
-                'APCA_API_BASE_URL',
-                'https://paper-api.alpaca.markets'
-            )
+        # Get credentials from centralized config
+        # This ensures .env is loaded from root with ALL credentials
+        creds = get_alpaca_credentials(account)
+        self.api_key = creds['api_key']
+        self.secret_key = creds['secret_key']
+        self.base_url = creds['base_url']
 
-        # Validate environment variables
+        # Validate credentials
         if not self.api_key or not self.secret_key:
             raise ValueError(
                 f"Missing Alpaca API credentials for account '{account}'. "
-                f"Set APCA_API_KEY_ID/APCA_API_SECRET_KEY or "
-                f"ALPACA_LARGE_KEY/ALPACA_LARGE_SECRET (for LARGE account) or "
-                f"ALPACA_API_KEY/ALPACA_SECRET_KEY environment variables."
+                f"Check your root .env file for ALPACA_{account}_KEY and "
+                f"ALPACA_{account}_SECRET environment variables."
             )
 
         # Trading client (initialized in connect())

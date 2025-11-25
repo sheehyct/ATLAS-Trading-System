@@ -6,14 +6,18 @@ Features:
 - Automatic data updates
 - VectorBT Pro Data object output
 - Cross-validation with Alpaca
+
+Session 70: Updated to use centralized config.settings
 """
 
 import vectorbtpro as vbt
 import pandas as pd
 from tiingo import TiingoClient
 from datetime import datetime
-import os
 from pathlib import Path
+
+# Use centralized config (loads from root .env with all credentials)
+from config.settings import get_tiingo_key
 
 
 class TiingoDataFetcher:
@@ -30,15 +34,11 @@ class TiingoDataFetcher:
         Initialize Tiingo data fetcher.
 
         Args:
-            api_key: Tiingo API key (or use TIINGO_API_KEY env variable)
+            api_key: Tiingo API key (or use TIINGO_API_KEY env variable via config.settings)
             cache_dir: Directory for caching downloaded data
         """
-        self.api_key = api_key or os.environ.get('TIINGO_API_KEY')
-        if not self.api_key:
-            raise ValueError(
-                "Tiingo API key required. Set TIINGO_API_KEY environment "
-                "variable or pass api_key parameter."
-            )
+        # Use centralized config for API key
+        self.api_key = api_key or get_tiingo_key()
 
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -127,11 +127,9 @@ class TiingoDataFetcher:
 
         # Combine into single DataFrame if multiple symbols
         if len(symbols) == 1:
+            # For single symbol, return data WITHOUT MultiIndex to match Alpaca behavior
+            # This ensures compatibility with existing validation scripts
             combined_df = data_dict[symbols[0]]
-            combined_df.columns = pd.MultiIndex.from_product(
-                [[symbols[0]], combined_df.columns],
-                names=['symbol', 'column']
-            )
         else:
             combined_df = pd.concat(data_dict, axis=1)
 

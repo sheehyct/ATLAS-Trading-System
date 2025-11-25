@@ -32,6 +32,12 @@ import numpy as np
 from datetime import datetime, timedelta
 import vectorbtpro as vbt
 from typing import List, Dict, Tuple
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load environment variables from the main .env file (not .env.example or .env.development)
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -39,6 +45,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from strat.bar_classifier import StratBarClassifier, classify_bars
 from strat.pattern_detector import StratPatternDetector
 from strat.timeframe_continuity import TimeframeContinuityChecker, get_continuity_strength
+from strat.tier1_detector import Tier1Detector, Timeframe as T1Timeframe, PatternType
+from integrations.tiingo_data_fetcher import TiingoDataFetcher
 # ATLAS integration not used in initial validation (testing patterns alone first)
 # from strat.atlas_integration import filter_strat_signals
 
@@ -75,10 +83,10 @@ VALIDATION_CONFIG = {
     'timeframes': {
         'base': '1H',  # Base data download (always hourly for maximum granularity)
         'detection': ['1H', '1D', '1W', '1M'],  # Timeframes to detect patterns on
-        'continuity_check': ['1M', '1W', '1D', '4H', '1H'],
-        'rationale': 'Multi-timeframe pattern detection + alignment for high-conviction signals'
+        'continuity_check': ['1M', '1W', '1D', '4H', '1H'],  # Session 66: Reverted 2D (degraded performance)
+        'rationale': 'Multi-timeframe continuity checking without 2D (Session 64 baseline)'
     },
-    'pattern_types': ['3-1-2 Up', '3-1-2 Down', '2-1-2 Up', '2-1-2 Down'],
+    'pattern_types': ['3-1-2 Up', '3-1-2 Down', '2-1-2 Up', '2-1-2 Down', '2-2 Up', '2-2 Down', '3-2 Up', '3-2 Down'],
     'filters': {
         'require_full_continuity': False,  # Changed to flexible (Session 56 Bug #3 fix)
         'use_flexible_continuity': True,   # Use timeframe-appropriate continuity
@@ -86,7 +94,10 @@ VALIDATION_CONFIG = {
         'use_atlas_regime': False,  # First test patterns alone, then with ATLAS
         'min_pattern_quality': 'HIGH',
         'require_continuation_bars': True,  # Session 63: Mandate continuation bar filter
-        'min_continuation_bars': 2  # Session 63: Require 2+ continuation bars (35→73% hit rate improvement)
+        'min_continuation_bars': 2,  # Session 63: Require 2+ continuation bars (35→73% hit rate improvement)
+        'use_2d_hybrid_timeframe': False,  # Session 66: Disabled 2D (degraded R:R by 19%)
+        'use_tier1_detector': True,  # Session 71: Use Tier1Detector for pattern detection (single source of truth)
+        'include_22_down': False  # Session 69: 2-2 Down has negative expectancy without heavy filtering
     },
     'metrics': {
         'magnitude_window': 5,  # Bars to check for magnitude hit (patterns can take 1-5 bars)
@@ -127,7 +138,11 @@ class EquityValidationBacktest:
         timeframe: str = '1H'
     ) -> pd.DataFrame:
         """
-        Pull historical OHLC data for a symbol.
+        Pull historical OHLC data for a symbol using Tiingo (30+ years) or Alpaca (7 years).
+
+        Data Source Selection:
+        - Tiingo: For historical data >6 years old (30+ years available, free tier)
+        - Alpaca: For recent data <=6 years (higher quality, paid source)
 
         Parameters:
         -----------
@@ -146,16 +161,46 @@ class EquityValidationBacktest:
             OHLC data with datetime index
         """
         try:
-            data = vbt.YFData.pull(
-                symbol,
-                start=start,
-                end=end,
-                timeframe=timeframe,
-                tz='America/New_York'
-            )
+            # Determine optimal data source based on start date
+            start_date = pd.to_datetime(start)
+            years_ago = (pd.Timestamp.now() - start_date).days / 365.25
 
-            # Get OHLC DataFrame
-            ohlc = data.get()
+            alpaca_api_key = os.getenv('ALPACA_API_KEY')
+            alpaca_secret_key = os.getenv('ALPACA_SECRET_KEY')
+            tiingo_api_key = os.getenv('TIINGO_API_KEY')
+
+            ohlc = None
+
+            # Try Alpaca for recent data (<= 6 years)
+            if years_ago <= 6 and alpaca_api_key and alpaca_secret_key:
+                try:
+                    print(f"  Using Alpaca (high-quality recent data)")
+                    data = vbt.AlpacaData.pull(
+                        symbol,
+                        start=start,
+                        end=end,
+                        timeframe=timeframe,
+                        client_config={
+                            'api_key': alpaca_api_key,
+                            'secret_key': alpaca_secret_key,
+                            'paper': True
+                        },
+                        tz='America/New_York'  # CRITICAL: Prevent UTC date shifts
+                    )
+                    ohlc = data.get()
+                except Exception as e:
+                    print(f"  Alpaca failed: {str(e)[:80]}...")
+                    print(f"  Falling back to Tiingo...")
+
+            # Use Tiingo if Alpaca failed or for historical data > 6 years
+            if ohlc is None:
+                if not tiingo_api_key:
+                    raise ValueError("Tiingo API key required. Set TIINGO_API_KEY in .env file.")
+
+                print(f"  Using Tiingo (30+ years historical data)")
+                fetcher = TiingoDataFetcher(api_key=tiingo_api_key)
+                vbt_data = fetcher.fetch(symbol, start_date=start, end_date=end, timeframe=timeframe)
+                ohlc = vbt_data.get()
 
             # Verify no weekend bars
             if len(ohlc) > 0:
@@ -270,6 +315,11 @@ class EquityValidationBacktest:
         directions_22 = pattern_result.directions_22
         stops_22 = pattern_result.stops_22
         targets_22 = pattern_result.targets_22
+
+        entries_32 = pattern_result.entries_32
+        directions_32 = pattern_result.directions_32
+        stops_32 = pattern_result.stops_32
+        targets_32 = pattern_result.targets_32
 
         # Process 3-1-2 Up patterns (bullish: directions_312 == 1)
         for i in range(len(entries_312)):
@@ -607,6 +657,219 @@ class EquityValidationBacktest:
                     'detection_timeframe': detection_timeframe
                 })
 
+        # Process 3-2 Up patterns (bullish: directions_32 == 1)
+        # 3D-2U or 3-2U: Outside bar down → Bullish reversal
+        for i in range(len(entries_32)):
+            if entries_32.iloc[i] and directions_32.iloc[i] == 1:
+                pattern_date = entries_32.index[i]
+
+                # CRITICAL FIX (Session 61): Entry uses PREVIOUS BAR (live entry concept)
+                # All bars open as "1" (inside bar, open = previous close)
+                # Entry happens when bar i breaks above bar i-1 high
+                pattern_loc = detection_data.index.get_loc(pattern_date)
+
+                # Skip if pattern is at first bar (no previous bar for entry)
+                if pattern_loc < 1:
+                    continue
+
+                prev_bar_date = detection_data.index[pattern_loc - 1]
+                entry_price = detection_data.loc[prev_bar_date, 'High']  # Outside bar high
+
+                # Verify timeframe continuity
+                high_dict = {tf: mtf_data[tf]['High'] for tf in continuity_timeframes if tf in mtf_data}
+                low_dict = {tf: mtf_data[tf]['Low'] for tf in continuity_timeframes if tf in mtf_data}
+
+                continuity_checker = TimeframeContinuityChecker(timeframes=continuity_timeframes)
+
+                # Use flexible or full continuity based on config
+                if self.config['filters'].get('use_flexible_continuity', False):
+                    continuity = continuity_checker.check_flexible_continuity_at_datetime(
+                        high_dict, low_dict, pattern_date,
+                        direction='bullish',
+                        min_strength=self.config['filters']['min_continuity_strength'],
+                        detection_timeframe=detection_timeframe
+                    )
+                else:
+                    # Legacy full continuity mode
+                    continuity = continuity_checker.check_continuity_at_datetime(
+                        high_dict, low_dict, pattern_date, direction='bullish'
+                    )
+
+                if not continuity.get('passes_flexible', continuity.get('full_continuity', False)):
+                    continue
+
+                # Record pattern
+                patterns_found.append({
+                    'symbol': symbol,
+                    'pattern_type': '3-2 Up',
+                    'entry_date': pattern_date,
+                    'entry_price': entry_price,
+                    'stop_price': stops_32.iloc[i],
+                    'target_price': targets_32.iloc[i],
+                    'direction': 1,
+                    'continuity_strength': continuity['strength'],
+                    'full_continuity': continuity.get('full_continuity', continuity.get('passes_flexible', False)),
+                    'detection_timeframe': detection_timeframe
+                })
+
+        # Process 3-2 Down patterns (bearish: directions_32 == -1)
+        # 3U-2D or 3-2D: Outside bar up → Bearish reversal
+        for i in range(len(entries_32)):
+            if entries_32.iloc[i] and directions_32.iloc[i] == -1:
+                pattern_date = entries_32.index[i]
+
+                # CRITICAL FIX (Session 61): Entry uses PREVIOUS BAR (live entry concept)
+                pattern_loc = detection_data.index.get_loc(pattern_date)
+
+                # Skip if pattern is at first bar
+                if pattern_loc < 1:
+                    continue
+
+                prev_bar_date = detection_data.index[pattern_loc - 1]
+                entry_price = detection_data.loc[prev_bar_date, 'Low']  # Outside bar low
+
+                # Verify timeframe continuity
+                high_dict = {tf: mtf_data[tf]['High'] for tf in continuity_timeframes if tf in mtf_data}
+                low_dict = {tf: mtf_data[tf]['Low'] for tf in continuity_timeframes if tf in mtf_data}
+
+                continuity_checker = TimeframeContinuityChecker(timeframes=continuity_timeframes)
+
+                # Use flexible or full continuity based on config
+                if self.config['filters'].get('use_flexible_continuity', False):
+                    continuity = continuity_checker.check_flexible_continuity_at_datetime(
+                        high_dict, low_dict, pattern_date,
+                        direction='bearish',
+                        min_strength=self.config['filters']['min_continuity_strength'],
+                        detection_timeframe=detection_timeframe
+                    )
+                else:
+                    # Legacy full continuity mode
+                    continuity = continuity_checker.check_flexible_continuity_at_datetime(
+                        high_dict, low_dict, pattern_date, direction='bearish'
+                    )
+
+                if not continuity.get('passes_flexible', continuity.get('full_continuity', False)):
+                    continue
+
+                # Record pattern
+                patterns_found.append({
+                    'symbol': symbol,
+                    'pattern_type': '3-2 Down',
+                    'entry_date': pattern_date,
+                    'entry_price': entry_price,
+                    'stop_price': stops_32.iloc[i],
+                    'target_price': targets_32.iloc[i],
+                    'direction': -1,
+                    'continuity_strength': continuity['strength'],
+                    'full_continuity': continuity.get('full_continuity', continuity.get('passes_flexible', False)),
+                    'detection_timeframe': detection_timeframe
+                })
+
+        return patterns_found
+
+    def detect_patterns_with_tier1(
+        self,
+        symbol: str,
+        hourly_data: pd.DataFrame,
+        detection_timeframe: str,
+        continuity_timeframes: List[str]
+    ) -> List[Dict]:
+        """
+        Detect STRAT patterns using Tier1Detector (Session 71 integration).
+
+        Uses Tier1Detector for consistent pattern detection across all modules.
+        Continuation bar filter is applied by Tier1Detector internally.
+
+        Parameters:
+        -----------
+        symbol : str
+            Stock symbol
+        hourly_data : pd.DataFrame
+            Hourly OHLC data (base data for resampling)
+        detection_timeframe : str
+            Timeframe to detect patterns on ('1H', '1D', '1W', '1M')
+        continuity_timeframes : list
+            Timeframes for continuity check (NOTE: Tier1Detector doesn't use this,
+            but kept for API compatibility)
+
+        Returns:
+        --------
+        list of dict
+            List of pattern occurrences with metadata
+        """
+        patterns_found = []
+
+        # Resample hourly data to detection timeframe
+        if detection_timeframe == '1H':
+            detection_data = hourly_data
+        else:
+            detection_data = hourly_data.resample(detection_timeframe).agg({
+                'Open': 'first',
+                'High': 'max',
+                'Low': 'min',
+                'Close': 'last'
+            }).dropna()
+
+        if len(detection_data) < 10:
+            return patterns_found
+
+        # Map detection timeframe to Tier1Detector timeframe
+        tf_map = {
+            '1H': T1Timeframe.DAILY,  # Use daily for hourly (closest match)
+            '1D': T1Timeframe.DAILY,
+            '1W': T1Timeframe.WEEKLY,
+            '1M': T1Timeframe.MONTHLY
+        }
+        tier1_tf = tf_map.get(detection_timeframe, T1Timeframe.WEEKLY)
+
+        # Initialize Tier1Detector
+        min_cont_bars = self.config['filters'].get('min_continuation_bars', 2)
+        include_22_down = self.config['filters'].get('include_22_down', False)
+
+        detector = Tier1Detector(
+            min_continuation_bars=min_cont_bars,
+            include_22_down=include_22_down
+        )
+
+        # Detect patterns using Tier1Detector
+        signals = detector.detect_patterns(detection_data, timeframe=tier1_tf)
+
+        # Convert PatternSignal objects to dict format (for compatibility with rest of script)
+        for signal in signals:
+            # Map PatternType to pattern_type string
+            pattern_type_map = {
+                PatternType.PATTERN_312_UP: '3-1-2 Up',
+                PatternType.PATTERN_312_DOWN: '3-1-2 Down',
+                PatternType.PATTERN_212_UP: '2-1-2 Up',
+                PatternType.PATTERN_212_DOWN: '2-1-2 Down',
+                PatternType.PATTERN_22_UP: '2-2 Up',
+                PatternType.PATTERN_22_DOWN: '2-2 Down',
+            }
+            pattern_type_str = pattern_type_map.get(signal.pattern_type, 'Unknown')
+
+            # Determine direction string
+            direction_str = 'bullish' if signal.direction == 1 else 'bearish'
+
+            # Market open filter for hourly patterns
+            if detection_timeframe == '1H':
+                if signal.timestamp.hour < 11 or (signal.timestamp.hour == 11 and signal.timestamp.minute < 30):
+                    continue  # Skip patterns before 11:30 AM
+
+            patterns_found.append({
+                'symbol': symbol,
+                'pattern_type': pattern_type_str,
+                'entry_date': signal.timestamp,
+                'entry_price': signal.entry_price,
+                'stop_price': signal.stop_price,
+                'target_price': signal.target_price,
+                'direction': direction_str,
+                'continuity_strength': 3,  # Tier1Detector doesn't track this, use default
+                'full_continuity': True,  # Tier1Detector patterns passed all filters
+                'detection_timeframe': detection_timeframe,
+                'continuation_bars': signal.continuation_bars,  # Already filtered by Tier1Detector
+                'tier1_filtered': True  # Mark as Tier1-filtered pattern
+            })
+
         return patterns_found
 
     def measure_pattern_outcome(
@@ -751,6 +1014,13 @@ class EquityValidationBacktest:
         print(f"Universe: {self.config['stock_universe']['count']} stocks")
         print(f"Patterns: {', '.join(self.config['pattern_types'])}")
         print(f"Filter: Full timeframe continuity {'REQUIRED' if self.config['filters']['require_full_continuity'] else 'OPTIONAL'}")
+
+        # Session 71: Tier1Detector integration status
+        use_tier1 = self.config['filters'].get('use_tier1_detector', False)
+        if use_tier1:
+            print(f"Detection: Tier1Detector (min_continuation_bars={self.config['filters'].get('min_continuation_bars', 2)})")
+        else:
+            print(f"Detection: Legacy (StratPatternDetector + manual filters)")
         print()
 
         symbols = self.config['stock_universe']['symbols']
@@ -780,10 +1050,16 @@ class EquityValidationBacktest:
                     print(f" SKIP (insufficient data)")
                     continue
 
-                # Detect patterns on detection timeframe with continuity filtering
-                patterns = self.detect_patterns_with_continuity(
-                    symbol, hourly_data, detection_tf, continuity_timeframes
-                )
+                # Detect patterns on detection timeframe
+                # Session 71: Use Tier1Detector or legacy method based on config
+                if use_tier1:
+                    patterns = self.detect_patterns_with_tier1(
+                        symbol, hourly_data, detection_tf, continuity_timeframes
+                    )
+                else:
+                    patterns = self.detect_patterns_with_continuity(
+                        symbol, hourly_data, detection_tf, continuity_timeframes
+                    )
 
                 if len(patterns) == 0:
                     print(f" 0 patterns")
@@ -811,13 +1087,15 @@ class EquityValidationBacktest:
                     # Measure outcome
                     outcome = self.measure_pattern_outcome(pattern, future_data, max_holding_bars)
 
-                    # Session 63: Apply continuation bar filter if enabled
-                    if self.config['filters'].get('require_continuation_bars', False):
-                        min_cont_bars = self.config['filters'].get('min_continuation_bars', 2)
-                        if outcome['continuation_bars'] < min_cont_bars:
-                            # Skip patterns with insufficient continuation bars
-                            # Session 58 proved: 0-1 bars = 35% hit rate, 2+ bars = 73% hit rate
-                            continue
+                    # Session 63/71: Apply continuation bar filter if enabled
+                    # SKIP if using Tier1Detector (already filtered by detector)
+                    if not pattern.get('tier1_filtered', False):
+                        if self.config['filters'].get('require_continuation_bars', False):
+                            min_cont_bars = self.config['filters'].get('min_continuation_bars', 2)
+                            if outcome['continuation_bars'] < min_cont_bars:
+                                # Skip patterns with insufficient continuation bars
+                                # Session 58 proved: 0-1 bars = 35% hit rate, 2+ bars = 73% hit rate
+                                continue
 
                     # Combine pattern + outcome
                     pattern_with_outcome = {**pattern, **outcome}

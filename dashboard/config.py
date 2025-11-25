@@ -8,11 +8,15 @@ Based on:
 - PLOTLY_DASH_DASHBOARD_GUIDE.md
 - Visualization best practices for trading dashboards
 - TradingView professional standards
+
+Session 70: Updated to use centralized config.settings for all credentials.
 """
 
-import os
 from pathlib import Path
 from typing import Dict, Any
+
+# Use centralized config (loads from root .env with all credentials)
+from config.settings import get_alpaca_credentials
 
 # ============================================
 # PATH CONFIGURATION
@@ -29,10 +33,12 @@ STRATEGIES_DIR = BASE_DIR / 'strategies'
 # API CONFIGURATION
 # ============================================
 
+# Get Alpaca credentials from centralized config
+_alpaca_creds = get_alpaca_credentials('MID')
 ALPACA_CONFIG = {
-    'api_key': os.getenv('ALPACA_API_KEY'),
-    'secret_key': os.getenv('ALPACA_SECRET_KEY'),
-    'base_url': os.getenv('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets'),
+    'api_key': _alpaca_creds['api_key'],
+    'secret_key': _alpaca_creds['secret_key'],
+    'base_url': _alpaca_creds['base_url'],
     'paper': True  # Use paper trading by default
 }
 

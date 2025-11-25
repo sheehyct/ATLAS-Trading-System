@@ -25,16 +25,19 @@ test_config = {
     'timeframes': {
         'base': '1H',  # Base data download
         'detection': ['1H', '1D', '1W', '1M'],  # Timeframes to detect patterns on
-        'continuity_check': ['1M', '1W', '1D', '4H', '1H'],
-        'rationale': 'Multi-timeframe pattern detection + alignment test'
+        'continuity_check': ['1M', '1W', '1D', '4H', '1H'],  # Session 66: Reverted 2D (degraded performance)
+        'rationale': 'Multi-timeframe continuity checking without 2D (Session 64 baseline)'
     },
-    'pattern_types': ['3-1-2 Up', '3-1-2 Down', '2-1-2 Up', '2-1-2 Down', '2-2 Up', '2-2 Down'],
+    'pattern_types': ['3-1-2 Up', '3-1-2 Down', '2-1-2 Up', '2-1-2 Down', '2-2 Up', '2-2 Down', '3-2 Up', '3-2 Down'],
     'filters': {
         'require_full_continuity': False,  # Changed to flexible (Session 56 Bug #3 fix)
         'use_flexible_continuity': True,   # Use timeframe-appropriate continuity
         'min_continuity_strength': 3,      # Require 3/5 timeframes aligned minimum
         'use_atlas_regime': False,  # Test patterns alone first
-        'min_pattern_quality': 'HIGH'
+        'min_pattern_quality': 'HIGH',
+        'require_continuation_bars': True,  # Session 63: Mandate continuation bar filter
+        'min_continuation_bars': 2,  # Session 63: Require 2+ continuation bars
+        'use_2d_hybrid_timeframe': False  # Session 66: Disabled 2D (degraded R:R by 19%)
     },
     'metrics': {
         'magnitude_window': 5,  # Bars to check for magnitude hit
