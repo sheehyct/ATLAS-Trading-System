@@ -246,7 +246,7 @@ position_refresh_ticker = time_table("PT60S").update([
 portfolio_pnl = portfolio_positions.natural_join(
     market_prices,
     on="Symbol",
-    joins="Price, Volume, Timestamp"
+    joins="Price, Timestamp"
 ).update([
     # Current position value at market price
     "CurrentValue = Shares * Price",
