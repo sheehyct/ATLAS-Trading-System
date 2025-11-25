@@ -2,10 +2,10 @@
 # Uses requirements-railway.txt to avoid VectorBT Pro private repo dependency
 
 [phases.setup]
-nixPkgs = ["python312"]
+nixPkgs = ["python312", "python312Packages.pip"]
 
 [phases.install]
-cmds = ["pip install -r requirements-railway.txt"]
+cmds = ["/opt/venv/bin/pip install -r requirements-railway.txt"]
 
 [start]
-cmd = "python -m dashboard.app"
+cmd = "/opt/venv/bin/python -m dashboard.app"
