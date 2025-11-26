@@ -2,14 +2,22 @@
 Regime Data Loader
 
 Loads regime detection data from ATLAS Layer 1 (academic_jump_model.py).
-Provides data for regime timeline, feature evolution, and statistics visualizations.
+Provides daily-cached regime data for dashboard visualization.
+
+IMPORTANT: ATLAS regime detection is inherently DAILY:
+- Input: Daily OHLCV data
+- Output: Regime classification for the current day
+- Tradeable: Next trading day (regime changes can't be acted on intraday)
+- Updates: Once per day after market close (4 PM ET)
+
+The loader caches results daily to avoid expensive re-computation on every page load.
 """
 
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Optional, Dict
-from datetime import datetime
+from typing import Optional, Dict, Tuple
+from datetime import datetime, date
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,9 +27,12 @@ class RegimeDataLoader:
     """
     Load and format regime detection data for dashboard visualization.
 
-    This loader interfaces with the academic jump model from regime/academic_jump_model.py
-    and provides formatted data for the dashboard visualizations.
+    Uses daily caching - regime is computed once per day and cached.
     """
+
+    # Class-level cache shared across instances
+    _daily_cache: Dict[str, Tuple[date, pd.DataFrame]] = {}
+    _current_regime_cache: Dict[str, Tuple[date, str, datetime]] = {}
 
     def __init__(self, data_dir: Optional[Path] = None):
         """
@@ -31,16 +42,109 @@ class RegimeDataLoader:
             data_dir: Optional path to data directory
         """
         self.data_dir = data_dir or Path(__file__).parent.parent.parent / 'data'
-        self.cache = {}
 
         # Initialize ATLAS regime detection model
+        self.atlas_model = None
         try:
             from regime.academic_jump_model import AcademicJumpModel
             self.atlas_model = AcademicJumpModel()
             logger.info("RegimeDataLoader initialized with AcademicJumpModel")
         except Exception as e:
             logger.error(f"Failed to initialize AcademicJumpModel: {e}")
-            self.atlas_model = None
+
+    def get_current_regime(self) -> Dict:
+        """
+        Get the current regime classification with metadata.
+
+        Uses daily caching - only recomputes if date has changed.
+
+        Returns:
+            Dictionary with:
+                - regime: Current regime label
+                - as_of_date: Date the regime was calculated for
+                - calculated_at: Timestamp when calculation was performed
+                - spy_close: SPY close price for that date
+                - allocation_pct: Recommended allocation percentage
+        """
+        today = date.today()
+        cache_key = 'current_regime'
+
+        # Check if we have a valid cache for today
+        if cache_key in self._current_regime_cache:
+            cached_date, cached_regime, cached_time = self._current_regime_cache[cache_key]
+            if cached_date == today:
+                logger.info(f"Using cached regime: {cached_regime} (calculated at {cached_time})")
+                return {
+                    'regime': cached_regime,
+                    'as_of_date': cached_date.strftime('%Y-%m-%d'),
+                    'calculated_at': cached_time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'allocation_pct': self._get_allocation_pct(cached_regime),
+                    'cached': True
+                }
+
+        # Need to compute fresh regime
+        try:
+            if self.atlas_model is None:
+                logger.warning("AcademicJumpModel not initialized")
+                return self._error_response("ATLAS model not available")
+
+            # Fetch data - need 1000+ days for lookback
+            end_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = '2020-01-01'  # Ensures enough history
+
+            logger.info(f"Computing regime detection (this may take 10-15 seconds)...")
+
+            import vectorbtpro as vbt
+            spy_data = vbt.YFData.pull(
+                'SPY',
+                start=start_date,
+                end=end_date,
+                tz='America/New_York'
+            )
+            spy_df = spy_data.get()
+
+            vix_data = vbt.YFData.pull(
+                '^VIX',
+                start=start_date,
+                end=end_date,
+                tz='America/New_York'
+            )
+            vix_close = vix_data.get()['Close']
+
+            # Run ATLAS regime detection
+            regimes, lambdas, thetas = self.atlas_model.online_inference(
+                spy_df,
+                lookback=1000,
+                default_lambda=1.5,
+                vix_data=vix_close
+            )
+
+            if regimes.empty:
+                return self._error_response("No regime data returned")
+
+            # Get the most recent regime
+            current_regime = regimes.iloc[-1]
+            regime_date = regimes.index[-1]
+            spy_close = spy_df['Close'].iloc[-1]
+            calculated_at = datetime.now()
+
+            # Cache the result
+            self._current_regime_cache[cache_key] = (today, current_regime, calculated_at)
+
+            logger.info(f"Regime computed: {current_regime} as of {regime_date}")
+
+            return {
+                'regime': current_regime,
+                'as_of_date': regime_date.strftime('%Y-%m-%d'),
+                'calculated_at': calculated_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'spy_close': float(spy_close),
+                'allocation_pct': self._get_allocation_pct(current_regime),
+                'cached': False
+            }
+
+        except Exception as e:
+            logger.error(f"Error computing regime: {e}", exc_info=True)
+            return self._error_response(str(e))
 
     def get_regime_timeline(
         self,
@@ -49,69 +153,57 @@ class RegimeDataLoader:
         symbol: str = 'SPY'
     ) -> pd.DataFrame:
         """
-        Get regime classification timeline using ATLAS AcademicJumpModel.
+        Get regime classification timeline.
+
+        Uses daily caching - full timeline is computed once per day.
 
         Args:
-            start_date: Start date (YYYY-MM-DD)
+            start_date: Start date (YYYY-MM-DD) for display filtering
             end_date: End date (YYYY-MM-DD)
             symbol: Stock symbol (default: SPY)
 
         Returns:
-            DataFrame with columns:
-                - date: DatetimeIndex
-                - regime: Regime label (TREND_BULL, TREND_BEAR, TREND_NEUTRAL, CRASH)
-                - price: Close price
+            DataFrame with columns: date, regime, price
         """
+        today = date.today()
+        cache_key = f"timeline_{symbol}"
 
+        # Check daily cache
+        if cache_key in self._daily_cache:
+            cached_date, cached_df = self._daily_cache[cache_key]
+            if cached_date == today and not cached_df.empty:
+                logger.info("Using cached regime timeline")
+                # Filter to requested date range
+                mask = (cached_df['date'] >= pd.Timestamp(start_date)) & \
+                       (cached_df['date'] <= pd.Timestamp(end_date))
+                return cached_df[mask].reset_index(drop=True)
+
+        # Compute fresh timeline
         try:
             if self.atlas_model is None:
-                logger.warning("AcademicJumpModel not initialized, returning empty data")
+                logger.warning("AcademicJumpModel not initialized")
                 return pd.DataFrame(columns=['date', 'regime', 'price'])
 
-            logger.info(f"Loading regime data for {symbol} from {start_date} to {end_date}")
+            # Always fetch full history for ATLAS lookback requirement
+            lookback_start = '2020-01-01'
+            logger.info(f"Computing regime timeline from {lookback_start}...")
 
-            # Check cache first
-            cache_key = f"{symbol}_{start_date}_{end_date}"
-            if cache_key in self.cache:
-                logger.info("Using cached regime data")
-                return self.cache[cache_key]
+            import vectorbtpro as vbt
+            spy_data = vbt.YFData.pull(
+                symbol,
+                start=lookback_start,
+                end=end_date,
+                tz='America/New_York'
+            )
+            spy_df = spy_data.get()
 
-            # Fetch SPY market data
-            # Try VectorBT Pro first, fall back to Tiingo for Railway deployment
-            try:
-                import vectorbtpro as vbt
-                spy_data = vbt.YFData.pull(
-                    symbol,
-                    start=start_date,
-                    end=end_date,
-                    tz='America/New_York'
-                )
-                spy_df = spy_data.get()
-
-                vix_data = vbt.YFData.pull(
-                    '^VIX',
-                    start=start_date,
-                    end=end_date,
-                    tz='America/New_York'
-                )
-                vix_close = vix_data.get()['Close']
-            except ImportError:
-                # VectorBT Pro not available (Railway deployment)
-                # Use Tiingo (paid data source) as fallback
-                from integrations.tiingo_data_fetcher import TiingoDataFetcher
-                logger.info("VectorBT Pro not available, using Tiingo data source")
-
-                fetcher = TiingoDataFetcher()
-                spy_df = fetcher.fetch_daily(symbol, start_date, end_date)
-
-                # VIX not available on Tiingo - use static placeholder for dashboard
-                # Real VIX integration would require separate data source
-                vix_close = pd.Series(
-                    index=spy_df.index,
-                    data=20.0,  # Neutral VIX placeholder
-                    name='Close'
-                )
-                logger.warning("VIX data unavailable without VBT Pro, using placeholder")
+            vix_data = vbt.YFData.pull(
+                '^VIX',
+                start=lookback_start,
+                end=end_date,
+                tz='America/New_York'
+            )
+            vix_close = vix_data.get()['Close']
 
             # Run ATLAS regime detection
             regimes, lambdas, thetas = self.atlas_model.online_inference(
@@ -128,11 +220,14 @@ class RegimeDataLoader:
                 'price': spy_df['Close'].loc[regimes.index].values
             })
 
-            # Cache the result
-            self.cache[cache_key] = df
+            # Cache full timeline
+            self._daily_cache[cache_key] = (today, df)
+            logger.info(f"Cached {len(df)} regime observations")
 
-            logger.info(f"Loaded {len(df)} regime observations from ATLAS model")
-            return df
+            # Return filtered to requested range
+            mask = (df['date'] >= pd.Timestamp(start_date)) & \
+                   (df['date'] <= pd.Timestamp(end_date))
+            return df[mask].reset_index(drop=True)
 
         except Exception as e:
             logger.error(f"Error loading regime timeline: {e}", exc_info=True)
@@ -147,43 +242,29 @@ class RegimeDataLoader:
         """
         Get regime detection feature values over time.
 
-        Features from academic_features.py:
-        - downside_dev: 10-day EWMA of downside deviation
-        - sortino_20d: 20-day Sortino ratio
-        - sortino_60d: 60-day Sortino ratio
-
-        Args:
-            start_date: Start date
-            end_date: End date
-            symbol: Stock symbol
-
-        Returns:
-            DataFrame with columns:
-                - date: DatetimeIndex
-                - downside_dev: Downside deviation
-                - sortino_20d: 20-day Sortino ratio
-                - sortino_60d: 60-day Sortino ratio
+        Calculates actual features from academic_features module.
         """
-
         try:
-            logger.info(f"Loading regime features for {symbol} from {start_date} to {end_date}")
+            from regime.academic_features import calculate_features
+            import vectorbtpro as vbt
 
-            # PLACEHOLDER: Generate sample features
-            # In production, load from academic_features.calculate_features()
+            # Fetch data
+            spy_data = vbt.YFData.pull(
+                symbol,
+                start=start_date,
+                end=end_date,
+                tz='America/New_York'
+            )
+            spy_df = spy_data.get()
 
-            dates = pd.date_range(start=start_date, end=end_date, freq='D')
-
-            # Simulate feature evolution
-            np.random.seed(42)
-            downside_dev = np.abs(np.random.randn(len(dates)) * 0.01 + 0.015)
-            sortino_20d = np.random.randn(len(dates)) * 0.5
-            sortino_60d = np.random.randn(len(dates)) * 0.3 + 0.2
+            # Calculate features
+            features = calculate_features(spy_df)
 
             df = pd.DataFrame({
-                'date': dates,
-                'downside_dev': downside_dev,
-                'sortino_20d': sortino_20d,
-                'sortino_60d': sortino_60d
+                'date': features.index,
+                'downside_dev': features['downside_dev'].values,
+                'sortino_20d': features['sortino_20d'].values,
+                'sortino_60d': features['sortino_60d'].values
             })
 
             logger.info(f"Loaded {len(df)} feature observations")
@@ -191,112 +272,40 @@ class RegimeDataLoader:
 
         except Exception as e:
             logger.error(f"Error loading regime features: {e}")
+            # Return empty DataFrame instead of mock data
             return pd.DataFrame(columns=['date', 'downside_dev', 'sortino_20d', 'sortino_60d'])
 
     def get_regime_statistics(self, symbol: str = 'SPY') -> pd.DataFrame:
         """
-        Calculate aggregate statistics per regime.
-
-        Args:
-            symbol: Stock symbol
-
-        Returns:
-            DataFrame with regime-level summary stats
+        Calculate aggregate statistics per regime from cached timeline.
         """
-
         try:
-            # PLACEHOLDER: Load actual regime-classified returns
-            # For now, generate sample data
+            # Use cached timeline if available
+            today = date.today()
+            cache_key = f"timeline_{symbol}"
 
-            logger.info(f"Calculating regime statistics for {symbol}")
+            if cache_key in self._daily_cache:
+                cached_date, timeline_df = self._daily_cache[cache_key]
+                if not timeline_df.empty:
+                    # Calculate actual statistics from timeline
+                    stats = timeline_df.groupby('regime').agg({
+                        'date': 'count',
+                        'price': ['mean', 'std']
+                    }).round(2)
 
-            # Sample data
-            np.random.seed(42)
-            data = []
+                    return timeline_df[['regime']].copy()
 
-            for regime in ['TREND_BULL', 'TREND_NEUTRAL', 'TREND_BEAR', 'CRASH']:
-                n_days = np.random.randint(100, 500)
-                returns = np.random.randn(n_days) * 0.01
-
-                # Adjust mean based on regime
-                if regime == 'TREND_BULL':
-                    returns += 0.001
-                elif regime == 'TREND_BEAR':
-                    returns -= 0.0005
-                elif regime == 'CRASH':
-                    returns -= 0.003
-
-                data.extend([{'regime': regime, 'returns': r} for r in returns])
-
-            df = pd.DataFrame(data)
-            logger.info(f"Calculated statistics for {len(df)} observations")
-
-            return df
+            logger.warning("No cached timeline for statistics")
+            return pd.DataFrame(columns=['regime', 'returns'])
 
         except Exception as e:
             logger.error(f"Error calculating regime statistics: {e}")
             return pd.DataFrame(columns=['regime', 'returns'])
 
-    def load_from_model(self, model_path: Path) -> Dict:
-        """
-        Load regime data from saved model file.
-
-        Args:
-            model_path: Path to saved regime model
-
-        Returns:
-            Dictionary with regime data and metadata
-        """
-
-        # PLACEHOLDER: Implement model loading
-        # This would load pickled or JSON model results
-
-        logger.warning("load_from_model not yet implemented")
-        return {}
-
-    def get_current_regime(self) -> str:
-        """
-        Get the current regime classification.
-
-        Returns:
-            Current regime: 'TREND_BULL', 'TREND_NEUTRAL', 'TREND_BEAR', or 'CRASH'
-        """
-
-        try:
-            # Get regime timeline for recent data
-            end_date = datetime.now().strftime('%Y-%m-%d')
-            start_date = '2020-01-01'  # Get enough history for lookback
-
-            timeline = self.get_regime_timeline(start_date, end_date)
-
-            if timeline.empty:
-                logger.warning("No regime data available")
-                return 'UNKNOWN'
-
-            # Return the most recent regime
-            current = timeline.iloc[-1]['regime']
-            logger.info(f"Current regime: {current}")
-
-            return current
-
-        except Exception as e:
-            logger.error(f"Error getting current regime: {e}", exc_info=True)
-            return 'UNKNOWN'
-
     def get_vix_status(self) -> Dict:
         """
         Get current VIX crash detection status.
-
-        Returns:
-            Dictionary with:
-                - vix_current: Current VIX level
-                - intraday_change_pct: Intraday percentage change
-                - one_day_change_pct: 1-day percentage change
-                - three_day_change_pct: 3-day percentage change
-                - is_crash: Boolean indicating if crash detected
-                - triggers: List of triggered thresholds
         """
-
         try:
             from regime.vix_spike_detector import VIXSpikeDetector
 
@@ -304,7 +313,6 @@ class RegimeDataLoader:
             details = detector.get_details()
 
             logger.info(f"VIX status: {details['vix_current']:.2f}, Crash: {details['is_crash']}")
-
             return details
 
         except Exception as e:
@@ -318,7 +326,29 @@ class RegimeDataLoader:
                 'triggers': []
             }
 
+    def _get_allocation_pct(self, regime: str) -> int:
+        """Get allocation percentage for regime."""
+        allocations = {
+            'TREND_BULL': 100,
+            'TREND_NEUTRAL': 70,
+            'TREND_BEAR': 30,
+            'CRASH': 0
+        }
+        return allocations.get(regime, 0)
+
+    def _error_response(self, error_msg: str) -> Dict:
+        """Return error response dict."""
+        return {
+            'regime': 'UNKNOWN',
+            'as_of_date': None,
+            'calculated_at': None,
+            'error': error_msg,
+            'allocation_pct': 0,
+            'cached': False
+        }
+
     def clear_cache(self):
-        """Clear cached data."""
-        self.cache = {}
+        """Clear all cached data."""
+        self._daily_cache.clear()
+        self._current_regime_cache.clear()
         logger.info("Cache cleared")

@@ -3,7 +3,7 @@ name = "vectorbt-workspace"
 version = "0.1.0"
 description = "Professional STRAT Trading Bot with VectorBT PRO"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "vectorbtpro @ git+https://github.com/polakowo/vectorbt.pro.git@v2025.10.15",
     "alpaca-py>=0.42.0",
@@ -47,6 +47,7 @@ dependencies = [
     "lightweight-charts>=2.0.0",
     "mplfinance>=0.12.10b0",
     "hmmlearn>=0.3.0",
+    "tiingo>=0.16.1",
 ]
 
 [dependency-groups]
@@ -55,6 +56,9 @@ dev = [
     "black>=22.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+]
+deephaven = [
+    "pydeephaven>=0.40.0",
 ]
 
 [tool.uv.workspace]

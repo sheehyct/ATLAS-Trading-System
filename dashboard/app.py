@@ -408,30 +408,42 @@ def update_equity_curve(strategy_name, start_date, end_date):
     """
     Update strategy equity curve visualization.
 
-    Args:
-        strategy_name: Selected strategy ID
-        start_date: Start date for data range
-        end_date: End date for data range
-
-    Returns:
-        Plotly figure with equity curve
+    NOTE: Backtest data not yet available. System A1 is running live on paper trading.
+    Historical backtest results were not serialized to disk.
     """
-    try:
-        if backtest_loader is None:
-            return create_error_figure("Backtest data loader not available")
+    return create_info_figure(
+        "Backtest Data Not Available",
+        "System A1 is running live on paper trading.\n"
+        "Historical backtest results were not saved.\n\n"
+        "View Live Portfolio tab for current positions."
+    )
 
-        # Load backtest for selected strategy
-        backtest_loader.load_backtest(strategy_name)
-        portfolio_value = backtest_loader.get_equity_curve()
 
-        if portfolio_value.empty:
-            return create_error_figure("No backtest data available")
+@app.callback(
+    Output('rolling-metrics-graph', 'figure'),
+    Input('strategy-selector', 'value')
+)
+def update_rolling_metrics(strategy_name):
+    """Rolling metrics placeholder."""
+    return create_info_figure("Rolling Metrics", "No historical data available")
 
-        return create_equity_curve(portfolio_value)
 
-    except Exception as e:
-        logger.error(f"Error updating equity curve: {e}")
-        return create_error_figure(f"Error: {str(e)}")
+@app.callback(
+    Output('regime-comparison-graph', 'figure'),
+    Input('strategy-selector', 'value')
+)
+def update_regime_comparison(strategy_name):
+    """Regime comparison placeholder."""
+    return create_info_figure("Regime Comparison", "No historical data available")
+
+
+@app.callback(
+    Output('trade-distribution-graph', 'figure'),
+    Input('strategy-selector', 'value')
+)
+def update_trade_distribution(strategy_name):
+    """Trade distribution placeholder."""
+    return create_info_figure("Trade Distribution", "No historical data available")
 
 
 @app.callback(
@@ -532,6 +544,41 @@ def create_error_figure(message: str):
     return fig
 
 
+def create_info_figure(title: str, message: str):
+    """
+    Create an informational figure with title and message.
+
+    Args:
+        title: Title text
+        message: Informational message
+
+    Returns:
+        Plotly figure with info message (not an error)
+    """
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    fig.add_annotation(
+        text=f"<b>{title}</b><br><br>{message}",
+        xref='paper',
+        yref='paper',
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font=dict(size=14, color=COLORS['text_secondary']),
+        align='center'
+    )
+    fig.update_layout(
+        template='plotly_dark',
+        paper_bgcolor=COLORS['background_dark'],
+        plot_bgcolor=COLORS['background_dark'],
+        xaxis={'visible': False},
+        yaxis={'visible': False},
+        height=350,
+    )
+    return fig
+
+
 def create_error_card(message: str):
     """
     Create an error card with message.
@@ -548,6 +595,138 @@ def create_error_card(message: str):
             html.Span(message, className='text-muted')
         ])
     ], className='shadow-sm')
+
+
+# ============================================
+# RISK MANAGEMENT CALLBACKS
+# ============================================
+
+@app.callback(
+    [Output('risk-heat-gauge', 'figure'),
+     Output('risk-metrics-table', 'children'),
+     Output('position-allocation-chart', 'figure')],
+    Input('interval-component', 'n_intervals')
+)
+def update_risk_management(n):
+    """
+    Update risk management visualizations.
+
+    Calculates portfolio heat and risk metrics from live positions.
+    """
+    import plotly.graph_objects as go
+
+    try:
+        if live_loader is None or live_loader.client is None:
+            error_fig = create_error_figure("Live data not available")
+            error_table = html.P("No data available", className='text-muted')
+            return error_fig, error_table, error_fig
+
+        # Get positions and account data
+        positions = live_loader.get_current_positions()
+        account = live_loader.get_account_status()
+
+        equity = account.get('equity', 0)
+
+        # Calculate portfolio heat (sum of position risks)
+        # For now, use position concentration as proxy for heat
+        if not positions.empty and equity > 0:
+            total_market_value = positions['market_value'].sum()
+            max_position_pct = positions['market_value'].max() / equity if equity > 0 else 0
+            position_count = len(positions)
+
+            # Simple heat calculation: higher concentration = higher heat
+            # Target: <5% per position, <8% total portfolio heat
+            avg_position_pct = (total_market_value / equity) / position_count if position_count > 0 else 0
+            portfolio_heat = max_position_pct * 100  # Use max position % as heat proxy
+        else:
+            portfolio_heat = 0
+            max_position_pct = 0
+            position_count = 0
+
+        # Create heat gauge
+        heat_gauge = go.Figure(go.Indicator(
+            mode="gauge+number+delta",
+            value=portfolio_heat,
+            title={'text': "Portfolio Heat %", 'font': {'color': COLORS['text_primary']}},
+            delta={'reference': 5, 'increasing': {'color': COLORS['bear_primary']}, 'decreasing': {'color': COLORS['bull_primary']}},
+            gauge={
+                'axis': {'range': [0, 15], 'tickcolor': COLORS['text_secondary']},
+                'bar': {'color': COLORS['bull_primary'] if portfolio_heat < 5 else COLORS['warning'] if portfolio_heat < 8 else COLORS['bear_primary']},
+                'bgcolor': COLORS['background_medium'],
+                'borderwidth': 2,
+                'bordercolor': COLORS['grid'],
+                'steps': [
+                    {'range': [0, 5], 'color': 'rgba(0, 200, 83, 0.2)'},
+                    {'range': [5, 8], 'color': 'rgba(255, 193, 7, 0.2)'},
+                    {'range': [8, 15], 'color': 'rgba(255, 82, 82, 0.2)'}
+                ],
+                'threshold': {
+                    'line': {'color': COLORS['danger'], 'width': 4},
+                    'thickness': 0.75,
+                    'value': 8
+                }
+            }
+        ))
+        heat_gauge.update_layout(
+            paper_bgcolor=COLORS['background_dark'],
+            font={'color': COLORS['text_primary']},
+            height=250
+        )
+
+        # Create risk metrics table
+        metrics_table = html.Table([
+            html.Tbody([
+                html.Tr([
+                    html.Td("Portfolio Value", className='text-muted'),
+                    html.Td(f"${equity:,.2f}", className='text-end fw-bold')
+                ]),
+                html.Tr([
+                    html.Td("Open Positions", className='text-muted'),
+                    html.Td(f"{position_count}", className='text-end')
+                ]),
+                html.Tr([
+                    html.Td("Max Position %", className='text-muted'),
+                    html.Td(f"{max_position_pct*100:.1f}%", className='text-end',
+                           style={'color': COLORS['bull_primary'] if max_position_pct < 0.15 else COLORS['warning']})
+                ]),
+                html.Tr([
+                    html.Td("Cash Available", className='text-muted'),
+                    html.Td(f"${account.get('cash', 0):,.2f}", className='text-end')
+                ]),
+            ])
+        ], className='table table-sm table-borderless', style={'color': COLORS['text_primary']})
+
+        # Create position allocation pie chart
+        if not positions.empty:
+            allocation_fig = go.Figure(data=[go.Pie(
+                labels=positions['symbol'].tolist(),
+                values=positions['market_value'].tolist(),
+                hole=0.4,
+                textinfo='label+percent',
+                textposition='outside',
+                marker={'colors': [COLORS['bull_primary'], COLORS['bull_secondary'],
+                                  COLORS['warning'], COLORS['info'],
+                                  COLORS['bear_secondary'], COLORS['bear_primary']]}
+            )])
+            allocation_fig.update_layout(
+                paper_bgcolor=COLORS['background_dark'],
+                plot_bgcolor=COLORS['background_dark'],
+                font={'color': COLORS['text_primary']},
+                showlegend=True,
+                legend={'orientation': 'h', 'y': -0.1},
+                height=400,
+                title={'text': 'Position Allocation', 'font': {'color': COLORS['text_primary']}}
+            )
+        else:
+            allocation_fig = create_error_figure("No positions to display")
+
+        return heat_gauge, metrics_table, allocation_fig
+
+    except Exception as e:
+        logger.error(f"Error updating risk management: {e}", exc_info=True)
+        error_fig = create_error_figure(f"Error: {str(e)}")
+        error_table = html.P(f"Error: {str(e)}", className='text-danger')
+        return error_fig, error_table, error_fig
 
 
 # ============================================

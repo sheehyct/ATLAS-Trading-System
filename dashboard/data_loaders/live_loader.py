@@ -21,26 +21,41 @@ class LiveDataLoader:
     and market status from paper trading or live account.
     """
 
-    def __init__(self, account='LARGE'):
+    def __init__(self, account=None):
         """
         Initialize LiveDataLoader with AlpacaTradingClient.
 
         Args:
-            account: Account to use ('LARGE' for $10k paper, 'SMALL' for $3k)
+            account: Account to use ('LARGE', 'MID', 'SMALL').
+                     If None, uses DEFAULT_ACCOUNT from .env (currently MID).
         """
+        # Use default account from config if not specified
+        if account is None:
+            from config.settings import get_default_account
+            account = get_default_account()
+
         self.account = account
         self.client = None
+        self.init_error = None
 
         try:
             from integrations.alpaca_trading_client import AlpacaTradingClient
 
             self.client = AlpacaTradingClient(account=account)
-            self.client.connect()
-            logger.info(f"LiveDataLoader initialized with {account} account")
+            if self.client.connect():
+                logger.info(f"LiveDataLoader initialized with {account} account")
+            else:
+                self.init_error = f"Failed to connect to Alpaca {account} account"
+                logger.error(self.init_error)
+                self.client = None
 
+        except ValueError as e:
+            self.init_error = str(e)
+            logger.error(f"Alpaca credentials error: {e}")
+            self.client = None
         except Exception as e:
+            self.init_error = str(e)
             logger.error(f"Failed to initialize AlpacaTradingClient: {e}")
-            logger.warning("LiveDataLoader will return empty data")
             self.client = None
 
     def get_current_positions(self) -> pd.DataFrame:
