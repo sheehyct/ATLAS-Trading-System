@@ -2,13 +2,11 @@
 # Uses requirements-railway.txt to avoid VectorBT Pro private repo dependency
 
 [phases.setup]
-nixPkgs = ["python312"]
+nixPkgs = ["python312", "python312Packages.pip"]
 
 [phases.install]
-# Nix provides pip natively - just upgrade and install requirements
 cmds = [
-    "python -m pip install --upgrade pip",
-    "python -m pip install -r requirements-railway.txt"
+    "pip install -r requirements-railway.txt"
 ]
 
 [start]
