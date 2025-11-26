@@ -504,8 +504,14 @@ def update_live_portfolio(n):
         # Get current positions
         positions = live_loader.get_current_positions()
 
-        # Calculate portfolio heat (placeholder - implement actual calculation)
-        current_heat = 0.042  # Example: 4.2%
+        # Calculate portfolio heat (max position concentration as proxy)
+        # True heat would require stop loss data; using concentration instead
+        equity = account.get('equity', 0)
+        if not positions.empty and equity > 0:
+            max_position_pct = positions['market_value'].max() / equity
+            current_heat = max_position_pct  # 0-1 scale for gauge function
+        else:
+            current_heat = 0
 
         # Create portfolio value card
         portfolio_card = dbc.Card([
