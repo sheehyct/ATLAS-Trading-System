@@ -51,6 +51,7 @@ from dashboard.components.regime_panel import create_regime_panel
 from dashboard.components.strategy_panel import create_strategy_panel
 from dashboard.components.portfolio_panel import create_portfolio_panel
 from dashboard.components.risk_panel import create_risk_panel
+from dashboard.components.options_panel import create_options_panel
 
 # Import data loaders
 from dashboard.data_loaders.regime_loader import RegimeDataLoader
@@ -238,6 +239,17 @@ app.layout = dbc.Container([
                             'font-weight': 'bold'
                         }
                     ),
+
+                    # Tab 5: Options Trading (STRAT Integration)
+                    dbc.Tab(
+                        label='Options Trading',
+                        tab_id='options-tab',
+                        label_style={'color': COLORS['text_primary']},
+                        active_label_style={
+                            'color': '#ffd700',  # Gold for options
+                            'font-weight': 'bold'
+                        }
+                    ),
                 ],
             ),
         ], className='p-0')
@@ -288,6 +300,8 @@ def render_tab_content(active_tab):
         return create_portfolio_panel()
     elif active_tab == 'risk-tab':
         return create_risk_panel()
+    elif active_tab == 'options-tab':
+        return create_options_panel()
     else:
         return html.Div('Tab content not found')
 
