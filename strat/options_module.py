@@ -29,6 +29,7 @@ Usage:
     trades = executor.generate_option_trades(signals, underlying_price=450.0)
 """
 
+import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -46,6 +47,14 @@ except ImportError:
 from config.settings import get_alpaca_credentials
 from strat.tier1_detector import PatternSignal, PatternType, Timeframe
 from strat.greeks import calculate_greeks, Greeks, estimate_iv_from_history
+from strat.risk_free_rate import get_risk_free_rate
+
+# ThetaData integration (Session 79) - for real historical options data
+try:
+    from integrations.thetadata_options_fetcher import ThetaDataOptionsFetcher
+    THETADATA_AVAILABLE = True
+except ImportError:
+    THETADATA_AVAILABLE = False
 
 
 def _convert_to_naive_et(dt) -> datetime:
@@ -561,13 +570,17 @@ class OptionsExecutor:
         if option_type == OptionType.CALL:
             # Calls: Lower strike = higher delta (more ITM)
             # Search from (entry - expansion) to target
-            strike_min = entry - itm_expansion
+            # Session 78 FIX: Never allow strike below stop price (invalidates R:R geometry)
+            strike_min_raw = entry - itm_expansion
+            strike_min = max(strike_min_raw, signal.stop_price)  # Boundary check
             strike_max = target
         else:
             # Puts: Higher strike = higher delta (more ITM)
             # Search from target to (entry + expansion)
+            # Session 78 FIX: Never allow strike above stop price (invalidates R:R geometry)
+            strike_max_raw = entry + itm_expansion
+            strike_max = min(strike_max_raw, signal.stop_price)  # Boundary check
             strike_min = target
-            strike_max = entry + itm_expansion
 
         # Step 2: Generate candidate strikes at standard intervals
         interval = self._get_strike_interval(underlying_price)
@@ -578,7 +591,8 @@ class OptionsExecutor:
 
         # Step 3: Calculate Greeks and score each candidate
         T = dte / 365.0
-        r = 0.05  # Risk-free rate
+        # Session 78 FIX: Use date-based risk-free rate instead of hardcoded 5%
+        r = get_risk_free_rate(signal.timestamp)
         option_type_str = 'call' if option_type == OptionType.CALL else 'put'
 
         # Get expected holding days for this timeframe
@@ -605,8 +619,11 @@ class OptionsExecutor:
             delta_score = 1.0 - abs(delta_abs - target_delta) / 0.30
 
             # Theta score: cost verification
+            # Session 78 FIX: Apply delta capture efficiency factor (assume 75% of theoretical)
+            # This accounts for: gamma effects, partial fills, early exits
+            DELTA_CAPTURE_EFFICIENCY = 0.75
             expected_move = abs(target - entry)
-            expected_profit = delta_abs * expected_move * 100  # Per contract
+            expected_profit = delta_abs * expected_move * 100 * DELTA_CAPTURE_EFFICIENCY  # Per contract
             daily_theta_cost = abs(greeks.theta) * 100
             total_theta_cost = daily_theta_cost * estimated_days
             theta_cost_pct = total_theta_cost / expected_profit if expected_profit > 0 else 1.0
@@ -804,18 +821,43 @@ class OptionsBacktester:
 
     def __init__(
         self,
-        risk_free_rate: float = 0.05,
-        default_iv: float = 0.20
+        risk_free_rate: float = None,  # Deprecated - now uses date-based lookup
+        default_iv: float = 0.20,
+        options_fetcher: 'ThetaDataOptionsFetcher' = None,  # Session 79: ThetaData integration
+        thetadata_provider: 'ThetaDataOptionsFetcher' = None,  # Session 82: Alias for options_fetcher
+        use_market_prices: bool = True,  # Session 79: Use real prices when available
+        logger: logging.Logger = None  # Session 80: Logger for error tracking
     ):
         """
         Initialize backtester with Greeks support.
 
         Args:
-            risk_free_rate: Annual risk-free rate (default 5%)
+            risk_free_rate: DEPRECATED - Now uses date-based lookup via get_risk_free_rate().
+                           If provided, used as fallback only.
             default_iv: Default implied volatility if not estimated (default 20%)
+            options_fetcher: ThetaDataOptionsFetcher instance for real market data (Session 79)
+            thetadata_provider: Alias for options_fetcher (Session 82)
+            use_market_prices: If True and options_fetcher available, use real market prices
+                              instead of Black-Scholes theoretical prices (Session 79)
+            logger: Logger for error tracking (Session 80)
         """
-        self.risk_free_rate = risk_free_rate
+        # Session 78 FIX: Use date-based risk-free rate lookup
+        # Fallback to 0.05 only if date lookup fails
+        self.risk_free_rate_fallback = risk_free_rate if risk_free_rate is not None else 0.05
         self.default_iv = default_iv
+
+        # Session 79/82: ThetaData integration for real market data
+        # Accept either options_fetcher or thetadata_provider
+        self._options_fetcher = options_fetcher or thetadata_provider
+        self._use_market_prices = use_market_prices
+
+        # Session 80: Logger for exception tracking
+        self.logger = logger or logging.getLogger('options_backtester')
+
+    @property
+    def thetadata_provider(self):
+        """Session 82: Property alias for _options_fetcher for consistent API."""
+        return self._options_fetcher
 
     def _estimate_iv(self, price_data: pd.DataFrame) -> float:
         """Estimate IV from historical price data."""
@@ -828,6 +870,104 @@ class OptionsBacktester:
             return max(0.10, min(iv, 1.0))  # Clamp between 10% and 100%
         except Exception:
             return self.default_iv
+
+    def _get_market_price(
+        self,
+        trade: OptionTrade,
+        underlying_price: float,
+        as_of: datetime
+    ) -> Optional[float]:
+        """
+        Get option price from ThetaData if available.
+
+        Session 79: Enables using real historical option prices instead of
+        Black-Scholes theoretical prices for more accurate backtesting.
+
+        Args:
+            trade: OptionTrade with contract details
+            underlying_price: Current underlying price
+            as_of: Date for historical quote
+
+        Returns:
+            Option mid-price or None if ThetaData unavailable
+        """
+        if not self._use_market_prices or self._options_fetcher is None:
+            return None
+
+        try:
+            return self._options_fetcher.get_option_price(
+                underlying=trade.contract.underlying,
+                expiration=trade.contract.expiration,
+                strike=trade.contract.strike,
+                option_type=trade.contract.option_type.value,
+                as_of=as_of,
+                underlying_price=underlying_price
+            )
+        except ConnectionError as e:
+            # Session 80 BUG FIX: Log connection errors instead of silent failure
+            self.logger.warning(
+                f"ThetaData connection error fetching price for "
+                f"{trade.contract.underlying} {trade.contract.strike} "
+                f"{trade.contract.option_type.value} as of {as_of.date()}: {e}"
+            )
+            return None
+        except Exception as e:
+            # Session 80 BUG FIX: Log unexpected errors with context
+            self.logger.error(
+                f"Error fetching market price for {trade.contract.underlying} "
+                f"{trade.contract.strike} {trade.contract.option_type.value}: "
+                f"{type(e).__name__}: {e}"
+            )
+            return None
+
+    def _get_market_greeks(
+        self,
+        trade: OptionTrade,
+        underlying_price: float,
+        as_of: datetime
+    ) -> Optional[Dict[str, float]]:
+        """
+        Get Greeks from ThetaData if available.
+
+        Session 79: Enables using real historical Greeks instead of
+        Black-Scholes calculated Greeks.
+
+        Args:
+            trade: OptionTrade with contract details
+            underlying_price: Current underlying price
+            as_of: Date for historical Greeks
+
+        Returns:
+            Dict with delta, gamma, theta, vega, iv or None
+        """
+        if not self._use_market_prices or self._options_fetcher is None:
+            return None
+
+        try:
+            return self._options_fetcher.get_option_greeks(
+                underlying=trade.contract.underlying,
+                expiration=trade.contract.expiration,
+                strike=trade.contract.strike,
+                option_type=trade.contract.option_type.value,
+                as_of=as_of,
+                underlying_price=underlying_price
+            )
+        except ConnectionError as e:
+            # Session 80 BUG FIX: Log connection errors instead of silent failure
+            self.logger.warning(
+                f"ThetaData connection error fetching Greeks for "
+                f"{trade.contract.underlying} {trade.contract.strike} "
+                f"{trade.contract.option_type.value}: {e}"
+            )
+            return None
+        except Exception as e:
+            # Session 80 BUG FIX: Log unexpected errors with context
+            self.logger.error(
+                f"Error fetching Greeks for {trade.contract.underlying} "
+                f"{trade.contract.strike} {trade.contract.option_type.value}: "
+                f"{type(e).__name__}: {e}"
+            )
+            return None
 
     def backtest_trades(
         self,
@@ -881,17 +1021,22 @@ class OptionsBacktester:
                 close = row['close'] if 'close' in row.index else row['Close']
 
                 # Check entry
+                # Session 78 FIX: Model realistic slippage instead of assuming exact fill
                 if not entry_hit:
                     if trade.pattern_signal.direction == 1:  # Bullish
                         if high >= trade.entry_trigger:
                             entry_hit = True
                             entry_idx = i
-                            entry_price_underlying = trade.entry_trigger
+                            # Use worst-case entry (high) capped at 0.2% slippage from trigger
+                            max_slippage = trade.entry_trigger * 0.002
+                            entry_price_underlying = min(high, trade.entry_trigger + max_slippage)
                     else:  # Bearish
                         if low <= trade.entry_trigger:
                             entry_hit = True
                             entry_idx = i
-                            entry_price_underlying = trade.entry_trigger
+                            # Use worst-case entry (low) capped at 0.2% slippage from trigger
+                            max_slippage = trade.entry_trigger * 0.002
+                            entry_price_underlying = max(low, trade.entry_trigger - max_slippage)
                     continue
 
                 # Check exit (after entry)
@@ -944,33 +1089,93 @@ class OptionsBacktester:
                 T_entry = dte_at_entry / 365.0
                 T_exit = max(0.001, (dte_at_entry - days_held) / 365.0)
 
-                # Calculate Greeks at entry
-                entry_greeks = calculate_greeks(
-                    S=entry_price_underlying,
-                    K=strike,
-                    T=T_entry,
-                    r=self.risk_free_rate,
-                    sigma=iv,
-                    option_type=option_type
-                )
+                # Session 78 FIX: Use date-based risk-free rate for accurate historical backtesting
+                try:
+                    r = get_risk_free_rate(trade.pattern_signal.timestamp)
+                except Exception:
+                    r = self.risk_free_rate_fallback
+
+                # Session 82: Try ThetaData for entry pricing first, fall back to Black-Scholes
+                entry_date = price_data.index[entry_idx]
+                market_entry_price = self._get_market_price(trade, entry_price_underlying, entry_date)
+                market_entry_greeks = self._get_market_greeks(trade, entry_price_underlying, entry_date)
+
+                # Session 83 BUG FIX: Use market Greeks ONLY if we also have a valid price
+                # Using Greeks with 0.0 price corrupts P/L calculations
+                if market_entry_greeks is not None and market_entry_price is not None and market_entry_price > 0:
+                    entry_greeks = Greeks(
+                        delta=market_entry_greeks.get('delta', 0.0),
+                        gamma=market_entry_greeks.get('gamma', 0.0),
+                        theta=market_entry_greeks.get('theta', 0.0),
+                        vega=market_entry_greeks.get('vega', 0.0),
+                        rho=0.0,
+                        option_price=market_entry_price
+                    )
+                    used_market_data_entry = True
+                elif market_entry_greeks is not None and (market_entry_price is None or market_entry_price <= 0):
+                    # Log warning: Greeks available but price not - falling back to Black-Scholes
+                    self.logger.warning(
+                        f"ThetaData Greeks without valid price for {trade.contract.osi_symbol} entry, "
+                        f"falling back to Black-Scholes"
+                    )
+                    # Fall through to Black-Scholes below
+                    market_entry_greeks = None  # Force fallback
+
+                if market_entry_greeks is None:
+                    # Fall back to Black-Scholes
+                    entry_greeks = calculate_greeks(
+                        S=entry_price_underlying,
+                        K=strike,
+                        T=T_entry,
+                        r=r,
+                        sigma=iv,
+                        option_type=option_type
+                    )
+                    used_market_data_entry = False
 
                 # Determine actual option cost (per share)
-                # If option_cost not provided, use Black-Scholes theoretical price
+                # Session 82: Prefer ThetaData market price over Black-Scholes theoretical
                 if option_cost is not None:
                     actual_option_cost = option_cost
+                elif market_entry_price is not None:
+                    actual_option_cost = market_entry_price
                 else:
                     actual_option_cost = entry_greeks.option_price
 
-                # Calculate exit Greeks for more accurate P/L
-                # Greeks change as price and time change, so we use average of entry/exit
-                exit_greeks = calculate_greeks(
-                    S=exit_price,
-                    K=strike,
-                    T=T_exit,
-                    r=self.risk_free_rate,
-                    sigma=iv,
-                    option_type=option_type
-                )
+                # Session 82: Try ThetaData for exit pricing
+                market_exit_price = self._get_market_price(trade, exit_price, exit_date)
+                market_exit_greeks = self._get_market_greeks(trade, exit_price, exit_date)
+
+                # Session 83 BUG FIX: Use market Greeks ONLY if we also have a valid price
+                if market_exit_greeks is not None and market_exit_price is not None and market_exit_price > 0:
+                    exit_greeks = Greeks(
+                        delta=market_exit_greeks.get('delta', 0.0),
+                        gamma=market_exit_greeks.get('gamma', 0.0),
+                        theta=market_exit_greeks.get('theta', 0.0),
+                        vega=market_exit_greeks.get('vega', 0.0),
+                        rho=0.0,
+                        option_price=market_exit_price
+                    )
+                    used_market_data_exit = True
+                elif market_exit_greeks is not None and (market_exit_price is None or market_exit_price <= 0):
+                    # Log warning: Greeks available but price not - falling back to Black-Scholes
+                    self.logger.warning(
+                        f"ThetaData Greeks without valid price for {trade.contract.osi_symbol} exit, "
+                        f"falling back to Black-Scholes"
+                    )
+                    market_exit_greeks = None  # Force fallback
+
+                if market_exit_greeks is None:
+                    # Fall back to Black-Scholes
+                    exit_greeks = calculate_greeks(
+                        S=exit_price,
+                        K=strike,
+                        T=T_exit,
+                        r=r,
+                        sigma=iv,
+                        option_type=option_type
+                    )
+                    used_market_data_exit = False
 
                 # Calculate price movement (actual underlying change)
                 # Delta already encodes direction:
@@ -1015,6 +1220,22 @@ class OptionsBacktester:
                     # STOP: Max loss is premium paid
                     pnl = -actual_option_cost * 100 * trade.quantity
 
+                # Session 82: Track data source for transparency
+                # Session 83: Add warning for mixed sources (P/L accuracy may be compromised)
+                if used_market_data_entry and used_market_data_exit:
+                    data_source = 'thetadata'
+                elif used_market_data_entry or used_market_data_exit:
+                    data_source = 'mixed'
+                    # Warn about potential P/L accuracy issues from mixing pricing sources
+                    self.logger.warning(
+                        f"Mixed data sources for {trade.contract.osi_symbol}: "
+                        f"entry={'thetadata' if used_market_data_entry else 'black_scholes'}, "
+                        f"exit={'thetadata' if used_market_data_exit else 'black_scholes'}. "
+                        f"P/L calculation may have reduced accuracy."
+                    )
+                else:
+                    data_source = 'black_scholes'
+
                 results.append({
                     'timestamp': trade.pattern_signal.timestamp,
                     'pattern_type': trade.pattern_signal.pattern_type.value,
@@ -1042,6 +1263,10 @@ class OptionsBacktester:
                     'theta_pnl': theta_pnl,
                     'pnl': pnl,
                     'win': pnl > 0,
+                    # Session 82: Data source tracking
+                    'data_source': data_source,
+                    'entry_source': 'thetadata' if used_market_data_entry else 'black_scholes',
+                    'exit_source': 'thetadata' if used_market_data_exit else 'black_scholes',
                 })
 
         return pd.DataFrame(results)
