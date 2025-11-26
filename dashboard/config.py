@@ -63,7 +63,7 @@ DASHBOARD_CONFIG = {
     'host': '0.0.0.0',
     'port': int(os.getenv('PORT', 8050)),  # Railway sets PORT env var
     'debug': os.getenv('DASH_DEBUG', 'false').lower() == 'true',  # False for production
-    'refresh_interval': 30000,  # 30 seconds for live updates
+    'refresh_interval': 120000,  # 2 minutes for casual monitoring (increase frequency when strategies deployed)
     'cache_timeout': 300,  # 5 minutes cache
 }
 
