@@ -22,7 +22,7 @@ This document provides a comprehensive review of the ATLAS Plotly dashboard impl
 | Data Layer | Synchronous HTTP (requests) | Needs Upgrade |
 | Broker Integration | Alpaca (paper trading) | Working |
 | Market Data | Yahoo Finance via VectorBT Pro | Working |
-| Options Data | **NOT IMPLEMENTED** | Missing |
+| Options Trading | Alpaca Options API (Paper enabled) | **NEW - Session 76** |
 | Real-time Updates | 30-second polling (dcc.Interval) | Adequate |
 
 ### Strengths

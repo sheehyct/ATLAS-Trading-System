@@ -4,16 +4,17 @@ Options Trading Panel Component
 Professional dark-themed options trading panel with STRAT integration featuring:
 - Active options trades with P&L tracking
 - Progress bars to profit targets (measured move)
-- Order execution interface (simulated for Alpaca paper, ready for Tradier/IBKR)
+- Order execution interface via Alpaca Options API
 - Pattern-based trade signals from STRAT Tier 1
 
 Session 76: Full options trading tab with progress visualization.
 
 BROKER SUPPORT:
-- Alpaca: Does NOT support options in paper trading (stocks only)
-- Tradier: Full options support with paper trading (recommended)
-- Interactive Brokers: Full options support (complex API)
-- Current: Simulation mode with real STRAT signals
+- Alpaca: Full options support in both Paper and Live environments
+  - Paper trading options enabled by default
+  - Uses alpaca-py SDK for order execution
+  - Supports market, limit, and stop orders for options
+- See: https://docs.alpaca.markets/docs/options-trading
 
 """
 
@@ -257,15 +258,16 @@ def create_options_panel():
                             ], width=6),
                         ]),
 
-                        # Broker Warning
+                        # Alpaca Options Info
                         dbc.Alert([
-                            html.I(className='fas fa-info-circle me-2'),
-                            html.Strong('Simulation Mode: '),
-                            'Alpaca paper trading does not support options. ',
-                            'Trades are simulated with real STRAT signals. ',
-                            'For live options, integrate Tradier or IBKR.'
+                            html.I(className='fas fa-check-circle me-2'),
+                            html.Strong('Alpaca Paper Trading: '),
+                            'Options trading enabled by default. ',
+                            'Orders execute via Alpaca Options API. ',
+                            html.A('Docs', href='https://docs.alpaca.markets/docs/options-trading',
+                                   target='_blank', className='alert-link')
                         ],
-                            color='warning',
+                            color='success',
                             className='mt-3 mb-0',
                             style={'fontSize': '0.8rem'}
                         )
