@@ -27,21 +27,20 @@ References:
 """
 
 import pandas as pd
-import vectorbtpro as vbt
 from typing import Optional, Tuple, Dict
 from regime.vix_spike_detector import VIXSpikeDetector
 
 
 def fetch_vix_data(start_date: str, end_date: str) -> pd.Series:
     """
-    Fetch VIX data from Yahoo Finance using VectorBT Pro.
+    Fetch VIX data from Yahoo Finance using yfinance directly.
 
     Parameters
     ----------
     start_date : str
-        Start date in YYYY-MM-DD format or relative (e.g., '1 year ago')
+        Start date in YYYY-MM-DD format
     end_date : str
-        End date in YYYY-MM-DD format or relative (e.g., 'today')
+        End date in YYYY-MM-DD format
 
     Returns
     -------
@@ -59,10 +58,12 @@ def fetch_vix_data(start_date: str, end_date: str) -> pd.Series:
     - Uses Yahoo Finance symbol: ^VIX
     - Data includes regular US market hours only
     - VIX is calculated by CBOE based on SPX options implied volatility
+    - Uses yfinance directly to avoid VBT Pro dependency for dashboard
     """
-    vix_data = vbt.YFData.pull('^VIX', start=start_date, end=end_date)
-    vix_close = vix_data.get()['Close']
-    return vix_close
+    import yfinance as yf
+    ticker = yf.Ticker('^VIX')
+    df = ticker.history(start=start_date, end=end_date)
+    return df['Close']
 
 
 def detect_vix_spike(
