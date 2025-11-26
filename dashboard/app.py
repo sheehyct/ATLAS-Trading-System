@@ -110,6 +110,19 @@ app = dash.Dash(
 # INITIALIZE DATA LOADERS
 # ============================================
 
+# Log environment info for Railway debugging
+import os
+logger.info("=" * 60)
+logger.info("ATLAS Dashboard Starting - Environment Check")
+logger.info("=" * 60)
+logger.info(f"RAILWAY_ENVIRONMENT: {os.getenv('RAILWAY_ENVIRONMENT', 'not set')}")
+logger.info(f"DEFAULT_ACCOUNT: {os.getenv('DEFAULT_ACCOUNT', 'MID (default)')}")
+logger.info(f"ALPACA_API_KEY present: {bool(os.getenv('ALPACA_API_KEY'))}")
+logger.info(f"ALPACA_SECRET_KEY present: {bool(os.getenv('ALPACA_SECRET_KEY'))}")
+logger.info(f"ALPACA_MID_KEY present: {bool(os.getenv('ALPACA_MID_KEY'))}")
+logger.info(f"ALPACA_LARGE_KEY present: {bool(os.getenv('ALPACA_LARGE_KEY'))}")
+logger.info("=" * 60)
+
 try:
     regime_loader = RegimeDataLoader()
     logger.info("RegimeDataLoader initialized successfully")
@@ -126,7 +139,10 @@ except Exception as e:
 
 try:
     live_loader = LiveDataLoader()
-    logger.info("LiveDataLoader initialized successfully")
+    if live_loader.client is not None:
+        logger.info("LiveDataLoader initialized successfully with active Alpaca connection")
+    else:
+        logger.warning(f"LiveDataLoader initialized but Alpaca client is None. Error: {live_loader.init_error}")
 except Exception as e:
     logger.warning(f"LiveDataLoader initialization failed: {e}")
     live_loader = None
@@ -340,14 +356,25 @@ def update_regime_timeline(start_date, end_date):
         Plotly figure with regime timeline
     """
     try:
+        logger.info(f"update_regime_timeline called: start={start_date}, end={end_date}")
+
         if regime_loader is None:
+            logger.warning("regime_loader is None")
             return create_error_figure("Regime data loader not available")
 
-        # Load regime data
+        if regime_loader.atlas_model is None:
+            logger.warning("ATLAS model not initialized")
+            return create_error_figure("ATLAS regime model not available")
+
+        # Load regime data (this can take 10-15 seconds)
+        logger.info("Loading regime timeline data...")
         regime_data = regime_loader.get_regime_timeline(start_date, end_date)
 
         if regime_data.empty:
+            logger.warning("Regime data returned empty")
             return create_error_figure("No regime data available for selected range")
+
+        logger.info(f"Regime data loaded: {len(regime_data)} rows")
 
         # Extract data
         dates = regime_data['date']
@@ -357,7 +384,7 @@ def update_regime_timeline(start_date, end_date):
         return create_regime_timeline(dates, regimes, prices)
 
     except Exception as e:
-        logger.error(f"Error updating regime timeline: {e}")
+        logger.error(f"Error updating regime timeline: {e}", exc_info=True)
         return create_error_figure(f"Error: {str(e)}")
 
 
@@ -463,9 +490,13 @@ def update_live_portfolio(n):
         Tuple of (portfolio card, positions data, heat gauge figure)
     """
     try:
-        if live_loader is None:
-            error_card = create_error_card("Live data not available")
-            return error_card, [], create_error_figure("Live data not available")
+        if live_loader is None or live_loader.client is None:
+            error_msg = "Live data not available"
+            if live_loader and live_loader.init_error:
+                error_msg = f"Alpaca connection failed: {live_loader.init_error}"
+            logger.warning(f"update_live_portfolio: {error_msg}")
+            error_card = create_error_card(error_msg)
+            return error_card, [], create_error_figure(error_msg)
 
         # Get account status
         account = live_loader.get_account_status()

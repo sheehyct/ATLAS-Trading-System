@@ -37,8 +37,9 @@ STRATEGIES_DIR = BASE_DIR / 'strategies'
 # Get Alpaca credentials from centralized config
 # Wrapped in try/except for Railway deployment where credentials may be missing
 try:
-    from config.settings import get_alpaca_credentials
-    _alpaca_creds = get_alpaca_credentials('MID')
+    from config.settings import get_alpaca_credentials, get_default_account
+    _default_account = get_default_account()  # Uses DEFAULT_ACCOUNT env var (LARGE, MID, or SMALL)
+    _alpaca_creds = get_alpaca_credentials(_default_account)
     ALPACA_CONFIG = {
         'api_key': _alpaca_creds['api_key'],
         'secret_key': _alpaca_creds['secret_key'],

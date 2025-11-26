@@ -116,28 +116,39 @@ def get_alpaca_credentials(account: str = 'MID') -> Dict[str, str]:
 
     Raises:
         ValueError: If account type is invalid
+
+    Note:
+        For Railway/cloud deployments, you can use simplified env vars:
+        - ALPACA_API_KEY and ALPACA_SECRET_KEY (used as fallback for any account)
+        For local development with multiple accounts, use:
+        - ALPACA_MID_KEY, ALPACA_MID_SECRET
+        - ALPACA_LARGE_KEY, ALPACA_LARGE_SECRET
     """
     # Ensure config is loaded
     load_config()
 
     account = account.upper()
 
+    # Fallback keys for simplified Railway deployments
+    fallback_key = os.getenv('ALPACA_API_KEY')
+    fallback_secret = os.getenv('ALPACA_SECRET_KEY')
+
     if account == 'SMALL':
         return {
-            'api_key': os.getenv('ALPACA_API_KEY'),
-            'secret_key': os.getenv('ALPACA_SECRET_KEY'),
+            'api_key': os.getenv('ALPACA_API_KEY') or fallback_key,
+            'secret_key': os.getenv('ALPACA_SECRET_KEY') or fallback_secret,
             'base_url': os.getenv('ALPACA_ENDPOINT', 'https://paper-api.alpaca.markets')
         }
     elif account == 'MID':
         return {
-            'api_key': os.getenv('ALPACA_MID_KEY'),
-            'secret_key': os.getenv('ALPACA_MID_SECRET'),
+            'api_key': os.getenv('ALPACA_MID_KEY') or fallback_key,
+            'secret_key': os.getenv('ALPACA_MID_SECRET') or fallback_secret,
             'base_url': os.getenv('ALPACA_MID_ENDPOINT', 'https://paper-api.alpaca.markets')
         }
     elif account == 'LARGE':
         return {
-            'api_key': os.getenv('ALPACA_LARGE_KEY'),
-            'secret_key': os.getenv('ALPACA_LARGE_SECRET'),
+            'api_key': os.getenv('ALPACA_LARGE_KEY') or fallback_key,
+            'secret_key': os.getenv('ALPACA_LARGE_SECRET') or fallback_secret,
             'base_url': os.getenv('ALPACA_LARGE_ENDPOINT', 'https://paper-api.alpaca.markets')
         }
     else:
@@ -183,6 +194,41 @@ def get_default_account() -> str:
     """Get the default account to use."""
     load_config()
     return os.getenv('DEFAULT_ACCOUNT', 'MID')
+
+
+def get_thetadata_config() -> Dict[str, any]:
+    """
+    Get ThetaData terminal configuration.
+
+    ThetaData uses local terminal architecture - REST calls go to localhost.
+    The terminal handles authentication via its own creds.txt file.
+    No API key needed in REST calls.
+
+    Returns:
+        Dict with host, port, timeout, and enabled flag
+
+    Example:
+        config = get_thetadata_config()
+        base_url = f"http://{config['host']}:{config['port']}"
+    """
+    load_config()
+    return {
+        'host': os.getenv('THETADATA_HOST', '127.0.0.1'),
+        'port': int(os.getenv('THETADATA_PORT', '25510')),
+        'timeout': int(os.getenv('THETADATA_TIMEOUT', '30')),
+        'enabled': os.getenv('THETADATA_ENABLED', 'false').lower() == 'true'
+    }
+
+
+def is_thetadata_available() -> bool:
+    """
+    Check if ThetaData integration is enabled.
+
+    Returns:
+        True if THETADATA_ENABLED=true in environment
+    """
+    load_config()
+    return os.getenv('THETADATA_ENABLED', 'false').lower() == 'true'
 
 
 def is_config_loaded() -> bool:

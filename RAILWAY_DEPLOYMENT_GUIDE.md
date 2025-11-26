@@ -26,9 +26,17 @@ git push origin main
 ### Add Environment Variables:
 
 1. In Railway project, click "Variables"
-2. Add these:
-   - `ALPACA_API_KEY` = your_paper_key
-   - `ALPACA_SECRET_KEY` = your_paper_secret
+2. Add these **required** variables:
+   - `ALPACA_API_KEY` = your_paper_api_key
+   - `ALPACA_SECRET_KEY` = your_paper_secret_key
+
+   **Optional** (for multi-account support):
+   - `DEFAULT_ACCOUNT` = `LARGE` (or `MID` or `SMALL`)
+   - `ALPACA_LARGE_KEY` = large_account_api_key (if using LARGE account)
+   - `ALPACA_LARGE_SECRET` = large_account_secret_key
+
+   **Note:** If you only set `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`, they will be
+   used as fallback for any account type (MID, LARGE, SMALL).
 
 3. Click "Deploy" (Railway auto-restarts with new env vars)
 
@@ -67,6 +75,25 @@ Common issues:
 Usually missing environment variables:
 - Make sure `ALPACA_API_KEY` set
 - Make sure `ALPACA_SECRET_KEY` set
+
+### Live Data Not Loading?
+
+Check Railway logs for these messages:
+```
+ALPACA_API_KEY present: True
+ALPACA_SECRET_KEY present: True
+LiveDataLoader initialized successfully with active Alpaca connection
+```
+
+If you see:
+```
+LiveDataLoader initialized but Alpaca client is None
+```
+
+Your credentials are either missing or invalid. Verify:
+1. Environment variables are set correctly in Railway
+2. API keys are from paper trading account (not live)
+3. No extra spaces or quotes in the values
 
 ### Port Issues?
 
