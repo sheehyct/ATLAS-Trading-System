@@ -11,6 +11,9 @@ IMPORTANT: ATLAS regime detection is inherently DAILY:
 - Updates: Once per day after market close (4 PM ET)
 
 The loader caches results daily to avoid expensive re-computation on every page load.
+
+Note: This module uses yfinance directly for data fetching to avoid VectorBT Pro
+dependency on Railway. Backtesting code continues to use VBT Pro for full features.
 """
 
 import pandas as pd
@@ -21,6 +24,43 @@ from datetime import datetime, date
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_yf_data(symbol: str, start: str, end: str, tz: str = 'America/New_York') -> pd.DataFrame:
+    """
+    Fetch OHLCV data using yfinance directly.
+
+    This is a lightweight alternative to vbt.YFData.pull() for dashboard use.
+    Returns DataFrame with same structure as VBT for compatibility.
+
+    Args:
+        symbol: Ticker symbol (e.g., 'SPY', '^VIX')
+        start: Start date string (YYYY-MM-DD)
+        end: End date string (YYYY-MM-DD)
+        tz: Timezone to localize to (default: America/New_York)
+
+    Returns:
+        DataFrame with OHLCV columns, timezone-aware index
+    """
+    import yfinance as yf
+
+    ticker = yf.Ticker(symbol)
+    df = ticker.history(start=start, end=end, auto_adjust=False)
+
+    if df.empty:
+        logger.warning(f"No data returned for {symbol} from {start} to {end}")
+        return pd.DataFrame()
+
+    # Ensure timezone-aware index (yfinance returns UTC, convert to requested tz)
+    if df.index.tz is None:
+        df.index = df.index.tz_localize('UTC')
+    df.index = df.index.tz_convert(tz)
+
+    # Keep only OHLCV columns (matching VBT structure)
+    columns_to_keep = ['Open', 'High', 'Low', 'Close', 'Volume']
+    df = df[[c for c in columns_to_keep if c in df.columns]]
+
+    return df
 
 
 class RegimeDataLoader:
@@ -94,22 +134,15 @@ class RegimeDataLoader:
 
             logger.info(f"Computing regime detection (this may take 10-15 seconds)...")
 
-            import vectorbtpro as vbt
-            spy_data = vbt.YFData.pull(
-                'SPY',
-                start=start_date,
-                end=end_date,
-                tz='America/New_York'
-            )
-            spy_df = spy_data.get()
+            # Use yfinance directly (no VBT Pro dependency for dashboard)
+            spy_df = _fetch_yf_data('SPY', start_date, end_date, tz='America/New_York')
+            if spy_df.empty:
+                return self._error_response("Failed to fetch SPY data")
 
-            vix_data = vbt.YFData.pull(
-                '^VIX',
-                start=start_date,
-                end=end_date,
-                tz='America/New_York'
-            )
-            vix_close = vix_data.get()['Close']
+            vix_df = _fetch_yf_data('^VIX', start_date, end_date, tz='America/New_York')
+            if vix_df.empty:
+                return self._error_response("Failed to fetch VIX data")
+            vix_close = vix_df['Close']
 
             # Run ATLAS regime detection
             regimes, lambdas, thetas = self.atlas_model.online_inference(
@@ -188,22 +221,17 @@ class RegimeDataLoader:
             lookback_start = '2020-01-01'
             logger.info(f"Computing regime timeline from {lookback_start}...")
 
-            import vectorbtpro as vbt
-            spy_data = vbt.YFData.pull(
-                symbol,
-                start=lookback_start,
-                end=end_date,
-                tz='America/New_York'
-            )
-            spy_df = spy_data.get()
+            # Use yfinance directly (no VBT Pro dependency for dashboard)
+            spy_df = _fetch_yf_data(symbol, lookback_start, end_date, tz='America/New_York')
+            if spy_df.empty:
+                logger.error(f"Failed to fetch {symbol} data")
+                return pd.DataFrame(columns=['date', 'regime', 'price'])
 
-            vix_data = vbt.YFData.pull(
-                '^VIX',
-                start=lookback_start,
-                end=end_date,
-                tz='America/New_York'
-            )
-            vix_close = vix_data.get()['Close']
+            vix_df = _fetch_yf_data('^VIX', lookback_start, end_date, tz='America/New_York')
+            if vix_df.empty:
+                logger.error("Failed to fetch VIX data")
+                return pd.DataFrame(columns=['date', 'regime', 'price'])
+            vix_close = vix_df['Close']
 
             # Run ATLAS regime detection
             regimes, lambdas, thetas = self.atlas_model.online_inference(
@@ -246,16 +274,12 @@ class RegimeDataLoader:
         """
         try:
             from regime.academic_features import calculate_features
-            import vectorbtpro as vbt
 
-            # Fetch data
-            spy_data = vbt.YFData.pull(
-                symbol,
-                start=start_date,
-                end=end_date,
-                tz='America/New_York'
-            )
-            spy_df = spy_data.get()
+            # Use yfinance directly (no VBT Pro dependency for dashboard)
+            spy_df = _fetch_yf_data(symbol, start_date, end_date, tz='America/New_York')
+            if spy_df.empty:
+                logger.error(f"Failed to fetch {symbol} data for features")
+                return pd.DataFrame(columns=['date', 'downside_dev', 'sortino_20d', 'sortino_60d'])
 
             # Calculate features
             features = calculate_features(spy_df)
