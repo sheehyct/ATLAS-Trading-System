@@ -1,11 +1,314 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 26, 2025 (Session 83D - Walk-Forward Validation)
+**Last Updated:** November 27, 2025 (Session 83H - Options Risk Manager)
 **Current Branch:** `main`
 **Phase:** Options Module Phase 3 - ATLAS Production Readiness Compliance
-**Status:** Walk-forward validator complete, 222 STRAT/ThetaData + 44 validation tests passing
+**Status:** Options risk manager complete, 746 total tests passing (232 STRAT + 514 validation/infra)
 
 **ARCHIVED SESSIONS:** Sessions 1-66 archived to `archives/sessions/HANDOFF_SESSIONS_01-66.md`
+
+---
+
+## Session 83H: Options Risk Manager Implementation - COMPLETE
+
+**Date:** November 27, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - OptionsRiskManager implemented with full test suite
+
+### Key Accomplishments
+
+Implemented options risk manager per ATLAS Checklist Section 9.3.
+
+**1. Created strat/options_risk_manager.py (~600 LOC)**
+- `OptionsRiskConfig` - Configuration dataclass with Greeks limits per ATLAS Section 9.3.1
+- `CircuitBreakerState` - Enum (NORMAL, CAUTION, REDUCED, HALTED, EMERGENCY)
+- `ValidationResult` - Pre-trade validation result dataclass
+- `PortfolioGreeks` - Aggregated portfolio Greeks dataclass
+- `PositionRisk` - Individual position risk metrics dataclass
+- `ForceExitSignal` - Signal for forced position exits
+- `OptionsRiskManager` - Main risk manager class
+
+**2. OptionsRiskManager Methods**
+- `validate_new_position()` - Pre-trade validation against all risk limits
+- `check_circuit_breakers()` - Circuit breaker checks with VIX and Greeks monitoring
+- `aggregate_portfolio_greeks()` - Portfolio-level Greeks aggregation
+- `add_position()` / `remove_position()` / `update_position()` - Position management
+- `can_trade()` - Quick trading permission check
+- `get_position_size_multiplier()` - Size adjustment based on circuit state
+- `reset_to_normal()` - Manual circuit breaker reset
+- `get_portfolio_risk_summary()` - Comprehensive risk summary
+- `print_summary()` - Human-readable risk report
+
+**3. Created tests/test_strat/test_options_risk_manager.py (~750 LOC)**
+- 54 comprehensive tests across 12 test classes
+- Coverage: Config, CircuitBreakerState, PositionRisk, initialization, validation, position management, Greeks aggregation, circuit breakers, utility methods, edge cases, serialization, integration scenarios
+
+### ATLAS Compliance (Section 9.3)
+
+| Requirement | Implementation |
+|-------------|---------------|
+| max_portfolio_delta | 30% (configurable) |
+| max_portfolio_gamma | 5% (configurable) |
+| max_portfolio_theta | -2% daily (configurable) |
+| max_portfolio_vega | 10% (configurable) |
+| max_position_delta | 10% (configurable) |
+| min_dte_entry | 7 days (configurable) |
+| max_dte_entry | 45 days (configurable) |
+| forced_exit_dte | 3 days (configurable) |
+| max_spread_pct | 10% of mid (configurable) |
+| Circuit breakers | NORMAL -> CAUTION -> REDUCED -> HALTED -> EMERGENCY |
+
+### Files Created
+
+| File | LOC | Purpose |
+|------|-----|---------|
+| strat/options_risk_manager.py | 600 | OptionsRiskManager class, all dataclasses |
+| tests/test_strat/test_options_risk_manager.py | 750 | 54 test cases |
+| **TOTAL** | **1,350** | Options risk manager |
+
+### Test Results
+
+- 54 options risk manager tests: ALL PASSING
+- 746 total tests: PASSING (692 previous + 54 new)
+- 15 pre-existing failures: UNCHANGED (Alpaca client, regime, strategy tests)
+- 6 skipped: UNCHANGED (API-dependent)
+- No regressions introduced
+
+### Session 83I Priorities (Next)
+
+**Focus:** Integration
+
+1. Wire OptionsRiskManager into OptionsBacktester
+2. Add pre-trade validation hook in backtest_trades()
+3. Create validation/validation_runner.py for orchestration
+4. Track rejected trades in results DataFrame
+5. Add tests for integration
+
+**Reference:** ATLAS Checklist Section 9.3, Plan file at `C:\Users\sheeh\.claude\plans\jolly-stirring-wilkinson.md`
+
+---
+
+## Session 83G: Pattern Metrics Implementation - COMPLETE
+
+**Date:** November 27, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - PatternMetricsAnalyzer implemented with full test suite
+
+### Key Accomplishments
+
+Implemented pattern metrics per ATLAS Checklist Section 9.2.
+
+**1. Created strat/pattern_metrics.py (~350 LOC)**
+- `PatternType` - Enum for STRAT pattern types (3-1-2U/D, 2-1-2U/D, 2D-2U, etc.)
+- `PatternTradeResult` - Dataclass for individual trades with pattern metadata
+- `create_trade_from_backtest_row()` - Factory function for DataFrame conversion
+- `create_trades_from_dataframe()` - Batch conversion helper
+- Properties: `is_bullish`, `is_bearish`, `base_pattern`, `planned_risk_reward`
+
+**2. Created validation/pattern_metrics.py (~450 LOC)**
+- `PatternMetricsAnalyzer` - Main analyzer class with analyze() method
+- `_analyze_by_pattern()` - Group trades by pattern type
+- `_analyze_by_timeframe()` - Group trades by timeframe (1D, 1W, 1M)
+- `_analyze_by_regime()` - Group trades by ATLAS regime
+- `_calculate_pattern_stats()` - Calculate PatternStats per group
+- `_calculate_options_accuracy()` - ThetaData coverage and delta metrics
+- `analyze_pattern_metrics()` - Convenience function
+- `get_best_patterns_by_metric()` - Rank patterns by metric
+- `get_regime_pattern_compatibility()` - Find viable patterns per regime
+- `generate_pattern_report()` - Human-readable report generation
+
+**3. Created tests/test_validation/test_pattern_metrics.py (~820 LOC)**
+- 47 comprehensive tests across 11 test classes
+- Coverage: PatternType enum, PatternTradeResult, analyzer, stats calculation, options accuracy, helpers, report generation, edge cases, serialization
+
+**4. Updated validation/__init__.py**
+- Added PatternMetricsAnalyzer and helper function exports
+- Version bumped to 0.5.0, Session 83G
+
+### ATLAS Compliance (Section 9.2)
+
+| Requirement | Implementation |
+|-------------|---------------|
+| Per-pattern breakdown | by_pattern dict with PatternStats |
+| Per-timeframe breakdown | by_timeframe dict (1D, 1W, 1M) |
+| Per-regime breakdown | by_regime dict (TREND_BULL, CRASH, etc.) |
+| Options accuracy | OptionsAccuracyMetrics (ThetaData coverage, delta range) |
+
+### Files Created
+
+| File | LOC | Purpose |
+|------|-----|---------|
+| strat/pattern_metrics.py | 350 | PatternTradeResult, PatternType enum |
+| validation/pattern_metrics.py | 450 | PatternMetricsAnalyzer class |
+| tests/test_validation/test_pattern_metrics.py | 820 | 47 test cases |
+| **TOTAL** | **1,620** | Pattern metrics |
+
+### Test Results
+
+- 47 pattern metrics tests: ALL PASSING
+- 40 bias detection tests: ALL PASSING
+- 50 Monte Carlo tests: ALL PASSING
+- 44 walk-forward tests: ALL PASSING
+- 181 total validation tests: ALL PASSING
+- 178 STRAT tests: ALL PASSING
+- 359 total tests passing, 2 skipped (API-dependent)
+- No regressions introduced
+
+### Session 83H Priorities (Next)
+
+**Focus:** Options Risk Manager Implementation
+
+1. Create `strat/options_risk_manager.py` (~500 LOC)
+2. Implement Greeks-based position limits (delta, gamma, theta, vega)
+3. Circuit breaker triggers and state machine
+4. Pre-trade validation hook
+5. Add tests for risk manager
+
+**Reference:** ATLAS Checklist Section 9.3, Plan file at `C:\Users\sheeh\.claude\plans\jolly-stirring-wilkinson.md`
+
+---
+
+## Session 83F: Bias Detection Implementation - COMPLETE
+
+**Date:** November 27, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - BiasDetector implemented with full test suite
+
+### Key Accomplishments
+
+Implemented bias detection per ATLAS Checklist Section 1.4.
+
+**1. Created validation/bias_detection.py (~570 LOC)**
+- `BiasDetector` - Main detector class with full_check() method
+- `check_signal_timing()` - Signal-to-return correlation check for look-ahead bias
+- `check_entry_achievability()` - Verify entries within bar high/low range
+- `check_exit_achievability()` - Verify exits within bar high/low range
+- `check_indicator_first_valid()` - Verify indicator lookback NaN values
+- `check_signal_shift()` - Verify tradeable signals properly shifted
+- `detect_look_ahead_bias()` - Convenience function for quick bias check
+- `validate_entry_prices()` - Convenience function for entry validation
+
+**2. Created tests/test_validation/test_bias_detection.py (~730 LOC)**
+- 40 comprehensive tests across 10 test classes
+- Coverage: signal timing, entry/exit achievability, indicator first-valid, signal shift, full check, helpers, edge cases, pandas input
+
+**3. Updated validation/__init__.py**
+- Added BiasDetector, detect_look_ahead_bias, validate_entry_prices exports
+- Version bumped to 0.4.0, Session 83F
+
+### ATLAS Compliance (Section 1.4)
+
+| Requirement | Implementation |
+|-------------|---------------|
+| Signal-return correlation | check_signal_timing() with correlation_threshold=0.5 |
+| Entry achievability | check_entry_achievability() with tolerance=0.001 |
+| Exit achievability | check_exit_achievability() with tolerance=0.001 |
+| Indicator first-valid | check_indicator_first_valid() with expected_lookback |
+| Signal shift | check_signal_shift() verifies tradeable = raw.shift(1) |
+
+### Files Created
+
+| File | LOC | Purpose |
+|------|-----|---------|
+| validation/bias_detection.py | 570 | BiasDetector class |
+| tests/test_validation/test_bias_detection.py | 730 | 40 test cases |
+| **TOTAL** | **1,300** | Bias detection |
+
+### Test Results
+
+- 40 bias detection tests: ALL PASSING
+- 50 Monte Carlo tests: ALL PASSING
+- 44 walk-forward tests: ALL PASSING
+- 178 STRAT tests: ALL PASSING
+- 312 total tests passing, 2 skipped (API-dependent)
+- No regressions introduced
+
+### Session 83G Priorities (Next)
+
+**Focus:** Pattern Metrics Implementation
+
+1. Create `strat/pattern_metrics.py` (~300 LOC)
+2. Create `validation/pattern_metrics.py` (~300 LOC)
+3. Implement PatternMetricsAnalyzer class
+4. Per-pattern breakdown (2-1-2, 3-1-2, 2-2, etc.)
+5. Per-timeframe breakdown (1D, 1W, 1M)
+6. Per-regime breakdown (TREND_BULL, TREND_BEAR, etc.)
+7. Options accuracy metrics (ThetaData coverage, delta range)
+8. Add tests for pattern metrics
+
+**Reference:** ATLAS Checklist Section 9.2, Plan file at `C:\Users\sheeh\.claude\plans\jolly-stirring-wilkinson.md`
+
+---
+
+## Session 83E: Monte Carlo Simulation Implementation - COMPLETE
+
+**Date:** November 26, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - MonteCarloValidator implemented with full test suite
+
+### Key Accomplishments
+
+Implemented Monte Carlo simulation per ATLAS Checklist Section 1.7.
+
+**1. Created validation/monte_carlo.py (~480 LOC)**
+- `MonteCarloValidator` - Main validator class with validate() method
+- `TradeRecord` - Dataclass for trade abstraction
+- `_bootstrap_trades()` - Bootstrap resampling with replacement
+- `_apply_options_shocks()` - IV and theta uncertainty modeling
+- `_calculate_equity_curve()` - Equity curve from trade sequence
+- `_calculate_sharpe()` - Sharpe ratio calculation
+- `_calculate_max_drawdown()` - Maximum drawdown calculation
+- `_calculate_statistics()` - CI, P(Loss), P(Ruin) computation
+- `generate_synthetic_trades()` - Helper for testing
+
+**2. Created tests/test_validation/test_monte_carlo.py (~700 LOC)**
+- 50 comprehensive tests across 12 test classes
+- Coverage: bootstrap, equity, Sharpe, drawdown, CI, probabilities, options shocks
+
+**3. Updated validation/__init__.py**
+- Added MonteCarloValidator, TradeRecord, generate_synthetic_trades exports
+- Version bumped to 0.3.0, Session 83E
+
+### ATLAS Compliance (Section 1.7)
+
+| Requirement | Implementation |
+|-------------|---------------|
+| 10,000 iterations | MonteCarloConfig.n_simulations = 10000 |
+| Bootstrap resampling | _bootstrap_trades() with replacement |
+| 95% CI excludes 0 | sharpe_ci_excludes_zero property |
+| P(Loss) < 20% | max_probability_of_loss = 0.20 |
+| P(Ruin) < 5% | max_probability_of_ruin = 0.05 |
+| IV shock +/- 20% | MonteCarloConfigOptions.iv_shock_std = 0.20 |
+| Theta shock up to 50% | MonteCarloConfigOptions.theta_shock_max = 1.50 |
+
+### Files Created
+
+| File | LOC | Purpose |
+|------|-----|---------|
+| validation/monte_carlo.py | 480 | MonteCarloValidator class |
+| tests/test_validation/test_monte_carlo.py | 700 | 50 test cases |
+| **TOTAL** | **1,180** | Monte Carlo simulation |
+
+### Test Results
+
+- 50 Monte Carlo tests: ALL PASSING
+- 44 walk-forward tests: ALL PASSING
+- 178 STRAT tests: ALL PASSING
+- 272 total tests passing, 2 skipped (API-dependent)
+- No regressions introduced
+
+### Session 83F Priorities (Next)
+
+**Focus:** Bias Detection Implementation
+
+1. Create `validation/bias_detection.py` (~250 LOC)
+2. Implement `BiasDetector` class
+3. Signal-to-return correlation check (look-ahead bias)
+4. Entry price achievability verification
+5. Indicator first-valid index verification
+6. Add tests for bias detection
+
+**Reference:** ATLAS Checklist Section 1.4, Plan file at `C:\Users\sheeh\.claude\plans\jolly-stirring-wilkinson.md`
 
 ---
 
