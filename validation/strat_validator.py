@@ -831,9 +831,11 @@ class ATLASSTRATValidator:
             if config.use_thetadata and self.thetadata_fetcher:
                 # The STRATOptionsStrategy uses OptionsBacktester internally
                 # which can accept a ThetaData fetcher
+                # Session 83K-3 BUG FIX: Use internal attribute names (_options_fetcher, _use_market_prices)
                 if hasattr(strategy, '_backtester') and strategy._backtester:
-                    strategy._backtester.options_fetcher = self.thetadata_fetcher
-                    strategy._backtester.use_market_prices = True
+                    strategy._backtester._options_fetcher = self.thetadata_fetcher
+                    strategy._backtester._use_market_prices = True
+                    logger.debug(f"ThetaData fetcher wired to {config.run_id} backtester")
 
             # Run validation
             strategy_name = f"STRAT_{config.pattern}_{config.timeframe}_{config.symbol}"

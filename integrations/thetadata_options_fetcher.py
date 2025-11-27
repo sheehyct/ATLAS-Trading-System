@@ -46,6 +46,21 @@ except ImportError:
     RISK_FREE_RATE_AVAILABLE = False
 
 
+def _safe_dte_calc(expiration: datetime, as_of: datetime) -> int:
+    """
+    Session 83K-3 BUG FIX: Safely calculate days to expiration.
+
+    Handles timezone-aware vs naive datetime subtraction which causes:
+    'Cannot subtract tz-naive and tz-aware datetime-like objects'
+
+    Strategy: Convert both to naive datetime in UTC, then subtract.
+    """
+    # Remove timezone info for safe subtraction
+    exp_naive = expiration.replace(tzinfo=None) if hasattr(expiration, 'tzinfo') and expiration.tzinfo else expiration
+    as_of_naive = as_of.replace(tzinfo=None) if hasattr(as_of, 'tzinfo') and as_of.tzinfo else as_of
+    return (exp_naive - as_of_naive).days
+
+
 class ThetaDataOptionsFetcher:
     """
     High-level interface for options data in STRAT backtesting.
@@ -454,8 +469,8 @@ class ThetaDataOptionsFetcher:
         if not GREEKS_AVAILABLE:
             return None
 
-        # Calculate time to expiration
-        dte = (expiration - as_of).days
+        # Calculate time to expiration (Session 83K-3: using safe tz-aware subtraction)
+        dte = _safe_dte_calc(expiration, as_of)
         if dte <= 0:
             return max(0, underlying_price - strike) if option_type == 'C' else max(0, strike - underlying_price)
 
@@ -496,7 +511,8 @@ class ThetaDataOptionsFetcher:
         if not GREEKS_AVAILABLE:
             return None
 
-        dte = (expiration - as_of).days
+        # Session 83K-3: using safe tz-aware subtraction
+        dte = _safe_dte_calc(expiration, as_of)
         if dte <= 0:
             return None
 
@@ -615,7 +631,8 @@ class ThetaDataOptionsFetcher:
         osi_symbol = f"{symbol_part}{date_part}{option_type}{strike_part}"
 
         # Session 83 BUG FIX: Calculate realistic spread per ATLAS checklist Section 9.1.1
-        dte = max(0, (expiration - as_of).days)
+        # Session 83K-3: using safe tz-aware subtraction
+        dte = max(0, _safe_dte_calc(expiration, as_of))
         spread_pct = self._estimate_spread_pct(price, underlying_price, strike, dte)
         half_spread = spread_pct / 2
 

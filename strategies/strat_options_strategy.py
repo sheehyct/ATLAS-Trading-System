@@ -216,7 +216,9 @@ class STRATOptionsStrategy:
         result['stop'] = np.nan
         result['target'] = np.nan
         result['pattern_type'] = ''
-        result['pattern_timestamp'] = pd.NaT
+        # Session 83K-3 BUG FIX: Initialize with same dtype as index to avoid FutureWarning
+        # about incompatible datetime dtype when setting timezone-aware timestamps
+        result['pattern_timestamp'] = pd.Series([pd.NaT] * len(data), index=data.index, dtype=data.index.dtype)
 
         # Detect patterns
         signals = self._detect_all_patterns(data, effective_config)

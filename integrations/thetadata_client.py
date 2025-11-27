@@ -821,7 +821,10 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
         }
 
         try:
-            result = self._make_request_v3('option/history/greeks', params)
+            # Session 83K-3 FIX: Use correct endpoint for first-order Greeks
+            # Wrong: /v3/option/history/greeks
+            # Correct: /v3/option/history/greeks/first_order
+            result = self._make_request_v3('option/history/greeks/first_order', params)
 
             response_list = result.get('response', [])
             if not response_list:

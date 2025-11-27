@@ -237,9 +237,13 @@ class ValidationRunner:
             if 'exit_price' in trades_df.columns:
                 exit_prices = trades_df['exit_price']
 
+        # Session 83K-3 BUG FIX: Pass entry column (boolean) instead of full DataFrame
+        # BiasDetector.check_signal_timing expects a Series/array, not DataFrame
+        signal_entries = signals['entry'] if 'entry' in signals.columns else signals
+
         return detector.full_check(
             data=data,
-            signals=signals,
+            signals=signal_entries,
             entry_prices=entry_prices,
             exit_prices=exit_prices,
         )

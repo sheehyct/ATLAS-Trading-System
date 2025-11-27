@@ -519,6 +519,10 @@ class OptionsExecutor:
         else:
             strike = min(entry, max(strike, target))
 
+        # Session 83K-3 BUG FIX: Re-round after boundary checks to ensure ThetaData compatibility
+        # The boundary checks above can replace the rounded strike with non-rounded entry/target values
+        strike = self._round_to_standard_strike(strike, underlying_price)
+
         return strike, None, None
 
     def _select_strike_data_driven(
