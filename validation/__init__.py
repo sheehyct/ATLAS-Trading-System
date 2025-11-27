@@ -91,6 +91,14 @@ from validation.bias_detection import (
     validate_entry_prices,
 )
 
+from validation.pattern_metrics import (
+    PatternMetricsAnalyzer,
+    analyze_pattern_metrics,
+    get_best_patterns_by_metric,
+    get_regime_pattern_compatibility,
+    generate_pattern_report,
+)
+
 __all__ = [
     # Protocols
     'StrategyProtocol',
@@ -139,7 +147,14 @@ __all__ = [
     'BiasDetector',
     'detect_look_ahead_bias',
     'validate_entry_prices',
+
+    # Validators - Pattern Metrics
+    'PatternMetricsAnalyzer',
+    'analyze_pattern_metrics',
+    'get_best_patterns_by_metric',
+    'get_regime_pattern_compatibility',
+    'generate_pattern_report',
 ]
 
-__version__ = '0.4.0'
-__session__ = '83F'
+__version__ = '0.5.0'
+__session__ = '83G'
