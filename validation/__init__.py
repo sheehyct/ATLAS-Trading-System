@@ -12,15 +12,22 @@ Components:
 - Transaction Cost Modeling (Section 1.1)
 
 Session 83C: Foundation module with protocols, configs, and result dataclasses.
-Sessions 83D-83K: Validators, runner, and integration.
+Session 83D: Walk-forward validation implementation.
+Sessions 83E-83K: Monte Carlo, bias detection, runner, and integration.
 
 Usage:
     from validation import ValidationConfig, BacktestResult
-    from validation import WalkForwardResults, MonteCarloResults
+    from validation import WalkForwardValidator, WalkForwardResults
 
     # Configure validation
     config = ValidationConfig()
-    config.monte_carlo.n_simulations = 10000
+
+    # Run walk-forward validation
+    validator = WalkForwardValidator(config.walk_forward)
+    results = validator.validate(strategy, data)
+
+    if results.passes_validation:
+        print("Strategy passes walk-forward validation")
 
     # For options strategies
     options_config = config.for_options()
@@ -64,6 +71,14 @@ from validation.results import (
     ValidationReport,
 )
 
+# Validators
+from validation.walk_forward import (
+    WalkForwardValidator,
+    FoldWindow,
+    calculate_sharpe_ratio,
+    calculate_max_drawdown,
+)
+
 __all__ = [
     # Protocols
     'StrategyProtocol',
@@ -96,7 +111,13 @@ __all__ = [
     'PatternMetricsResults',
     'ValidationSummary',
     'ValidationReport',
+
+    # Validators
+    'WalkForwardValidator',
+    'FoldWindow',
+    'calculate_sharpe_ratio',
+    'calculate_max_drawdown',
 ]
 
-__version__ = '0.1.0'
-__session__ = '83C'
+__version__ = '0.2.0'
+__session__ = '83D'
