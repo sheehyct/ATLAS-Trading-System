@@ -105,6 +105,16 @@ from validation.validation_runner import (
     run_validation,
 )
 
+# Session 83K: STRAT validator with ThetaData integration
+from validation.strat_validator import (
+    ATLASSTRATValidator,
+    ValidationRunConfig,
+    ValidationRunResult,
+    BatchResult,
+    DataSourceMetrics,
+    ThetaDataStatus,
+)
+
 __all__ = [
     # Protocols
     'StrategyProtocol',
@@ -164,7 +174,15 @@ __all__ = [
     # Validators - Validation Runner (Session 83I)
     'ValidationRunner',
     'run_validation',
+
+    # STRAT Validator with ThetaData (Session 83K)
+    'ATLASSTRATValidator',
+    'ValidationRunConfig',
+    'ValidationRunResult',
+    'BatchResult',
+    'DataSourceMetrics',
+    'ThetaDataStatus',
 ]
 
-__version__ = '0.6.0'
-__session__ = '83I'
+__version__ = '0.7.0'
+__session__ = '83K'
