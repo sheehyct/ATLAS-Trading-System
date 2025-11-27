@@ -85,6 +85,12 @@ from validation.monte_carlo import (
     generate_synthetic_trades,
 )
 
+from validation.bias_detection import (
+    BiasDetector,
+    detect_look_ahead_bias,
+    validate_entry_prices,
+)
+
 __all__ = [
     # Protocols
     'StrategyProtocol',
@@ -128,7 +134,12 @@ __all__ = [
     'MonteCarloValidator',
     'TradeRecord',
     'generate_synthetic_trades',
+
+    # Validators - Bias Detection
+    'BiasDetector',
+    'detect_look_ahead_bias',
+    'validate_entry_prices',
 ]
 
-__version__ = '0.3.0'
-__session__ = '83E'
+__version__ = '0.4.0'
+__session__ = '83F'
