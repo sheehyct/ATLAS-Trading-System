@@ -79,6 +79,12 @@ from validation.walk_forward import (
     calculate_max_drawdown,
 )
 
+from validation.monte_carlo import (
+    MonteCarloValidator,
+    TradeRecord,
+    generate_synthetic_trades,
+)
+
 __all__ = [
     # Protocols
     'StrategyProtocol',
@@ -112,12 +118,17 @@ __all__ = [
     'ValidationSummary',
     'ValidationReport',
 
-    # Validators
+    # Validators - Walk-Forward
     'WalkForwardValidator',
     'FoldWindow',
     'calculate_sharpe_ratio',
     'calculate_max_drawdown',
+
+    # Validators - Monte Carlo
+    'MonteCarloValidator',
+    'TradeRecord',
+    'generate_synthetic_trades',
 ]
 
-__version__ = '0.2.0'
-__session__ = '83D'
+__version__ = '0.3.0'
+__session__ = '83E'
