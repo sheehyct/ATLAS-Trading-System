@@ -99,6 +99,12 @@ from validation.pattern_metrics import (
     generate_pattern_report,
 )
 
+# Session 83I: Validation runner for orchestrating all validators
+from validation.validation_runner import (
+    ValidationRunner,
+    run_validation,
+)
+
 __all__ = [
     # Protocols
     'StrategyProtocol',
@@ -154,7 +160,11 @@ __all__ = [
     'get_best_patterns_by_metric',
     'get_regime_pattern_compatibility',
     'generate_pattern_report',
+
+    # Validators - Validation Runner (Session 83I)
+    'ValidationRunner',
+    'run_validation',
 ]
 
-__version__ = '0.5.0'
-__session__ = '83G'
+__version__ = '0.6.0'
+__session__ = '83I'

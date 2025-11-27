@@ -49,6 +49,13 @@ from strat.tier1_detector import PatternSignal, PatternType, Timeframe
 from strat.greeks import calculate_greeks, Greeks, estimate_iv_from_history
 from strat.risk_free_rate import get_risk_free_rate
 
+# Session 83I: Options risk manager integration
+try:
+    from strat.options_risk_manager import OptionsRiskManager, ValidationResult
+    OPTIONS_RISK_MANAGER_AVAILABLE = True
+except ImportError:
+    OPTIONS_RISK_MANAGER_AVAILABLE = False
+
 # ThetaData integration (Session 79) - for real historical options data
 try:
     from integrations.thetadata_options_fetcher import ThetaDataOptionsFetcher
@@ -826,7 +833,8 @@ class OptionsBacktester:
         options_fetcher: 'ThetaDataOptionsFetcher' = None,  # Session 79: ThetaData integration
         thetadata_provider: 'ThetaDataOptionsFetcher' = None,  # Session 82: Alias for options_fetcher
         use_market_prices: bool = True,  # Session 79: Use real prices when available
-        logger: logging.Logger = None  # Session 80: Logger for error tracking
+        logger: logging.Logger = None,  # Session 80: Logger for error tracking
+        risk_manager: 'OptionsRiskManager' = None  # Session 83I: Pre-trade validation
     ):
         """
         Initialize backtester with Greeks support.
@@ -840,6 +848,10 @@ class OptionsBacktester:
             use_market_prices: If True and options_fetcher available, use real market prices
                               instead of Black-Scholes theoretical prices (Session 79)
             logger: Logger for error tracking (Session 80)
+            risk_manager: OptionsRiskManager instance for pre-trade validation (Session 83I).
+                         When provided, trades are validated against Greeks limits and
+                         circuit breaker state before execution. Rejected trades are
+                         recorded in results with validation_passed=False.
         """
         # Session 78 FIX: Use date-based risk-free rate lookup
         # Fallback to 0.05 only if date lookup fails
@@ -853,6 +865,9 @@ class OptionsBacktester:
 
         # Session 80: Logger for exception tracking
         self.logger = logger or logging.getLogger('options_backtester')
+
+        # Session 83I: Risk manager for pre-trade validation
+        self.risk_manager = risk_manager
 
     @property
     def thetadata_provider(self):
@@ -969,6 +984,72 @@ class OptionsBacktester:
             )
             return None
 
+    def _validate_trade_pre_execution(
+        self,
+        trade: 'OptionTrade',
+        as_of_date: datetime,
+        underlying_price: float,
+        price_data: Optional[pd.DataFrame] = None
+    ) -> 'ValidationResult':
+        """
+        Validate trade against risk manager before execution.
+
+        Session 83I: Uses Black-Scholes to calculate gamma/theta/vega from trade
+        parameters, then validates against ATLAS risk limits.
+
+        Args:
+            trade: OptionTrade to validate
+            as_of_date: Date for DTE calculation
+            underlying_price: Current underlying price (for Greeks calc)
+            price_data: Historical prices for IV estimation (optional)
+
+        Returns:
+            ValidationResult from risk manager with passed/failed status
+        """
+        # Calculate DTE
+        expiration_dt = _convert_to_naive_et(trade.contract.expiration)
+        as_of_dt = _convert_to_naive_et(as_of_date)
+        dte = max(1, (expiration_dt - as_of_dt).days)
+        T = dte / 365.0
+
+        # Estimate IV from historical data or use default
+        if price_data is not None:
+            sigma = self._estimate_iv(price_data)
+        else:
+            sigma = self.default_iv
+
+        # Get risk-free rate
+        try:
+            r = get_risk_free_rate(as_of_date)
+        except Exception:
+            r = self.risk_free_rate_fallback
+
+        # Calculate Greeks using Black-Scholes
+        option_type = 'call' if trade.contract.option_type == OptionType.CALL else 'put'
+        greeks = calculate_greeks(
+            S=underlying_price,
+            K=trade.contract.strike,
+            T=T,
+            r=r,
+            sigma=sigma,
+            option_type=option_type
+        )
+
+        # Estimate spread (use 5% default if not available from ThetaData)
+        spread_pct = 0.05
+
+        return self.risk_manager.validate_new_position(
+            delta=greeks.delta,
+            gamma=greeks.gamma,
+            theta=greeks.theta,
+            vega=greeks.vega,
+            premium=trade.option_premium * trade.quantity * 100,
+            dte=dte,
+            spread_pct=spread_pct,
+            symbol=trade.contract.underlying,
+            contracts=trade.quantity
+        )
+
     def backtest_trades(
         self,
         trades: List[OptionTrade],
@@ -983,6 +1064,9 @@ class OptionsBacktester:
         - Gamma P/L from convexity (large moves)
         - Theta P/L from time decay
 
+        Session 83I: When risk_manager is provided, validates each trade before
+        execution. Rejected trades are included in results with validation_passed=False.
+
         Args:
             trades: List of OptionTrade objects
             price_data: DataFrame with OHLC data for underlying
@@ -990,7 +1074,8 @@ class OptionsBacktester:
                         Black-Scholes calculated option_price from entry Greeks.
 
         Returns:
-            DataFrame with backtest results including Greeks breakdown
+            DataFrame with backtest results including Greeks breakdown and
+            validation columns (validation_passed, validation_reason, circuit_state)
         """
         results = []
 
@@ -998,6 +1083,65 @@ class OptionsBacktester:
         iv = self._estimate_iv(price_data)
 
         for trade in trades:
+            # Session 83I: Pre-trade validation
+            validation_result = None
+            if self.risk_manager is not None:
+                as_of_date = trade.pattern_signal.timestamp
+                # Get underlying price at pattern date for validation
+                try:
+                    pattern_idx_temp = price_data.index.get_loc(as_of_date)
+                    close_col = 'close' if 'close' in price_data.columns else 'Close'
+                    underlying_price = price_data[close_col].iloc[pattern_idx_temp]
+                except (KeyError, IndexError):
+                    underlying_price = trade.pattern_signal.entry_price
+
+                validation_result = self._validate_trade_pre_execution(
+                    trade=trade,
+                    as_of_date=as_of_date,
+                    underlying_price=underlying_price,
+                    price_data=price_data
+                )
+
+                if not validation_result.passed:
+                    # Record rejected trade with zero P/L
+                    results.append({
+                        'timestamp': trade.pattern_signal.timestamp,
+                        'pattern_type': trade.pattern_signal.pattern_type.value,
+                        'osi_symbol': trade.contract.osi_symbol,
+                        'entry_trigger': trade.entry_trigger,
+                        'entry_price_underlying': None,
+                        'exit_price': None,
+                        'exit_type': 'REJECTED',
+                        'exit_date': None,
+                        'days_held': 0,
+                        'quantity': trade.quantity,
+                        'strike': trade.contract.strike,
+                        'iv': iv,
+                        'option_cost': 0.0,
+                        'entry_option_price': 0.0,
+                        'exit_option_price': 0.0,
+                        'entry_delta': 0.0,
+                        'exit_delta': 0.0,
+                        'avg_delta': 0.0,
+                        'entry_theta': 0.0,
+                        'exit_theta': 0.0,
+                        'avg_theta': 0.0,
+                        'delta_pnl': 0.0,
+                        'gamma_pnl': 0.0,
+                        'theta_pnl': 0.0,
+                        'pnl': 0.0,
+                        'win': False,
+                        'data_source': 'validation_rejected',
+                        'entry_source': None,
+                        'exit_source': None,
+                        # Validation columns
+                        'validation_passed': False,
+                        'validation_reason': '; '.join(validation_result.reasons),
+                        'validation_warnings': '; '.join(validation_result.warnings),
+                        'circuit_state': validation_result.circuit_state.value,
+                    })
+                    continue
+
             # Find pattern date in price data
             try:
                 pattern_idx = price_data.index.get_loc(trade.pattern_signal.timestamp)
@@ -1267,6 +1411,11 @@ class OptionsBacktester:
                     'data_source': data_source,
                     'entry_source': 'thetadata' if used_market_data_entry else 'black_scholes',
                     'exit_source': 'thetadata' if used_market_data_exit else 'black_scholes',
+                    # Session 83I: Validation columns (trade passed validation or no validation)
+                    'validation_passed': True,
+                    'validation_reason': '',
+                    'validation_warnings': '; '.join(validation_result.warnings) if validation_result else '',
+                    'circuit_state': validation_result.circuit_state.value if validation_result else 'NORMAL',
                 })
 
         return pd.DataFrame(results)
