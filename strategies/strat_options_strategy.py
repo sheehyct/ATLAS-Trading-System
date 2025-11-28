@@ -412,8 +412,14 @@ class STRATOptionsStrategy:
         classifications: np.ndarray,
         min_bars: int
     ) -> List[PatternSignal]:
-        """Apply continuation bar filter to signals."""
-        filtered = []
+        """
+        Count continuation bars for signals (analytics only - no filtering).
+
+        Session 83K-8: Continuation bars are now EXIT logic, not ENTRY filter.
+        All signals are returned. The continuation_bars field is populated
+        for analytics/DTE selection, but no signals are rejected.
+        """
+        result = []
 
         for signal in signals:
             try:
@@ -444,12 +450,14 @@ class STRATOptionsStrategy:
                 # Inside bars (1) - continue without counting or breaking
 
             signal.continuation_bars = count
+            # is_filtered indicates whether pattern meets analytics threshold
+            # (kept for backward compatibility but no longer used for filtering)
             signal.is_filtered = count >= min_bars
 
-            if signal.is_filtered:
-                filtered.append(signal)
+            # Session 83K-8: Return ALL signals (no filtering)
+            result.append(signal)
 
-        return filtered
+        return result
 
     def _options_backtest(
         self,

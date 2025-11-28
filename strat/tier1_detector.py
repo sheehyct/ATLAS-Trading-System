@@ -2,26 +2,27 @@
 Tier 1 Pattern Detector for ATLAS Trading System.
 
 Session 70: Implements validated Tier 1 STRAT patterns for options trading.
+Session 83K-8: CRITICAL FIX - Removed look-ahead bias entry filter.
 
-CRITICAL SESSION 69 FINDINGS:
-- 2-2 Down (2U-2D) has NEGATIVE expectancy without continuation bar filters
-- Continuation bar filter (2+ bars) is THE major filter (~82% pattern reduction)
-- Continuity strength alone has NO effect on pattern quality
+CRITICAL CORRECTION (Session 83K-7):
+- Continuation bars are EXIT LOGIC, not ENTRY FILTER
+- Using continuation bars for entry requires seeing future bars (look-ahead bias)
+- All patterns are now returned; continuation_bars is tracked for analytics only
 
-TIER 1 PATTERNS (all require continuation bar filters):
+TIER 1 PATTERNS:
 1. 2-1-2 Up/Down @ 1W - Best balance (80.7% win, 563.6% exp, 57 patterns)
 2. 2-2 Up (2D-2U only) @ 1W - High frequency (86.2% win, 409.5% exp, 123 patterns)
 3. 3-1-2 Up/Down @ 1W - Highest quality (72.7% win, 462.7% exp, 11 patterns)
 4. 2-1-2 Up @ 1M - Moonshot (88.2% win, 1,570.9% exp, 17 patterns)
 
-WARNING: Do NOT include 2-2 Down (2U-2D) without filters.
+WARNING: Do NOT include 2-2 Down (2U-2D) without proper exit management.
 
 Usage:
     from strat.tier1_detector import Tier1Detector
 
     detector = Tier1Detector()
     signals = detector.detect_weekly_patterns(data)
-    filtered = detector.apply_continuation_filter(signals, data, min_bars=2)
+    # All patterns returned; continuation_bars field available for analytics
 """
 
 import numpy as np
@@ -94,15 +95,19 @@ class PatternSignal:
 
 class Tier1Detector:
     """
-    Tier 1 Pattern Detector with mandatory continuation bar filtering.
+    Tier 1 Pattern Detector for STRAT patterns.
 
-    IMPORTANT: This detector only outputs patterns that meet Tier 1 criteria:
-    - Continuation bar filter (min 2 bars)
-    - 2-2 Up patterns only (excludes dangerous 2-2 Down without filters)
+    Session 83K-8: Removed look-ahead bias entry filtering.
+    Continuation bars are counted for analytics but ALL patterns are returned.
+    Continuation bar logic is now EXIT management, not ENTRY filtering.
+
+    IMPORTANT: This detector outputs ALL detected patterns:
+    - 2-2 Up patterns only by default (excludes 2-2 Down unless enabled)
     - Weekly or Monthly timeframes
+    - continuation_bars field populated for analytics/DTE selection
 
     Attributes:
-        min_continuation_bars: Minimum continuation bars required (default: 2)
+        min_continuation_bars: Kept for backward compatibility (no longer filters)
         include_22_down: Whether to include 2-2 Down patterns (default: False)
     """
 
@@ -115,18 +120,13 @@ class Tier1Detector:
         Initialize Tier 1 Detector.
 
         Args:
-            min_continuation_bars: Minimum continuation bars (default: 2)
+            min_continuation_bars: Kept for backward compatibility and analytics.
+                                   No longer used for entry filtering (Session 83K-8).
             include_22_down: Include 2U-2D patterns? (default: False - dangerous!)
-
-        Raises:
-            ValueError: If min_continuation_bars < 2 (violates Session 69 findings)
         """
-        if min_continuation_bars < 2:
-            raise ValueError(
-                "min_continuation_bars must be >= 2. "
-                "Session 69 findings: continuation bar filter is mandatory for profitability."
-            )
-
+        # Session 83K-8: min_continuation_bars no longer used for entry filtering
+        # Kept for backward compatibility and analytics (is_filtered flag)
+        # Continuation bars are EXIT logic, not ENTRY filter (look-ahead bias fix)
         self.min_continuation_bars = min_continuation_bars
         self.include_22_down = include_22_down
 
@@ -155,7 +155,7 @@ class Tier1Detector:
                          (default: all Tier 1 patterns)
 
         Returns:
-            List of PatternSignal objects (filtered by continuation bars)
+            List of PatternSignal objects (all patterns; continuation_bars for analytics)
 
         Raises:
             ValueError: If data doesn't have required columns
@@ -331,7 +331,11 @@ class Tier1Detector:
         classifications: np.ndarray
     ) -> List[PatternSignal]:
         """
-        Apply continuation bar filter to signals.
+        Count continuation bars for signals (analytics only - no filtering).
+
+        Session 83K-8: Continuation bars are now EXIT logic, not ENTRY filter.
+        All signals are returned. The continuation_bars field is populated
+        for analytics/DTE selection, but no signals are rejected.
 
         Continuation bars are directional bars (2 or -2) following the pattern
         in the same direction as the trade.
@@ -342,9 +346,9 @@ class Tier1Detector:
             classifications: Bar classifications
 
         Returns:
-            Filtered signals with continuation bar counts
+            All signals with continuation bar counts populated
         """
-        filtered = []
+        result = []
 
         for signal in signals:
             # Find pattern index in data
@@ -377,13 +381,15 @@ class Tier1Detector:
 
             # Update signal with continuation count
             signal.continuation_bars = continuation_count
+            # is_filtered indicates whether pattern meets analytics threshold
+            # (kept for backward compatibility but no longer used for filtering)
             signal.is_filtered = continuation_count >= self.min_continuation_bars
 
-            # Only include filtered signals
-            if signal.is_filtered:
-                filtered.append(signal)
+            # Session 83K-8: Return ALL signals (no filtering)
+            # Continuation bar count kept for analytics/DTE selection
+            result.append(signal)
 
-        return filtered
+        return result
 
     def get_tier1_weekly(self, data: pd.DataFrame) -> List[PatternSignal]:
         """

@@ -4,6 +4,10 @@ Tests for Tier1Detector continuation bar filter logic.
 Session 83K-5: Comprehensive test coverage for continuation bar filter fix.
 The fix allows inside bars (1) to pass without breaking the count,
 while still breaking on reversal bars and outside bars (3).
+
+Session 83K-8: Tests updated for look-ahead bias fix.
+All patterns are now RETURNED (no filtering). Continuation bars are counted
+for analytics only. Tests verify counting logic, not filtering behavior.
 """
 
 import pytest
@@ -147,8 +151,11 @@ class TestContinuationFilterLogic:
         assert len(filtered) == 1
         assert filtered[0].continuation_bars == 2
 
-    def test_minimum_bars_filter_rejects(self, detector, sample_data):
-        """Patterns with < min_continuation_bars should be rejected."""
+    def test_low_continuation_count_still_returned(self, detector, sample_data):
+        """
+        Session 83K-8: Patterns with < min_continuation_bars are now RETURNED.
+        Continuation bars counted for analytics, but no filtering.
+        """
         # Only 1 continuation bar before reversal
         classifications = np.array([-999, 3, 1, 2, 2, -2, 2, 2, 1, 1])
         signal = self.create_signal(sample_data.index[3], direction=1)
@@ -157,9 +164,11 @@ class TestContinuationFilterLogic:
             [signal], sample_data, classifications
         )
 
-        # min_continuation_bars=2, but only 1 found
-        assert len(filtered) == 0
-        assert signal.is_filtered is False
+        # Session 83K-8: All patterns returned (no filtering)
+        assert len(filtered) == 1
+        assert filtered[0].continuation_bars == 1
+        # is_filtered is still set for analytics (False = below threshold)
+        assert filtered[0].is_filtered is False
 
     def test_minimum_bars_filter_passes(self, detector, sample_data):
         """Patterns with >= min_continuation_bars should pass."""
@@ -193,21 +202,28 @@ class TestContinuationFilterLogic:
             [signal], data, classifications
         )
 
+        # Session 83K-8: Pattern returned (no filtering)
+        assert len(filtered) == 1
         # Should cap at 5 even though more 2U bars available
         assert filtered[0].continuation_bars == 5
 
     def test_all_inside_bars_counts_zero(self, detector, sample_data):
-        """All inside bars after pattern = 0 continuation (but no break)."""
+        """
+        All inside bars after pattern = 0 continuation (but no break).
+        Session 83K-8: Pattern still returned despite 0 continuation bars.
+        """
         classifications = np.array([-999, 3, 1, 2, 1, 1, 1, 1, 1, 1])
         signal = self.create_signal(sample_data.index[3], direction=1)
 
-        detector._apply_continuation_filter(
+        filtered = detector._apply_continuation_filter(
             [signal], sample_data, classifications
         )
 
+        # Session 83K-8: Pattern returned (no filtering)
+        assert len(filtered) == 1
         # Inside bars are skipped, no 2U found, count = 0
-        assert signal.continuation_bars == 0
-        assert signal.is_filtered is False
+        assert filtered[0].continuation_bars == 0
+        assert filtered[0].is_filtered is False
 
     def test_empty_signals_list(self, detector, sample_data):
         """Empty signals list should return empty list."""
@@ -242,7 +258,9 @@ class TestSessionExample:
         - Bar 3 (2D): COUNT = 1
         - Bar 4 (1): ALLOW (skip)
         - Bar 5 (2U): BREAK (reversal for bearish)
-        Result: 1 continuation bar (doesn't pass min_bars=2)
+        Result: 1 continuation bar
+
+        Session 83K-8: Pattern now RETURNED (no filtering) with count=1.
         """
         detector = Tier1Detector(min_continuation_bars=2)
 
@@ -271,12 +289,114 @@ class TestSessionExample:
             is_filtered=False
         )
 
-        detector._apply_continuation_filter(
+        filtered = detector._apply_continuation_filter(
             [signal], data, classifications
         )
+
+        # Session 83K-8: Pattern returned (no filtering)
+        assert len(filtered) == 1
 
         # Bar 3 (2D): COUNT = 1
         # Bar 4 (1): ALLOW (skip)
         # Bar 5 (2U): BREAK (reversal for bearish)
-        assert signal.continuation_bars == 1
-        assert signal.is_filtered is False  # Below min_bars=2
+        assert filtered[0].continuation_bars == 1
+        # is_filtered = False (below threshold) but pattern still returned
+        assert filtered[0].is_filtered is False
+
+
+class TestSession83K8FilterRemoval:
+    """
+    Session 83K-8: Tests verifying look-ahead bias fix.
+    All patterns are now returned; continuation bars for analytics only.
+    """
+
+    @pytest.fixture
+    def detector(self):
+        """Create detector with min 2 continuation bars."""
+        return Tier1Detector(min_continuation_bars=2)
+
+    @pytest.fixture
+    def sample_data(self):
+        """Create sample OHLC DataFrame with 15 bars."""
+        dates = pd.date_range('2024-01-01', periods=15, freq='D')
+        return pd.DataFrame({
+            'Open': [100] * 15,
+            'High': [105] * 15,
+            'Low': [95] * 15,
+            'Close': [102] * 15,
+        }, index=dates)
+
+    def create_signal(self, timestamp, direction=1):
+        """Helper to create a PatternSignal."""
+        pattern_type = PatternType.PATTERN_312_UP if direction == 1 else PatternType.PATTERN_312_DOWN
+        return PatternSignal(
+            timestamp=timestamp,
+            pattern_type=pattern_type,
+            direction=direction,
+            entry_price=100.0,
+            stop_price=95.0,
+            target_price=110.0,
+            timeframe=Timeframe.DAILY,
+            continuation_bars=0,
+            is_filtered=False
+        )
+
+    def test_all_patterns_returned_no_filtering(self, detector, sample_data):
+        """
+        CRITICAL: Verify that ALL patterns are returned, not filtered.
+        This is the core fix - removing look-ahead bias.
+        """
+        # Create 3 signals with different continuation counts
+        classifications = np.array([
+            -999, 3, 1, 2,  # Pattern 1 at index 3
+            -2, 1, 1, 1,     # Count 0 for pattern 1 (immediate reversal)
+            3, 1, 2, 2,      # Pattern 2 at index 10
+            2, 2, 2          # Count 5 for pattern 2
+        ])
+
+        signals = [
+            self.create_signal(sample_data.index[3], direction=1),  # Will have count=0
+            self.create_signal(sample_data.index[10], direction=1),  # Will have count>=2
+        ]
+
+        filtered = detector._apply_continuation_filter(
+            signals, sample_data, classifications
+        )
+
+        # ALL signals should be returned (Session 83K-8 fix)
+        assert len(filtered) == 2
+        # Both patterns returned regardless of count
+        assert filtered[0].continuation_bars == 0  # Low count - still returned
+        assert filtered[1].continuation_bars >= 2   # High count - also returned
+
+    def test_continuation_bars_analytics_only(self, detector, sample_data):
+        """
+        Verify continuation_bars is computed for analytics but not used for filtering.
+        Pattern with 0 continuation bars should be returned.
+        """
+        # Signal that would have been REJECTED under old behavior
+        # Immediate reversal = 0 continuation bars
+        classifications = np.array([-999, 3, 1, 2, -2, -2, -2, 1, 1, 1, 1, 1, 1, 1, 1])
+        signal = self.create_signal(sample_data.index[3], direction=1)
+
+        filtered = detector._apply_continuation_filter(
+            [signal], sample_data, classifications
+        )
+
+        # Pattern returned with count recorded (Session 83K-8 fix)
+        assert len(filtered) == 1
+        assert filtered[0].continuation_bars == 0  # Count is captured
+        assert filtered[0].is_filtered is False     # Below threshold for analytics
+        # Pattern is NOT rejected based on count
+
+    def test_detector_accepts_min_bars_zero(self):
+        """
+        Session 83K-8: ValueError removed for min_continuation_bars < 2.
+        Detector should accept any value for backward compatibility.
+        """
+        # This would have raised ValueError before Session 83K-8
+        detector = Tier1Detector(min_continuation_bars=0)
+        assert detector.min_continuation_bars == 0
+
+        detector = Tier1Detector(min_continuation_bars=1)
+        assert detector.min_continuation_bars == 1
