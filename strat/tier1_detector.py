@@ -360,14 +360,20 @@ class Tier1Detector:
             for j in range(1, lookforward + 1):
                 bar_class = classifications[idx + j] if idx + j < len(classifications) else 0
 
-                # For bullish patterns, look for 2U continuation
+                # Count directional bars in pattern direction
                 if signal.direction == 1 and bar_class == 2:
                     continuation_count += 1
-                # For bearish patterns, look for 2D continuation
                 elif signal.direction == -1 and bar_class == -2:
                     continuation_count += 1
-                else:
-                    break  # Stop on first non-continuation bar
+                # Break on reversal bars (opposite direction)
+                elif signal.direction == 1 and bar_class == -2:
+                    break  # Reversal (2D) for bullish pattern
+                elif signal.direction == -1 and bar_class == 2:
+                    break  # Reversal (2U) for bearish pattern
+                # Break on outside bars (exhaustion signal)
+                elif bar_class == 3:
+                    break
+                # Inside bars (1) - continue without counting or breaking
 
             # Update signal with continuation count
             signal.continuation_bars = continuation_count

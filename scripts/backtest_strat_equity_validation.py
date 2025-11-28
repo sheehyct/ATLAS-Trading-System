@@ -926,18 +926,24 @@ class EquityValidationBacktest:
                     # Bullish pattern: Count 2U bars (directional up)
                     if bar_classification == 2.0:
                         continuation_bars += 1
-                    # Allow inside bars (1.0) without breaking count
-                    # Break only on opposite directional bar (2D = -2.0)
+                    # Break on reversal bar (2D = -2.0)
                     elif bar_classification == -2.0:
-                        break  # Opposite direction = pattern failed
+                        break  # Reversal = pattern failed
+                    # Break on outside bar (exhaustion signal)
+                    elif bar_classification == 3.0:
+                        break  # Outside bar = exhaustion
+                    # Inside bars (1.0) - continue without counting or breaking
                 elif direction == 'bearish':
                     # Bearish pattern: Count 2D bars (directional down)
                     if bar_classification == -2.0:
                         continuation_bars += 1
-                    # Allow inside bars (1.0) without breaking count
-                    # Break only on opposite directional bar (2U = 2.0)
+                    # Break on reversal bar (2U = 2.0)
                     elif bar_classification == 2.0:
-                        break  # Opposite direction = pattern failed
+                        break  # Reversal = pattern failed
+                    # Break on outside bar (exhaustion signal)
+                    elif bar_classification == 3.0:
+                        break  # Outside bar = exhaustion
+                    # Inside bars (1.0) - continue without counting or breaking
 
         # Track outcomes bar by bar
         for bar_idx in range(min(len(future_data), max_holding_bars)):
