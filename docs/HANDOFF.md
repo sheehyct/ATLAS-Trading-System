@@ -38,12 +38,32 @@
 2. **Very few 3-1-2 patterns** - Only 4 daily, 1 weekly, 0 monthly for SPY (5 year period)
 3. **Illiquid strikes** - Some options have bid=0, ask=0 all day (no market maker quotes)
 
-### Session 83K-8 Recommendations
+### CRITICAL CORRECTION: Continuation Bars are EXIT LOGIC
 
-1. Consider relaxing continuation bar requirement from 2 to 1 for more patterns
-2. Focus validation on 2-1-2 and 2-2 patterns (more frequent)
-3. Accept Black-Scholes fallback for Greeks (quotes more important than Greeks for P&L)
-4. May need to adjust DTE parameters to hit more liquid expiration cycles
+**Discovery:** The min_continuation_bars entry filter is LOOK-AHEAD BIAS - can't see future bars at entry time.
+
+**WRONG (what we built):**
+```
+Pattern triggers -> Count future bars -> IF 2+ THEN enter
+```
+
+**CORRECT (simple trade management):**
+```
+Pattern triggers -> ENTER IMMEDIATELY -> MANAGE bar-by-bar:
+  - Continuation (2U/2D): HOLD
+  - Inside bar (1): HOLD
+  - Reversal: EXIT
+  - Outside bar (3): EXIT
+  - Magnitude hit: EXIT
+```
+
+**Impact:** 18 raw 3-1-2 patterns exist, entry filter reduced to 5. All 18 should be traded.
+
+### Session 83K-8 Tasks
+
+1. Remove min_continuation_bars as ENTRY filter from Tier1Detector
+2. Implement bar-by-bar EXIT management in backtest
+3. Re-validate with ALL patterns (18 not 5)
 
 ### Files Modified
 
