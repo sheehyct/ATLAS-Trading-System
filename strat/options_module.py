@@ -32,11 +32,18 @@ Usage:
 import logging
 import numpy as np
 import pandas as pd
+import pandas_market_calendars as mcal
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from enum import Enum
 import vectorbtpro as vbt
+
+# Initialize NYSE calendar for holiday checking
+_NYSE_CALENDAR = mcal.get_calendar('NYSE')
+
+# Module-level logger for options module
+logger = logging.getLogger(__name__)
 
 try:
     import pytz
@@ -675,7 +682,7 @@ class OptionsExecutor:
             reference_date: Date to calculate from (default: today)
 
         Returns:
-            Expiration date
+            Expiration date (adjusted for market holidays like Good Friday)
         """
         # Use reference_date if provided (for backtesting), else today
         if reference_date is None:
@@ -708,7 +715,65 @@ class OptionsExecutor:
 
         expiration = target_date + timedelta(days=days_until_friday)
 
+        # Session 83K-9: Check if Friday is a market holiday (e.g., Good Friday)
+        # If so, options expire on the prior trading day (Thursday)
+        expiration = self._adjust_for_market_holidays(expiration)
+
         return expiration
+
+    def _adjust_for_market_holidays(self, expiration: datetime) -> datetime:
+        """
+        Adjust expiration date if it falls on a market holiday.
+
+        Session 83K-9: Options expire on the prior trading day if the
+        normal expiration Friday is a market holiday (e.g., Good Friday).
+
+        Args:
+            expiration: Proposed expiration date (typically a Friday)
+
+        Returns:
+            Adjusted expiration date (prior trading day if holiday)
+        """
+        # Get NYSE trading schedule for the expiration date
+        exp_date_str = expiration.strftime('%Y-%m-%d')
+
+        try:
+            # Check if the expiration date is a valid trading day
+            schedule = _NYSE_CALENDAR.schedule(
+                start_date=exp_date_str,
+                end_date=exp_date_str
+            )
+
+            if schedule.empty:
+                # Expiration falls on a holiday - find prior trading day
+                # Look back up to 5 days to find a valid trading day
+                for days_back in range(1, 6):
+                    prior_date = expiration - timedelta(days=days_back)
+                    prior_str = prior_date.strftime('%Y-%m-%d')
+                    prior_schedule = _NYSE_CALENDAR.schedule(
+                        start_date=prior_str,
+                        end_date=prior_str
+                    )
+                    if not prior_schedule.empty:
+                        logger.debug(
+                            f"Adjusted expiration {exp_date_str} (holiday) to "
+                            f"{prior_str} (prior trading day)"
+                        )
+                        return prior_date
+
+                # Fallback: if no trading day found, return original
+                logger.warning(
+                    f"Could not find prior trading day for {exp_date_str}"
+                )
+                return expiration
+
+            # Expiration is a valid trading day - no adjustment needed
+            return expiration
+
+        except Exception as e:
+            # If calendar check fails, log and return original
+            logger.warning(f"Market calendar check failed: {e}")
+            return expiration
 
     def fetch_option_quote(
         self,
