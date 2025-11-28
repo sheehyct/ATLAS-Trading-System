@@ -725,13 +725,15 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
             as_of = datetime.now() - timedelta(days=1)
 
         # v3 API parameters
+        # Session 83K-7 FIX: Removed interval=1h which caused 472 errors
+        # Use tick-level data instead for maximum coverage
         params = {
             'symbol': underlying.upper(),
             'expiration': self._format_expiration(expiration),
             'strike': self._format_strike(strike),
             'right': self._format_right(option_type),
             'date': self._format_date(as_of),
-            'interval': '1h',  # Hourly data to get end-of-day quotes
+            # No interval parameter = tick-level data (maximum coverage)
         }
 
         try:
@@ -748,12 +750,21 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
             if not data_list:
                 return None
 
-            # Get the last quote of the day (most recent)
-            last_quote = data_list[-1]
+            # Session 83K-7 FIX: Find last non-zero quote instead of just last entry
+            # Many options have bid=0, ask=0 at market close for illiquid strikes
+            bid = 0.0
+            ask = 0.0
+            last_quote = data_list[-1]  # Default to last entry for timestamps
 
-            # Session 83 BUG FIX: Use _safe_float to handle N/A, null values
-            bid = self._safe_float(last_quote.get('bid'), 0.0)
-            ask = self._safe_float(last_quote.get('ask'), 0.0)
+            # Search backwards for valid quote (most recent with non-zero bid or ask)
+            for quote in reversed(data_list):
+                q_bid = self._safe_float(quote.get('bid'), 0.0)
+                q_ask = self._safe_float(quote.get('ask'), 0.0)
+                if q_bid > 0 or q_ask > 0:
+                    bid = q_bid
+                    ask = q_ask
+                    last_quote = quote
+                    break
 
             # Normalize option_type to single char for internal consistency
             opt_type_normalized = 'C' if option_type.upper() in ('C', 'CALL') else 'P'
@@ -811,13 +822,13 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
             as_of = datetime.now() - timedelta(days=1)
 
         # v3 parameters for history/greeks
+        # Session 83K-7 FIX: Removed interval=1h which caused 472 errors
         params = {
             'symbol': underlying.upper(),
             'expiration': self._format_expiration(expiration),
             'strike': self._format_strike(strike),
             'right': self._format_right(option_type),
             'date': self._format_date(as_of),
-            'interval': '1h',
         }
 
         try:
