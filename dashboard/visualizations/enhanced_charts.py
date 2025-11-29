@@ -33,6 +33,7 @@ from dashboard.config import (
     TRADE_MARKERS,
     PERFORMANCE_THRESHOLDS,
     CHART_HEIGHT,
+    FONTS,
 )
 
 
@@ -159,7 +160,7 @@ def create_strat_candlestick_chart(
         )
 
     # ============================================
-    # Layout Configuration
+    # Layout Configuration (Premium Luxury)
     # ============================================
     fig.update_layout(
         height=height,
@@ -167,9 +168,18 @@ def create_strat_candlestick_chart(
         paper_bgcolor=COLORS['background_dark'],
         plot_bgcolor=COLORS['background_dark'],
         font=dict(
-            family='Segoe UI, Arial, sans-serif',
+            family=FONTS['body'],
             size=12,
             color=COLORS['text_primary']
+        ),
+        title=dict(
+            font=dict(
+                family=FONTS['display'],
+                size=16,
+                color=COLORS['text_primary'],
+            ),
+            x=0,
+            xanchor='left',
         ),
         showlegend=True,
         legend=dict(
@@ -178,32 +188,58 @@ def create_strat_candlestick_chart(
             y=1.02,
             xanchor='right',
             x=1,
-            bgcolor='rgba(0,0,0,0.5)'
+            bgcolor='rgba(0,0,0,0)',
+            bordercolor='rgba(0,0,0,0)',
+            font=dict(
+                family=FONTS['body'],
+                size=11,
+                color=COLORS['text_secondary'],
+            ),
         ),
         xaxis_rangeslider_visible=False,
         hovermode='x unified',
-        margin=dict(l=60, r=60, t=80, b=40)
+        hoverlabel=dict(
+            bgcolor=COLORS['bg_card'],
+            bordercolor=COLORS['border_default'],
+            font=dict(
+                family=FONTS['body'],
+                size=12,
+                color=COLORS['text_primary'],
+            ),
+        ),
+        margin=dict(l=60, r=30, t=60, b=40)
     )
 
-    # Update axes
+    # Update axes with premium styling
     fig.update_xaxes(
         gridcolor=COLORS['grid'],
+        gridwidth=1,
         showgrid=True,
-        zeroline=False
+        zeroline=False,
+        linecolor=COLORS['border_subtle'],
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
     )
 
     fig.update_yaxes(
         gridcolor=COLORS['grid'],
+        gridwidth=1,
         showgrid=True,
         zeroline=False,
+        linecolor=COLORS['border_subtle'],
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
         title_text='Price ($)',
+        title_font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
         row=1, col=1
     )
 
     fig.update_yaxes(
         gridcolor=COLORS['grid'],
+        gridwidth=1,
         showgrid=True,
+        linecolor=COLORS['border_subtle'],
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
         title_text='Volume',
+        title_font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
         row=2, col=1
     )
 

@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from typing import Optional
 
-from dashboard.config import COLORS, CHART_HEIGHT, PERFORMANCE_THRESHOLDS
+from dashboard.config import COLORS, CHART_HEIGHT, PERFORMANCE_THRESHOLDS, FONTS
 
 
 def create_equity_curve(
@@ -79,19 +79,51 @@ def create_equity_curve(
         row=2, col=1
     )
 
-    # Layout
+    # Layout (Premium Luxury)
     fig.update_layout(
         height=CHART_HEIGHT['equity_curve'],
         template='plotly_dark',
         paper_bgcolor=COLORS['background_dark'],
         plot_bgcolor=COLORS['background_dark'],
+        font=dict(
+            family=FONTS['body'],
+            size=12,
+            color=COLORS['text_primary'],
+        ),
         hovermode='x unified',
-        showlegend=True
+        hoverlabel=dict(
+            bgcolor=COLORS['bg_card'],
+            bordercolor=COLORS['border_default'],
+            font=dict(family=FONTS['body'], size=12),
+        ),
+        showlegend=True,
+        legend=dict(
+            bgcolor='rgba(0,0,0,0)',
+            font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
+        ),
     )
 
-    fig.update_yaxes(title_text='Portfolio Value ($)', row=1, col=1, gridcolor=COLORS['grid'])
-    fig.update_yaxes(title_text='Drawdown (%)', row=2, col=1, gridcolor=COLORS['grid'])
-    fig.update_xaxes(title_text='Date', row=2, col=1, gridcolor=COLORS['grid'])
+    fig.update_yaxes(
+        title_text='Portfolio Value ($)',
+        title_font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
+        gridcolor=COLORS['grid'],
+        row=1, col=1
+    )
+    fig.update_yaxes(
+        title_text='Drawdown (%)',
+        title_font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
+        gridcolor=COLORS['grid'],
+        row=2, col=1
+    )
+    fig.update_xaxes(
+        title_text='Date',
+        title_font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
+        gridcolor=COLORS['grid'],
+        row=2, col=1
+    )
 
     return fig
 
@@ -152,19 +184,45 @@ def create_rolling_metrics(
     fig.add_hline(
         y=PERFORMANCE_THRESHOLDS['sharpe_good'],
         line_dash='dash',
-        line_color=COLORS['text_secondary'],
-        annotation_text='Good (1.0)'
+        line_color=COLORS['text_tertiary'],
+        annotation_text='Good (1.0)',
+        annotation_font=dict(family=FONTS['body'], size=10, color=COLORS['text_tertiary']),
     )
 
+    # Layout (Premium Luxury)
     fig.update_layout(
         height=500,
         template='plotly_dark',
         paper_bgcolor=COLORS['background_dark'],
         plot_bgcolor=COLORS['background_dark'],
-        hovermode='x unified'
+        font=dict(
+            family=FONTS['body'],
+            size=12,
+            color=COLORS['text_primary'],
+        ),
+        hovermode='x unified',
+        hoverlabel=dict(
+            bgcolor=COLORS['bg_card'],
+            bordercolor=COLORS['border_default'],
+            font=dict(family=FONTS['body'], size=12),
+        ),
+        legend=dict(
+            bgcolor='rgba(0,0,0,0)',
+            font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
+        ),
     )
 
-    fig.update_yaxes(title_text='Ratio', gridcolor=COLORS['grid'])
-    fig.update_xaxes(title_text='Date', gridcolor=COLORS['grid'])
+    fig.update_yaxes(
+        title_text='Ratio',
+        title_font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
+        gridcolor=COLORS['grid'],
+    )
+    fig.update_xaxes(
+        title_text='Date',
+        title_font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
+        gridcolor=COLORS['grid'],
+    )
 
     return fig

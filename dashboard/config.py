@@ -68,85 +68,108 @@ DASHBOARD_CONFIG = {
 }
 
 # ============================================
-# COLOR SCHEMES (TradingView Professional)
+# COLOR SCHEMES (Premium OLED Luxury)
 # ============================================
 
-# Primary Trading Colors
+# Premium Trading Colors - Swiss Minimalism + OLED Luxury
 COLORS = {
-    # Bull/Upward Movement
-    'bull_primary': '#00ff55',      # Bright green
-    'bull_secondary': '#26A69A',    # Teal green (softer)
-    'bull_fill': 'rgba(0, 255, 85, 0.2)',
+    # Bull/Upward Movement (Emerald)
+    'bull_primary': '#00DC82',      # Vibrant emerald
+    'bull_secondary': '#10B981',    # Softer emerald
+    'bull_fill': 'rgba(0, 220, 130, 0.08)',
+    'bull_glow': 'rgba(0, 220, 130, 0.15)',
 
-    # Bear/Downward Movement
-    'bear_primary': '#ed4807',      # Bright red-orange
-    'bear_secondary': '#EF5350',    # Softer red
-    'bear_fill': 'rgba(237, 72, 7, 0.2)',
+    # Bear/Downward Movement (Crimson)
+    'bear_primary': '#FF3B5C',      # Refined crimson
+    'bear_secondary': '#F43F5E',    # Softer rose
+    'bear_fill': 'rgba(255, 59, 92, 0.08)',
+    'bear_glow': 'rgba(255, 59, 92, 0.15)',
 
-    # Neutral/Background
-    'background_dark': '#090008',   # Near black
-    'background_medium': '#2E2E2E', # Dark gray
-    'background_light': '#3E3E3E',  # Medium gray
+    # Neutral/Background (OLED Optimized)
+    'background_dark': '#000000',   # True black for OLED
+    'background_medium': '#141414', # Elevated surface
+    'background_light': '#1f1f1f',  # Active state
 
-    # Grid and Accents
-    'grid': '#333333',              # Subtle grid lines
-    'grid_major': '#444444',        # Major grid lines
-    'text_primary': '#E0E0E0',      # Light gray text
-    'text_secondary': '#A0A0A0',    # Muted gray text
+    # Additional surface levels
+    'bg_void': '#000000',           # Primary background
+    'bg_surface': '#0a0a0a',        # Barely visible surface
+    'bg_elevated': '#111111',       # Elevated elements
+    'bg_card': '#141414',           # Card backgrounds
+    'bg_hover': '#1a1a1a',          # Hover state
+
+    # Grid and Borders (Subtle)
+    'grid': '#1f1f1f',              # Very subtle grid
+    'grid_major': '#27272A',        # Major grid lines
+    'border_subtle': '#27272A',     # Subtle borders
+    'border_default': '#3F3F46',    # Default borders
+
+    # Text Hierarchy
+    'text_primary': '#FAFAFA',      # High contrast primary
+    'text_secondary': '#A1A1AA',    # Muted secondary
+    'text_tertiary': '#71717A',     # Very muted
+
+    # Accent Colors (Vibrant)
+    'accent_emerald': '#00DC82',    # Primary success
+    'accent_crimson': '#FF3B5C',    # Primary danger
+    'accent_amber': '#FFB800',      # Warning/caution
+    'accent_electric': '#3B82F6',   # Info/action
+    'accent_violet': '#8B5CF6',     # Premium/options
+    'accent_cyan': '#22D3EE',       # Data/metrics
 
     # Status Colors
-    'success': '#00C853',           # Success green
-    'warning': '#FFC107',           # Warning amber
-    'danger': '#FF1744',            # Danger red
-    'info': '#2196F3',              # Info blue
+    'success': '#00DC82',           # Emerald success
+    'warning': '#FFB800',           # Amber warning
+    'danger': '#FF3B5C',            # Crimson danger
+    'info': '#3B82F6',              # Electric blue info
 
     # Chart Elements
-    'price_line': '#FFFFFF',        # White for main price
-    'volume_up': 'rgba(38, 166, 154, 0.6)',   # Teal volume bars
-    'volume_down': 'rgba(239, 83, 80, 0.6)',  # Red volume bars
+    'price_line': '#FAFAFA',        # High contrast price
+    'volume_up': 'rgba(0, 220, 130, 0.4)',    # Emerald volume
+    'volume_down': 'rgba(255, 59, 92, 0.4)',  # Crimson volume
+    'crosshair': '#52525B',         # Subtle crosshair
 }
 
 # ============================================
-# REGIME DETECTION COLORS
+# REGIME DETECTION COLORS (Luxury Edition)
 # ============================================
 
 REGIME_COLORS = {
-    'TREND_BULL': 'rgba(0, 255, 85, 0.2)',      # Bright green with 20% opacity
-    'TREND_NEUTRAL': 'rgba(128, 128, 128, 0.2)', # Gray with 20% opacity
-    'TREND_BEAR': 'rgba(255, 165, 0, 0.2)',     # Orange with 20% opacity
-    'CRASH': 'rgba(237, 72, 7, 0.3)',           # Red-orange with 30% opacity
+    'TREND_BULL': 'rgba(0, 220, 130, 0.12)',     # Emerald with subtle opacity
+    'TREND_NEUTRAL': 'rgba(113, 113, 122, 0.08)', # Zinc with minimal opacity
+    'TREND_BEAR': 'rgba(255, 184, 0, 0.12)',     # Amber with subtle opacity
+    'CRASH': 'rgba(255, 59, 92, 0.15)',          # Crimson with moderate opacity
 }
 
 REGIME_BORDER_COLORS = {
-    'TREND_BULL': '#00ff55',
-    'TREND_NEUTRAL': '#808080',
-    'TREND_BEAR': '#FFA500',
-    'CRASH': '#ed4807',
+    'TREND_BULL': '#00DC82',     # Emerald
+    'TREND_NEUTRAL': '#71717A',  # Zinc
+    'TREND_BEAR': '#FFB800',     # Amber
+    'CRASH': '#FF3B5C',          # Crimson
 }
 
 REGIME_TEXT_COLORS = {
-    'TREND_BULL': '#00ff55',
-    'TREND_NEUTRAL': '#A0A0A0',
-    'TREND_BEAR': '#FFA500',
-    'CRASH': '#ed4807',
+    'TREND_BULL': '#00DC82',     # Emerald
+    'TREND_NEUTRAL': '#A1A1AA',  # Zinc-400
+    'TREND_BEAR': '#FFB800',     # Amber
+    'CRASH': '#FF3B5C',          # Crimson
 }
 
 # ============================================
-# STRAT PATTERN COLORS
+# STRAT PATTERN COLORS (Luxury Edition)
 # ============================================
 
 STRAT_COLORS = {
-    '1': 'rgba(128, 128, 128, 0.3)',    # Inside bar - Gray
-    '2U': 'rgba(0, 255, 85, 0.3)',      # Directional Up - Green
-    '2D': 'rgba(237, 72, 7, 0.3)',      # Directional Down - Red
-    '3': 'rgba(255, 255, 0, 0.3)',      # Outside bar - Yellow
+    '1': 'rgba(113, 113, 122, 0.15)',   # Inside bar - Zinc
+    '2U': 'rgba(0, 220, 130, 0.15)',    # Directional Up - Emerald
+    '2D': 'rgba(255, 59, 92, 0.15)',    # Directional Down - Crimson
+    '3': 'rgba(255, 184, 0, 0.15)',     # Outside bar - Amber
 }
 
 STRAT_BORDER_COLORS = {
-    '1': '#808080',
-    '2U': '#00ff55',
-    '2D': '#ed4807',
-    '3': '#FFFF00',
+    '1': '#71717A',     # Zinc
+    '2U': '#00DC82',    # Emerald
+    '2D': '#FF3B5C',    # Crimson
+    '3': '#FFB800',     # Amber
 }
 
 # ============================================
@@ -222,8 +245,15 @@ TRADE_MARKERS = {
 }
 
 # ============================================
-# CHART TEMPLATES
+# CHART TEMPLATES (Premium Luxury)
 # ============================================
+
+# Premium Typography
+FONTS = {
+    'display': '"Clash Display", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+    'body': '"Satoshi", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif',
+    'mono': '"JetBrains Mono", "SF Mono", "Fira Code", Consolas, monospace',
+}
 
 # Plotly template settings
 PLOTLY_TEMPLATE = {
@@ -232,25 +262,68 @@ PLOTLY_TEMPLATE = {
         'paper_bgcolor': COLORS['background_dark'],
         'plot_bgcolor': COLORS['background_dark'],
         'font': {
-            'family': 'Segoe UI, Arial, sans-serif',
+            'family': FONTS['body'],
             'size': 12,
             'color': COLORS['text_primary'],
         },
+        'title': {
+            'font': {
+                'family': FONTS['display'],
+                'size': 18,
+                'color': COLORS['text_primary'],
+            },
+            'x': 0,
+            'xanchor': 'left',
+        },
         'xaxis': {
             'gridcolor': COLORS['grid'],
+            'gridwidth': 1,
             'showgrid': True,
             'zeroline': False,
+            'linecolor': COLORS['border_subtle'],
+            'tickfont': {'family': FONTS['mono'], 'size': 10},
         },
         'yaxis': {
             'gridcolor': COLORS['grid'],
+            'gridwidth': 1,
             'showgrid': True,
             'zeroline': False,
+            'linecolor': COLORS['border_subtle'],
+            'tickfont': {'family': FONTS['mono'], 'size': 10},
         },
         'hovermode': 'x unified',
         'hoverlabel': {
-            'bgcolor': COLORS['background_medium'],
-            'font_size': 13,
+            'bgcolor': COLORS['bg_card'],
+            'bordercolor': COLORS['border_default'],
+            'font': {
+                'family': FONTS['body'],
+                'size': 12,
+                'color': COLORS['text_primary'],
+            },
         },
+        'legend': {
+            'bgcolor': 'rgba(0,0,0,0)',
+            'bordercolor': 'rgba(0,0,0,0)',
+            'font': {
+                'family': FONTS['body'],
+                'size': 11,
+                'color': COLORS['text_secondary'],
+            },
+            'orientation': 'h',
+            'yanchor': 'bottom',
+            'y': 1.02,
+            'xanchor': 'right',
+            'x': 1,
+        },
+        'margin': {'l': 60, 'r': 30, 't': 60, 'b': 40},
+        'colorway': [
+            COLORS['accent_emerald'],
+            COLORS['accent_electric'],
+            COLORS['accent_amber'],
+            COLORS['accent_violet'],
+            COLORS['accent_cyan'],
+            COLORS['accent_crimson'],
+        ],
     }
 }
 

@@ -94,7 +94,10 @@ app = dash.Dash(
     external_stylesheets=[
         dbc.themes.BOOTSTRAP,
         dbc.icons.FONT_AWESOME,
-        'https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&display=swap',
+        # Premium Typography - Clash Display (display), Satoshi (body), JetBrains Mono (mono)
+        'https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap',
+        'https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap',
+        'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap',
     ],
     suppress_callback_exceptions=True,
     title='ATLAS Trading Dashboard',
@@ -102,6 +105,10 @@ app = dash.Dash(
         {
             'name': 'viewport',
             'content': 'width=device-width, initial-scale=1.0'
+        },
+        {
+            'name': 'theme-color',
+            'content': '#000000'
         }
     ],
 )
