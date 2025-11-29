@@ -1435,19 +1435,20 @@ class OptionsBacktester:
 
                 # Session 82: Track data source for transparency
                 # Session 83: Add warning for mixed sources (P/L accuracy may be compromised)
+                # Session 83K-10: Fixed case to match validation/pattern_metrics.py expectations
                 if used_market_data_entry and used_market_data_exit:
-                    data_source = 'thetadata'
+                    data_source = 'ThetaData'
                 elif used_market_data_entry or used_market_data_exit:
-                    data_source = 'mixed'
+                    data_source = 'Mixed'
                     # Warn about potential P/L accuracy issues from mixing pricing sources
                     self.logger.warning(
                         f"Mixed data sources for {trade.contract.osi_symbol}: "
-                        f"entry={'thetadata' if used_market_data_entry else 'black_scholes'}, "
-                        f"exit={'thetadata' if used_market_data_exit else 'black_scholes'}. "
+                        f"entry={'ThetaData' if used_market_data_entry else 'BlackScholes'}, "
+                        f"exit={'ThetaData' if used_market_data_exit else 'BlackScholes'}. "
                         f"P/L calculation may have reduced accuracy."
                     )
                 else:
-                    data_source = 'black_scholes'
+                    data_source = 'BlackScholes'
 
                 results.append({
                     'timestamp': trade.pattern_signal.timestamp,

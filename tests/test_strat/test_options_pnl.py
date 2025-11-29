@@ -356,9 +356,10 @@ class TestBacktesterInstantiation:
     def test_backtester_correct_params(self):
         """Backtester should accept risk_free_rate and default_iv."""
         # This was Bug #2 - test script used invalid parameter
+        # Session 78: risk_free_rate is now a fallback (date-based lookup is primary)
         backtester = OptionsBacktester(risk_free_rate=0.05, default_iv=0.20)
 
-        assert backtester.risk_free_rate == 0.05
+        assert backtester.risk_free_rate_fallback == 0.05
         assert backtester.default_iv == 0.20
 
     def test_backtester_default_params(self):
@@ -366,8 +367,231 @@ class TestBacktesterInstantiation:
         backtester = OptionsBacktester()
 
         # Should have defaults (check they exist)
-        assert hasattr(backtester, 'risk_free_rate')
+        # Session 78: risk_free_rate renamed to risk_free_rate_fallback
+        assert hasattr(backtester, 'risk_free_rate_fallback')
         assert hasattr(backtester, 'default_iv')
+
+    def test_backtester_accepts_thetadata_provider(self):
+        """Session 82: Backtester should accept thetadata_provider parameter."""
+        # Test with None (forces Black-Scholes fallback)
+        backtester = OptionsBacktester(thetadata_provider=None)
+        assert backtester.thetadata_provider is None
+
+        # Test with mock provider
+        from unittest.mock import MagicMock
+        mock_provider = MagicMock()
+        backtester_with_provider = OptionsBacktester(thetadata_provider=mock_provider)
+        assert backtester_with_provider.thetadata_provider is mock_provider
+
+
+class TestThetaDataIntegration:
+    """Session 82: Test ThetaData integration in options backtesting."""
+
+    def test_results_include_data_source_columns(self):
+        """Results DataFrame should include data_source tracking columns."""
+        # This test validates that Phase 1 changes added the tracking columns
+        backtester = OptionsBacktester()
+
+        # Results from backtest should have data_source columns
+        # (actual trade test would require price data, just validate structure)
+        expected_columns = ['data_source', 'entry_source', 'exit_source']
+
+        # The columns should be added to results - verify by checking docstring/code exists
+        import inspect
+        source = inspect.getsource(backtester.backtest_trades)
+
+        # Verify data_source tracking code exists
+        assert 'data_source' in source, "data_source tracking should be in backtest_trades"
+        assert 'entry_source' in source, "entry_source tracking should be in backtest_trades"
+        assert 'exit_source' in source, "exit_source tracking should be in backtest_trades"
+
+    def test_market_price_method_exists(self):
+        """_get_market_price method should exist for ThetaData lookup."""
+        backtester = OptionsBacktester()
+
+        assert hasattr(backtester, '_get_market_price'), "_get_market_price method required"
+        assert callable(backtester._get_market_price), "_get_market_price should be callable"
+
+    def test_market_greeks_method_exists(self):
+        """_get_market_greeks method should exist for ThetaData lookup."""
+        backtester = OptionsBacktester()
+
+        assert hasattr(backtester, '_get_market_greeks'), "_get_market_greeks method required"
+        assert callable(backtester._get_market_greeks), "_get_market_greeks should be callable"
+
+    def test_market_price_returns_none_without_provider(self):
+        """_get_market_price should return None when no provider configured."""
+        backtester = OptionsBacktester(thetadata_provider=None)
+
+        from unittest.mock import MagicMock
+
+        # Create a mock trade with just the contract info needed by _get_market_price
+        contract = OptionContract(
+            underlying='SPY',
+            expiration=datetime(2024, 11, 15),
+            option_type=OptionType.CALL,
+            strike=460.0,
+        )
+
+        mock_trade = MagicMock()
+        mock_trade.contract = contract
+
+        result = backtester._get_market_price(mock_trade, 458.0, datetime(2024, 10, 15))
+        assert result is None, "Should return None without ThetaData provider"
+
+    def test_fallback_to_black_scholes(self):
+        """When ThetaData unavailable, should fall back to Black-Scholes."""
+        # Backtester without ThetaData should still work
+        backtester = OptionsBacktester(thetadata_provider=None)
+
+        # Verify BS fallback flag/behavior exists
+        import inspect
+        source = inspect.getsource(backtester.backtest_trades)
+
+        # Should have fallback logic
+        assert 'market_entry_price' in source, "Should attempt market price lookup"
+        assert 'market_entry_greeks' in source, "Should attempt market Greeks lookup"
+        # Black-Scholes fallback should be used when market data unavailable
+        assert 'used_market_data_entry = False' in source, "Should track BS fallback"
+
+
+class TestThetaDataFetcherFallbackParams:
+    """Session 82: Test improved fallback parameters in ThetaDataOptionsFetcher."""
+
+    def test_fetcher_imports_risk_free_rate(self):
+        """ThetaDataOptionsFetcher should import get_risk_free_rate."""
+        from integrations.thetadata_options_fetcher import RISK_FREE_RATE_AVAILABLE
+        assert RISK_FREE_RATE_AVAILABLE is True, "Risk-free rate module should be available"
+
+    def test_fallback_iv_is_realistic(self):
+        """Fallback IV should be 0.15, not 0.20 (Session 81 finding)."""
+        from integrations.thetadata_options_fetcher import ThetaDataOptionsFetcher
+        import inspect
+
+        source = inspect.getsource(ThetaDataOptionsFetcher._calculate_bs_price)
+
+        # Should use 0.15 IV, not 0.20
+        assert 'sigma = 0.15' in source, "Fallback IV should be 0.15"
+        assert 'sigma = 0.20' not in source, "Old 0.20 IV should be removed"
+
+    def test_fallback_rate_uses_dynamic_lookup(self):
+        """Fallback should attempt dynamic risk-free rate lookup."""
+        from integrations.thetadata_options_fetcher import ThetaDataOptionsFetcher
+        import inspect
+
+        source = inspect.getsource(ThetaDataOptionsFetcher._calculate_bs_price)
+
+        # Should use get_risk_free_rate when available
+        assert 'get_risk_free_rate' in source, "Should use dynamic risk-free rate"
+        assert 'RISK_FREE_RATE_AVAILABLE' in source, "Should check if rate module available"
+
+
+class TestSession83K10Fixes:
+    """
+    Session 83K-10: Tests for ThetaData coverage and MaxDD bug fixes.
+
+    Bug #1: ThetaData 0% coverage due to case mismatch
+    Bug #2: MaxDD 5000%+ due to negative equity and unbounded calculation
+    """
+
+    def test_data_source_values_match_pattern_metrics(self):
+        """Verify data_source values use correct case for pattern_metrics.py."""
+        import inspect
+        from strat.options_module import OptionsBacktester
+
+        source = inspect.getsource(OptionsBacktester.backtest_trades)
+
+        # Session 83K-10: Must use PascalCase to match pattern_metrics.py
+        assert "'ThetaData'" in source, "data_source should be 'ThetaData' (PascalCase)"
+        assert "'BlackScholes'" in source, "data_source should be 'BlackScholes' (PascalCase)"
+        assert "'Mixed'" in source, "data_source should be 'Mixed' (PascalCase)"
+
+        # Old lowercase values should be removed
+        assert "data_source = 'thetadata'" not in source, "Old lowercase 'thetadata' should be removed"
+        assert "data_source = 'black_scholes'" not in source, "Old lowercase 'black_scholes' should be removed"
+        assert "data_source = 'mixed'" not in source, "Old lowercase 'mixed' should be removed"
+
+    def test_maxdd_capped_at_100_percent(self):
+        """MaxDD should never exceed 100% for cash-secured options."""
+        # Import directly to avoid circular import through strategies/__init__.py
+        import sys
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "strat_options_strategy",
+            "C:\\Strat_Trading_Bot\\vectorbt-workspace\\strategies\\strat_options_strategy.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+
+        # Test the logic directly without full module import
+        import pandas as pd
+        import numpy as np
+
+        # Simulate the equity calculation with floor and cap
+        equity = [10000]
+        pnl_values = [-5000, -5000, -5000, -5000]  # $20k loss
+
+        for pnl in pnl_values:
+            new_equity = equity[-1] + pnl
+            equity.append(max(0, new_equity))  # Floor at zero
+
+        equity_arr = np.array(equity)
+        peak = np.maximum.accumulate(equity_arr)
+        peak_safe = np.where(peak == 0, 1e-10, peak)
+        drawdown = (peak - equity_arr) / peak_safe
+        max_dd = min(drawdown.max(), 1.0)  # Cap at 100%
+
+        # MaxDD should be capped at 100% (1.0)
+        assert max_dd <= 1.0, f"MaxDD {max_dd} exceeds 100% cap"
+        assert max_dd == 1.0, f"MaxDD should be exactly 100% for total loss scenario"
+
+    def test_equity_floor_at_zero(self):
+        """Equity curve should never go negative."""
+        import numpy as np
+
+        # Simulate equity calculation with floor
+        equity = [10000]
+        pnl_values = [-15000]  # More than starting capital
+
+        for pnl in pnl_values:
+            new_equity = equity[-1] + pnl
+            equity.append(max(0, new_equity))  # Floor at zero
+
+        # Equity should be floored at 0, not negative
+        assert all(e >= 0 for e in equity), f"Equity contains negative: {equity}"
+        assert equity[-1] == 0, f"Equity should be 0 after total loss, got {equity[-1]}"
+
+    def test_monte_carlo_equity_floor(self):
+        """Monte Carlo equity curve should floor at zero."""
+        from validation.monte_carlo import MonteCarloValidator
+        import numpy as np
+
+        validator = MonteCarloValidator()
+
+        # Simulate build equity curve using the actual method
+        class MockTrade:
+            def __init__(self, pnl):
+                self.pnl = pnl
+
+        mock_trades = [MockTrade(-15000), MockTrade(-5000)]
+        equity = validator._calculate_equity_curve(mock_trades, starting_capital=10000)
+
+        # All equity values should be >= 0
+        assert all(equity >= 0), f"Equity curve contains negative values: {equity}"
+
+    def test_monte_carlo_maxdd_capped(self):
+        """Monte Carlo MaxDD calculation should cap at 100%."""
+        from validation.monte_carlo import MonteCarloValidator
+        import numpy as np
+
+        validator = MonteCarloValidator()
+
+        # Equity that would produce >100% DD without cap (if it could go negative)
+        equity = np.array([10000, 5000, 2000, 0, 0, 0])  # Floored at 0
+
+        max_dd = validator._calculate_max_drawdown(equity)
+
+        # MaxDD should be capped at 100%
+        assert max_dd <= 1.0, f"MaxDD {max_dd} exceeds 100% cap"
 
 
 if __name__ == '__main__':

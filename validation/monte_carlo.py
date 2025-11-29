@@ -321,9 +321,10 @@ class MonteCarloValidator:
         """
         equity = [starting_capital]
 
+        # Session 83K-10: Floor equity at zero (long options max loss = capital invested)
         for trade in trades:
             new_equity = equity[-1] + trade.pnl
-            equity.append(new_equity)
+            equity.append(max(0, new_equity))  # Floor at zero - account cannot go negative
 
         return np.array(equity)
 
@@ -409,6 +410,9 @@ class MonteCarloValidator:
         drawdown = (running_max - equity) / running_max_safe
 
         max_dd = np.max(drawdown)
+
+        # Session 83K-10: Cap MaxDD at 100% (realistic for cash-secured options)
+        max_dd = min(max_dd, 1.0)
 
         return float(max_dd) if np.isfinite(max_dd) else 0.0
 

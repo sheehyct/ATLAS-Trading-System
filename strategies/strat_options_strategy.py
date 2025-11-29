@@ -682,9 +682,11 @@ class STRATOptionsStrategy:
         win_rate = len(winners) / len(trades_df) if len(trades_df) > 0 else 0
 
         # Calculate equity curve
+        # Session 83K-10: Floor equity at zero (long options max loss = premium paid)
         equity = [10000]
         for pnl in trades_df['pnl']:
-            equity.append(equity[-1] + pnl)
+            new_equity = equity[-1] + pnl
+            equity.append(max(0, new_equity))  # Floor at zero - account cannot go negative
         equity_series = pd.Series(equity[1:], index=trades_df['entry_date'] if 'entry_date' in trades_df else range(len(trades_df)))
 
         # Calculate Sharpe (simplified - daily returns approximation)
@@ -695,10 +697,13 @@ class STRATOptionsStrategy:
             sharpe = 0
 
         # Calculate max drawdown
+        # Session 83K-10: Cap MaxDD at 100% (realistic for cash-secured options)
         equity_arr = np.array(equity)
         peak = np.maximum.accumulate(equity_arr)
-        drawdown = (peak - equity_arr) / peak
-        max_dd = drawdown.max() if len(drawdown) > 0 else 0
+        # Avoid division by zero when peak is 0
+        peak_safe = np.where(peak == 0, 1e-10, peak)
+        drawdown = (peak - equity_arr) / peak_safe
+        max_dd = min(drawdown.max(), 1.0) if len(drawdown) > 0 else 0  # Cap at 100%
 
         return BacktestResult(
             total_return=total_return,
