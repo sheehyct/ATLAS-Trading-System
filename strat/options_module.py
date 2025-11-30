@@ -1414,24 +1414,24 @@ class OptionsBacktester:
                 # Note: Using average theta accounts for theta acceleration near expiration
                 theta_pnl = avg_theta * days_held * 100 * trade.quantity
 
-                # Total P/L
-                if exit_type == 'TARGET':
-                    # For target hit, we use intrinsic value at exit
-                    if option_type == 'call':
-                        intrinsic_value = max(exit_price - strike, 0)
-                    else:
-                        intrinsic_value = max(strike - exit_price, 0)
-
-                    # P/L = (delta_pnl + gamma_pnl + theta_pnl) - entry_cost
-                    # delta_pnl is already correctly signed:
-                    # - Positive for winning calls (price up, delta positive)
-                    # - Positive for winning puts (price down, delta negative * negative = positive)
-                    # Note: theta_pnl is typically negative (time decay costs money)
-                    gross_pnl = delta_pnl + gamma_pnl + theta_pnl
-                    pnl = gross_pnl - actual_option_cost * 100 * trade.quantity
-                else:
-                    # STOP: Max loss is premium paid
-                    pnl = -actual_option_cost * 100 * trade.quantity
+                # Total P/L using Greeks-based calculation
+                # Session 83K-11 BUG FIX: gross_pnl (delta + gamma + theta) represents
+                # the CHANGE in option value, which IS the P&L. Previously, this code
+                # incorrectly subtracted the entry cost AGAIN for TARGET hits (double-
+                # counting), and assumed 100% loss for all STOP hits (overly pessimistic).
+                #
+                # The correct calculation is the same for both TARGET and STOP:
+                # - delta_pnl captures price movement (positive for winning direction)
+                # - gamma_pnl captures convexity (helps large moves)
+                # - theta_pnl captures time decay (usually negative for long options)
+                # - Sum of these = change in option value = P&L
+                #
+                # For STOP hits, the underlying moved against us, so:
+                # - price_move is negative (for calls) or positive (for puts)
+                # - delta_pnl will be negative (loss from adverse price move)
+                # - Combined with theta decay, total P&L will be negative
+                gross_pnl = delta_pnl + gamma_pnl + theta_pnl
+                pnl = gross_pnl
 
                 # Session 82: Track data source for transparency
                 # Session 83: Add warning for mixed sources (P/L accuracy may be compromised)

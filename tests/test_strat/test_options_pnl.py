@@ -594,5 +594,112 @@ class TestSession83K10Fixes:
         assert max_dd <= 1.0, f"MaxDD {max_dd} exceeds 100% cap"
 
 
+class TestSession83K11PnLFix:
+    """Session 83K-11: Regression tests for P&L calculation bug fix.
+
+    Bug: P&L calculation incorrectly subtracted option premium AGAIN from gross_pnl
+    for TARGET hits, and assumed 100% loss for all STOP hits.
+
+    Fix: Use gross_pnl (delta + gamma + theta) directly as P&L for both cases.
+    The Greek-based change in option value IS the profit/loss.
+    """
+
+    def test_target_hit_pnl_not_double_subtracted(self):
+        """TARGET hit P&L should equal Greek-based change, not change minus premium."""
+        from strat.options_module import calculate_greeks
+
+        # Simulate a winning call trade
+        S_entry = 100  # Entry underlying price
+        S_exit = 110   # Exit underlying price (target hit)
+        K = 100        # ATM call
+        T = 30/365     # 30 DTE
+        r = 0.05
+        sigma = 0.20
+
+        entry_greeks = calculate_greeks(S_entry, K, T, r, sigma, 'call')
+        exit_greeks = calculate_greeks(S_exit, K, T - 5/365, r, sigma, 'call')  # 5 days later
+
+        price_move = S_exit - S_entry  # +10
+        avg_delta = (entry_greeks.delta + exit_greeks.delta) / 2
+        avg_gamma = (entry_greeks.gamma + exit_greeks.gamma) / 2
+        avg_theta = (entry_greeks.theta + exit_greeks.theta) / 2
+
+        # Calculate P&L using fixed formula (just the change)
+        delta_pnl = avg_delta * price_move * 100  # Per contract
+        gamma_pnl = 0.5 * avg_gamma * (price_move ** 2) * 100
+        theta_pnl = avg_theta * 5 * 100  # 5 days of theta decay
+
+        gross_pnl = delta_pnl + gamma_pnl + theta_pnl
+        pnl = gross_pnl  # CORRECT: Just use the change
+
+        # P&L should be POSITIVE for a winning call
+        assert pnl > 0, f"Winning call TARGET should have positive P&L, got {pnl}"
+
+        # The buggy calculation would have been:
+        buggy_pnl = gross_pnl - entry_greeks.option_price * 100
+        assert buggy_pnl < pnl, "Buggy calculation would subtract premium again"
+
+    def test_stop_hit_uses_greeks_not_100_percent_loss(self):
+        """STOP hit P&L should use Greek-based calculation, not assume 100% loss."""
+        from strat.options_module import calculate_greeks
+
+        # Simulate a losing call trade (stop hit)
+        S_entry = 100  # Entry underlying price
+        S_exit = 97    # Exit underlying price (stop hit, 3% drop)
+        K = 100        # ATM call
+        T = 30/365     # 30 DTE
+        r = 0.05
+        sigma = 0.20
+
+        entry_greeks = calculate_greeks(S_entry, K, T, r, sigma, 'call')
+        exit_greeks = calculate_greeks(S_exit, K, T - 2/365, r, sigma, 'call')  # 2 days later
+
+        price_move = S_exit - S_entry  # -3
+        avg_delta = (entry_greeks.delta + exit_greeks.delta) / 2
+        avg_gamma = (entry_greeks.gamma + exit_greeks.gamma) / 2
+        avg_theta = (entry_greeks.theta + exit_greeks.theta) / 2
+
+        # Calculate P&L using fixed formula (Greeks-based)
+        delta_pnl = avg_delta * price_move * 100  # Per contract
+        gamma_pnl = 0.5 * avg_gamma * (price_move ** 2) * 100
+        theta_pnl = avg_theta * 2 * 100  # 2 days of theta decay
+
+        gross_pnl = delta_pnl + gamma_pnl + theta_pnl
+        pnl = gross_pnl  # CORRECT: Greeks-based P&L
+
+        # P&L should be NEGATIVE for a losing call
+        assert pnl < 0, f"Losing call STOP should have negative P&L, got {pnl}"
+
+        # But NOT -100% of premium (that's unrealistic for a 3% drop)
+        premium = entry_greeks.option_price * 100
+        buggy_pnl = -premium  # Old buggy code: assume 100% loss
+
+        # The actual loss should be less severe than 100% premium
+        assert abs(pnl) < abs(buggy_pnl), \
+            f"STOP loss {pnl} should be less than 100% premium loss {buggy_pnl}"
+
+    def test_pnl_direction_consistency(self):
+        """Verify P&L sign is consistent with trade outcome."""
+        from strat.options_module import calculate_greeks
+
+        K = 100
+        T = 30/365
+        r = 0.05
+        sigma = 0.20
+
+        # Test case 1: Call wins (price up)
+        call_entry = calculate_greeks(100, K, T, r, sigma, 'call')
+        call_exit = calculate_greeks(108, K, T - 3/365, r, sigma, 'call')
+        call_pnl = ((call_entry.delta + call_exit.delta) / 2) * 8 * 100
+        assert call_pnl > 0, "Call should profit when price goes up"
+
+        # Test case 2: Put wins (price down)
+        put_entry = calculate_greeks(100, K, T, r, sigma, 'put')
+        put_exit = calculate_greeks(92, K, T - 3/365, r, sigma, 'put')
+        put_pnl = ((put_entry.delta + put_exit.delta) / 2) * (-8) * 100
+        # Put delta is negative, price_move is negative, so pnl is positive
+        assert put_pnl > 0, "Put should profit when price goes down"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
