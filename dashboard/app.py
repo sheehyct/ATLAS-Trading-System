@@ -707,6 +707,7 @@ def update_rolling_metrics(strategy_name, n):
         # Create bar chart of position P&L
         symbols = positions['symbol'].tolist()
         unrealized_pls = positions['unrealized_pl'].tolist() if 'unrealized_pl' in positions.columns else [0] * len(symbols)
+        market_values = positions['market_value'].tolist() if 'market_value' in positions.columns else [0] * len(symbols)
 
         colors = [COLORS['bull_primary'] if pl >= 0 else COLORS['danger'] for pl in unrealized_pls]
 
@@ -716,19 +717,33 @@ def update_rolling_metrics(strategy_name, n):
                 y=unrealized_pls,
                 marker_color=colors,
                 text=[f"${pl:+,.2f}" for pl in unrealized_pls],
-                textposition='outside'
+                textposition='inside',
+                insidetextanchor='middle',
+                textfont=dict(color='white', size=10),
+                hovertemplate='<b>%{x}</b><br>P&L: $%{y:+,.2f}<br>Value: $%{customdata:,.2f}<extra></extra>',
+                customdata=market_values
             )
         ])
 
+        # Calculate y-axis range with padding
+        max_val = max(unrealized_pls) if unrealized_pls else 0
+        min_val = min(unrealized_pls) if unrealized_pls else 0
+        y_padding = max(abs(max_val), abs(min_val), 10) * 0.2
+
         fig.update_layout(
-            title={'text': 'Position P&L', 'font': {'color': COLORS['text_primary']}},
+            title={'text': 'Position P&L ($)', 'font': {'color': COLORS['text_primary']}},
             template='plotly_dark',
             paper_bgcolor=COLORS['background_dark'],
             plot_bgcolor=COLORS['background_dark'],
             font={'color': COLORS['text_primary']},
             xaxis={'title': 'Symbol', 'gridcolor': COLORS['grid']},
-            yaxis={'title': 'Unrealized P&L ($)', 'gridcolor': COLORS['grid']},
+            yaxis={
+                'title': 'Unrealized P&L ($)',
+                'gridcolor': COLORS['grid'],
+                'range': [min_val - y_padding, max_val + y_padding]
+            },
             height=350,
+            margin=dict(t=50, b=50, l=60, r=20),
             showlegend=False
         )
 
@@ -742,44 +757,95 @@ def update_rolling_metrics(strategy_name, n):
 @app.callback(
     Output('regime-comparison-graph', 'figure'),
     [Input('strategy-selector', 'value'),
-     Input('interval-component', 'n_intervals')]
+     Input('interval-component', 'n_intervals'),
+     Input('date-range-picker', 'start_date'),
+     Input('date-range-picker', 'end_date')]
 )
-def update_regime_comparison(strategy_name, n):
-    """Show position allocation pie chart."""
+def update_regime_comparison(strategy_name, n, start_date, end_date):
+    """Show current regime status with P&L context."""
     import plotly.graph_objects as go
 
     try:
-        if live_loader is None or live_loader.client is None:
-            return create_info_figure("Live Data Not Available", "Alpaca connection not established")
+        # Get current regime
+        current_regime_data = None
+        if regime_loader is not None:
+            current_regime_data = regime_loader.get_current_regime()
 
-        positions = live_loader.get_current_positions()
+        # Get positions P&L
+        total_pnl = 0
+        if live_loader is not None and live_loader.client is not None:
+            positions = live_loader.get_current_positions()
+            if not positions.empty and 'unrealized_pl' in positions.columns:
+                total_pnl = positions['unrealized_pl'].sum()
 
-        if positions.empty:
-            return create_info_figure("No Open Positions", "No positions to display")
+        # Determine regime info
+        regime = current_regime_data.get('regime', 'UNKNOWN') if current_regime_data else 'UNKNOWN'
+        allocation = current_regime_data.get('allocation_pct', 0) if current_regime_data else 0
 
-        # Create pie chart of position allocation
-        symbols = positions['symbol'].tolist()
-        market_values = positions['market_value'].tolist() if 'market_value' in positions.columns else [0] * len(symbols)
+        # Map regime to numeric value for gauge
+        regime_values = {'CRASH': 0, 'TREND_BEAR': 1, 'TREND_NEUTRAL': 2, 'TREND_BULL': 3}
+        regime_value = regime_values.get(regime, 2)
 
-        fig = go.Figure(data=[go.Pie(
-            labels=symbols,
-            values=market_values,
-            hole=0.4,
-            textinfo='label+percent',
-            textposition='outside',
-            marker={'colors': [COLORS['bull_primary'], COLORS['info'], COLORS['warning'],
-                              COLORS['bull_secondary'], COLORS['bear_secondary'], COLORS['danger']]}
-        )])
+        regime_colors_map = {
+            'TREND_BULL': COLORS['bull_primary'],
+            'TREND_NEUTRAL': COLORS['text_secondary'],
+            'TREND_BEAR': COLORS['warning'],
+            'CRASH': COLORS['danger']
+        }
+        regime_color = regime_colors_map.get(regime, COLORS['text_secondary'])
+
+        # Create indicator figure
+        fig = go.Figure()
+
+        # Regime gauge
+        fig.add_trace(go.Indicator(
+            mode="gauge+number",
+            value=regime_value,
+            number={'suffix': '', 'font': {'size': 1, 'color': COLORS['background_dark']}},  # Hide number
+            gauge={
+                'axis': {'range': [0, 3], 'tickvals': [0, 1, 2, 3], 'ticktext': ['CRASH', 'BEAR', 'NEUTRAL', 'BULL'],
+                        'tickfont': {'color': COLORS['text_secondary'], 'size': 10}},
+                'bar': {'color': regime_color, 'thickness': 0.75},
+                'bgcolor': COLORS['background_medium'],
+                'borderwidth': 2,
+                'bordercolor': COLORS['grid'],
+                'steps': [
+                    {'range': [0, 0.75], 'color': 'rgba(255, 82, 82, 0.2)'},
+                    {'range': [0.75, 1.5], 'color': 'rgba(255, 193, 7, 0.2)'},
+                    {'range': [1.5, 2.25], 'color': 'rgba(128, 128, 128, 0.2)'},
+                    {'range': [2.25, 3], 'color': 'rgba(0, 200, 83, 0.2)'}
+                ],
+            },
+            domain={'x': [0.1, 0.9], 'y': [0.3, 1]}
+        ))
+
+        # Add regime label
+        fig.add_annotation(
+            text=f"<b>{regime.replace('TREND_', '')}</b>",
+            x=0.5, y=0.45,
+            xref='paper', yref='paper',
+            showarrow=False,
+            font=dict(size=24, color=regime_color)
+        )
+
+        # Add allocation and P&L info
+        pnl_color = COLORS['bull_primary'] if total_pnl >= 0 else COLORS['danger']
+        fig.add_annotation(
+            text=f"Allocation: {allocation}% | Total P&L: <span style='color:{pnl_color}'>${total_pnl:+,.2f}</span>",
+            x=0.5, y=0.15,
+            xref='paper', yref='paper',
+            showarrow=False,
+            font=dict(size=12, color=COLORS['text_secondary'])
+        )
 
         fig.update_layout(
-            title={'text': 'Position Allocation', 'font': {'color': COLORS['text_primary']}},
+            title={'text': 'Current Regime', 'font': {'color': COLORS['text_primary']}},
             template='plotly_dark',
             paper_bgcolor=COLORS['background_dark'],
             plot_bgcolor=COLORS['background_dark'],
             font={'color': COLORS['text_primary']},
-            showlegend=True,
-            legend={'orientation': 'h', 'y': -0.1},
-            height=350
+            height=350,
+            margin=dict(t=50, b=30, l=30, r=30)
         )
 
         return fig
@@ -812,6 +878,7 @@ def update_trade_distribution(strategy_name, n):
         quantities = positions['qty'].tolist() if 'qty' in positions.columns else [0] * len(symbols)
         avg_prices = positions['avg_entry_price'].tolist() if 'avg_entry_price' in positions.columns else [0] * len(symbols)
         current_prices = positions['current_price'].tolist() if 'current_price' in positions.columns else [0] * len(symbols)
+        unrealized_pls = positions['unrealized_pl'].tolist() if 'unrealized_pl' in positions.columns else [0] * len(symbols)
 
         # Calculate P&L percentage for coloring
         pnl_pcts = []
@@ -824,6 +891,9 @@ def update_trade_distribution(strategy_name, n):
 
         colors = [COLORS['bull_primary'] if pct >= 0 else COLORS['danger'] for pct in pnl_pcts]
 
+        # Prepare custom data for hover
+        custom_data = list(zip(quantities, avg_prices, current_prices, unrealized_pls))
+
         fig = go.Figure(data=[
             go.Bar(
                 y=symbols,
@@ -831,9 +901,22 @@ def update_trade_distribution(strategy_name, n):
                 orientation='h',
                 marker_color=colors,
                 text=[f"{pct:+.1f}%" for pct in pnl_pcts],
-                textposition='outside'
+                textposition='outside',
+                textfont=dict(size=11),
+                customdata=custom_data,
+                hovertemplate='<b>%{y}</b><br>' +
+                              'P&L: %{x:+.2f}%<br>' +
+                              'Qty: %{customdata[0]}<br>' +
+                              'Avg Entry: $%{customdata[1]:.2f}<br>' +
+                              'Current: $%{customdata[2]:.2f}<br>' +
+                              'P&L $: $%{customdata[3]:+,.2f}<extra></extra>'
             )
         ])
+
+        # Calculate x-axis range with padding
+        max_pct = max(pnl_pcts) if pnl_pcts else 0
+        min_pct = min(pnl_pcts) if pnl_pcts else 0
+        x_padding = max(abs(max_pct), abs(min_pct), 1) * 0.25
 
         fig.update_layout(
             title={'text': 'Position Performance (%)', 'font': {'color': COLORS['text_primary']}},
@@ -841,9 +924,14 @@ def update_trade_distribution(strategy_name, n):
             paper_bgcolor=COLORS['background_dark'],
             plot_bgcolor=COLORS['background_dark'],
             font={'color': COLORS['text_primary']},
-            xaxis={'title': 'P&L %', 'gridcolor': COLORS['grid']},
+            xaxis={
+                'title': 'P&L %',
+                'gridcolor': COLORS['grid'],
+                'range': [min_pct - x_padding, max_pct + x_padding]
+            },
             yaxis={'title': '', 'gridcolor': COLORS['grid']},
             height=350,
+            margin=dict(l=80, r=60, t=50, b=50),
             showlegend=False
         )
 
