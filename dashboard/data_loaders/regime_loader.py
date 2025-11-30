@@ -206,9 +206,10 @@ class RegimeDataLoader:
             cached_date, cached_df = self._daily_cache[cache_key]
             if cached_date == today and not cached_df.empty:
                 logger.info("Using cached regime timeline")
-                # Filter to requested date range
-                mask = (cached_df['date'] >= pd.Timestamp(start_date)) & \
-                       (cached_df['date'] <= pd.Timestamp(end_date))
+                # Filter to requested date range (must match timezone)
+                start_ts = pd.Timestamp(start_date).tz_localize('America/New_York')
+                end_ts = pd.Timestamp(end_date).tz_localize('America/New_York')
+                mask = (cached_df['date'] >= start_ts) & (cached_df['date'] <= end_ts)
                 return cached_df[mask].reset_index(drop=True)
 
         # Compute fresh timeline
@@ -252,9 +253,10 @@ class RegimeDataLoader:
             self._daily_cache[cache_key] = (today, df)
             logger.info(f"Cached {len(df)} regime observations")
 
-            # Return filtered to requested range
-            mask = (df['date'] >= pd.Timestamp(start_date)) & \
-                   (df['date'] <= pd.Timestamp(end_date))
+            # Return filtered to requested range (must match timezone)
+            start_ts = pd.Timestamp(start_date).tz_localize('America/New_York')
+            end_ts = pd.Timestamp(end_date).tz_localize('America/New_York')
+            mask = (df['date'] >= start_ts) & (df['date'] <= end_ts)
             return df[mask].reset_index(drop=True)
 
         except Exception as e:
@@ -281,14 +283,14 @@ class RegimeDataLoader:
                 logger.error(f"Failed to fetch {symbol} data for features")
                 return pd.DataFrame(columns=['date', 'downside_dev', 'sortino_20d', 'sortino_60d'])
 
-            # Calculate features
-            features = calculate_features(spy_df)
+            # Calculate features (expects close prices Series, not full DataFrame)
+            features = calculate_features(spy_df['Close'])
 
             df = pd.DataFrame({
                 'date': features.index,
                 'downside_dev': features['downside_dev'].values,
-                'sortino_20d': features['sortino_20d'].values,
-                'sortino_60d': features['sortino_60d'].values
+                'sortino_20d': features['sortino_20'].values,  # column is sortino_20, not sortino_20d
+                'sortino_60d': features['sortino_60'].values   # column is sortino_60, not sortino_60d
             })
 
             logger.info(f"Loaded {len(df)} feature observations")
