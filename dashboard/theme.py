@@ -20,21 +20,19 @@ from typing import Dict, Any
 # PREMIUM TYPOGRAPHY
 # ============================================
 
-# Primary: Clash Display (geometric, modern, high contrast)
-# Secondary: Satoshi (clean, readable, professional)
-# Mono: JetBrains Mono (code, numbers)
+# IBM Plex: Professional, corporate, highly readable
+# Used by IBM, Carbon Design System - Bloomberg/financial industry feel
 FONTS = {
-    'display': '"Clash Display", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
-    'body': '"Satoshi", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif',
-    'mono': '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
+    'display': '"IBM Plex Sans", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+    'body': '"IBM Plex Sans", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif',
+    'mono': '"IBM Plex Mono", "JetBrains Mono", "SF Mono", monospace',
     'fallback': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
 }
 
-# Font imports for external stylesheets
+# Font imports for external stylesheets (Google Fonts)
 FONT_URLS = [
-    'https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap',
-    'https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap',
-    'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap',
+    'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap',
+    'https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap',
 ]
 
 # ============================================
@@ -294,10 +292,10 @@ def get_css_variables() -> str:
         --bear: #FF3B5C;
         --neutral: #71717A;
 
-        /* Typography */
-        --font-display: 'Clash Display', 'SF Pro Display', -apple-system, sans-serif;
-        --font-body: 'Satoshi', 'SF Pro Text', -apple-system, sans-serif;
-        --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+        /* Typography - IBM Plex (Professional) */
+        --font-display: 'IBM Plex Sans', 'SF Pro Display', -apple-system, sans-serif;
+        --font-body: 'IBM Plex Sans', 'SF Pro Text', -apple-system, sans-serif;
+        --font-mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
 
         /* Transitions */
         --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);

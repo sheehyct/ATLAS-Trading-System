@@ -248,11 +248,11 @@ TRADE_MARKERS = {
 # CHART TEMPLATES (Premium Luxury)
 # ============================================
 
-# Premium Typography
+# Premium Typography - IBM Plex (Professional, Corporate)
 FONTS = {
-    'display': '"Clash Display", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
-    'body': '"Satoshi", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif',
-    'mono': '"JetBrains Mono", "SF Mono", "Fira Code", Consolas, monospace',
+    'display': '"IBM Plex Sans", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif',
+    'body': '"IBM Plex Sans", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif',
+    'mono': '"IBM Plex Mono", "JetBrains Mono", "SF Mono", Consolas, monospace',
 }
 
 # Plotly template settings
