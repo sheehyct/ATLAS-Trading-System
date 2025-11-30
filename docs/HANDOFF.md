@@ -1,11 +1,145 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** November 29, 2025 (Session 83K-10 - THETADATA + MAXDD BUG FIXES)
+**Last Updated:** November 29, 2025 (Session 83K-12 - P&L FIX VALIDATION COMPLETE)
 **Current Branch:** `main`
 **Phase:** Options Module Phase 3 - ATLAS Production Readiness Compliance
-**Status:** ThetaData coverage and MaxDD bugs FIXED - validation shows 100% coverage
+**Status:** P&L fix VALIDATED - Strategy shows positive expectancy (Sharpe 2.13)
 
 **ARCHIVED SESSIONS:** Sessions 1-66 archived to `archives/sessions/HANDOFF_SESSIONS_01-66.md`
+
+---
+
+## Session 83K-12: P&L Fix Validation and Detailed Trade Analysis
+
+**Date:** November 29, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - P&L fix validated, circular import fixed, detailed metrics obtained
+**Commit:** Pending (circular import fix)
+
+### P&L Fix Validation
+
+Confirmed P&L calculation fix from Session 83K-11 is working correctly:
+
+| Metric | Before Fix | After Fix | Improvement |
+|--------|------------|-----------|-------------|
+| Avg IS Sharpe | -84.17 | +1.88 | +86.05 |
+| Original Sharpe | -6.46 | +1.68 | +8.14 |
+| Original MaxDD | 100% | 19.6% | -80.4% |
+
+### SPY 1D 3-1-2 Detailed Results
+
+| Metric | Value |
+|--------|-------|
+| Trade Count | 16 |
+| Total Return | +12.59% |
+| Sharpe Ratio | **2.13** |
+| Max Drawdown | 18.63% |
+| Win Rate | **37.5%** (6/16) |
+| Profit Factor | **1.37** |
+| Total P&L | +$1,259 |
+| Avg Win | +$778 |
+| Avg Loss | -$341 |
+
+### Circular Import Fix
+
+Fixed circular import between `validation/strat_validator.py` and `strategies/strat_options_strategy.py`:
+
+**Root Cause:**
+- `strategies/strat_options_strategy.py` imports `validation.protocols`
+- `validation/__init__.py` imports `validation.strat_validator`
+- `validation/strat_validator.py` imports `strategies.strat_options_strategy`
+
+**Fix:** Made import lazy (inside `_run_single_validation()` method) in `validation/strat_validator.py`
+
+### Key Finding: Checkpoint Timing
+
+Old checkpoint data showed impossible metrics because it was created BEFORE the P&L fix:
+- Checkpoint timestamp: 2025-11-29 18:40:18 (6:40 PM)
+- P&L fix commit: 2025-11-29 20:05:17 (8:05 PM)
+
+Fresh validation run confirmed fix is working.
+
+### Test Results
+
+- 469 STRAT/validation tests: ALL PASSING (2 skipped)
+- Circular import fix verified
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `validation/strat_validator.py` | Lazy import to fix circular dependency |
+| `exploratory/debug_trade_details.py` | Created for detailed trade analysis |
+
+---
+
+## Session 83K-11: P&L Calculation Double-Subtraction Bug Fix
+
+**Date:** November 29, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Critical P&L bug fixed, 469 tests passing
+**Commit:** 070ac95
+
+### The Bug
+
+During validation run, ALL 90 combinations showed:
+- Sharpe ratios: -100 to -636 (astronomically negative)
+- MaxDD: 100% (total loss every run)
+- ThetaData coverage: 100% (previous bug fixed)
+
+Investigation revealed P&L calculation bugs in `strat/options_module.py` lines 1417-1434.
+
+### Bug #1: TARGET Hits Double-Subtracted Premium
+
+**Location:** `strat/options_module.py:1431`
+
+```python
+# OLD (buggy)
+gross_pnl = delta_pnl + gamma_pnl + theta_pnl
+pnl = gross_pnl - actual_option_cost * 100 * trade.quantity  # WRONG!
+
+# NEW (fixed)
+gross_pnl = delta_pnl + gamma_pnl + theta_pnl
+pnl = gross_pnl  # gross_pnl IS the P&L (change in option value)
+```
+
+**Root Cause:** `gross_pnl` (delta + gamma + theta) represents the CHANGE in option value, which IS the profit/loss. Subtracting the entry cost again made winning trades appear as losses.
+
+### Bug #2: STOP Hits Assumed 100% Loss
+
+**Location:** `strat/options_module.py:1434`
+
+```python
+# OLD (buggy)
+pnl = -actual_option_cost * 100 * trade.quantity  # Always 100% loss!
+
+# NEW (fixed)
+pnl = gross_pnl  # Use Greek-based calculation (same as TARGET)
+```
+
+**Root Cause:** Code assumed every stop hit = 100% loss of premium, regardless of actual price movement.
+
+### Results
+
+| Metric | BEFORE Fix | AFTER Fix | Improvement |
+|--------|------------|-----------|-------------|
+| SPY 1D Sharpe | -6.46 | +4.09 | +1034% |
+| SPY 1D MaxDD | 100% | 11.4% | Realistic |
+| Fold 1 IS Sharpe | -103.24 | +7.10 | Positive |
+| Fold 12 IS Sharpe | -401.44 | +173.52 | Positive |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/options_module.py` | Lines 1417-1434 - P&L calculation fix |
+| `tests/test_strat/test_options_pnl.py` | 3 regression tests added |
+
+### Test Results
+
+- 271 STRAT tests: ALL PASSING (268 + 3 new)
+- 198 validation tests: ALL PASSING
+- Total: 469 tests passing
 
 ---
 

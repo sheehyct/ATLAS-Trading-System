@@ -48,7 +48,7 @@ import numpy as np
 from validation.validation_runner import ValidationRunner, run_validation
 from validation.config import ValidationConfig
 from validation.results import ValidationReport, ValidationSummary
-from strategies.strat_options_strategy import STRATOptionsStrategy, STRATOptionsConfig
+# NOTE: STRATOptionsStrategy import moved to _run_single_validation() to avoid circular import
 
 # ThetaData imports
 try:
@@ -817,6 +817,9 @@ class ATLASSTRATValidator:
                 )
 
             # Configure strategy with ThetaData
+            # Lazy import to avoid circular dependency (strategies imports validation.protocols)
+            from strategies.strat_options_strategy import STRATOptionsStrategy, STRATOptionsConfig
+
             strategy_config = STRATOptionsConfig(
                 pattern_types=[config.pattern],
                 timeframe=config.timeframe,
