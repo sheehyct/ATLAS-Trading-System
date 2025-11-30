@@ -138,20 +138,59 @@ def create_regime_timeline(
         'CRASH': 0
     }).fillna(2)  # Default to NEUTRAL if unknown
 
-    fig.add_trace(
-        go.Scatter(
-            x=dates,
-            y=regime_numeric,
-            mode='lines',
-            name='Regime',
-            fill='tozeroy',
-            line=dict(width=0),
-            fillcolor=COLORS['bull_fill'],
-            hovertemplate='<b>Regime:</b> %{text}<extra></extra>',
-            text=regimes
-        ),
-        row=2, col=1
-    )
+    # Color mapping for each regime
+    regime_line_colors = {
+        'TREND_BULL': COLORS['bull_primary'],      # Green
+        'TREND_NEUTRAL': COLORS['text_secondary'],  # Gray
+        'TREND_BEAR': COLORS['warning'],            # Orange
+        'CRASH': COLORS['danger']                   # Red
+    }
+
+    # Create colored segments for oscillating line effect
+    # We need to plot segments where each segment has its own color
+    if len(dates) > 0:
+        current_regime = regimes.iloc[0]
+        start_idx = 0
+
+        for i in range(1, len(regimes)):
+            # Detect regime change or end of data
+            if regimes.iloc[i] != current_regime or i == len(regimes) - 1:
+                # Include current point in segment (for continuity)
+                end_idx = i if i < len(regimes) - 1 else i + 1
+
+                segment_dates = dates.iloc[start_idx:end_idx + 1] if end_idx < len(dates) else dates.iloc[start_idx:]
+                segment_values = regime_numeric.iloc[start_idx:end_idx + 1] if end_idx < len(regime_numeric) else regime_numeric.iloc[start_idx:]
+
+                # Add colored line segment
+                fig.add_trace(
+                    go.Scatter(
+                        x=segment_dates,
+                        y=segment_values,
+                        mode='lines',
+                        name=current_regime if start_idx == 0 else None,
+                        showlegend=(start_idx == 0),  # Only show legend for first segment
+                        line=dict(
+                            color=regime_line_colors.get(current_regime, COLORS['text_secondary']),
+                            width=3
+                        ),
+                        hovertemplate=f'<b>Regime:</b> {current_regime}<extra></extra>',
+                    ),
+                    row=2, col=1
+                )
+
+                # Also add regime background shading to bottom subplot
+                fig.add_vrect(
+                    x0=dates.iloc[start_idx],
+                    x1=dates.iloc[min(i, len(dates) - 1)],
+                    fillcolor=REGIME_COLORS.get(current_regime, 'rgba(128,128,128,0.2)'),
+                    layer='below',
+                    line_width=0,
+                    row=2, col=1
+                )
+
+                # Update for next iteration
+                current_regime = regimes.iloc[i]
+                start_idx = i
 
     # ============================================
     # Layout Configuration

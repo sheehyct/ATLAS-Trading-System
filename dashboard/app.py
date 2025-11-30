@@ -433,51 +433,425 @@ def update_feature_dashboard(start_date, end_date):
 
 
 @app.callback(
+    Output('regime-stats-table', 'children'),
+    [Input('date-range-picker', 'start_date'),
+     Input('date-range-picker', 'end_date')]
+)
+def update_regime_statistics(start_date, end_date):
+    """
+    Update regime statistics panel with VIX data and regime metrics.
+
+    Shows:
+    - Current VIX level and changes (intraday, 1-day, 3-day)
+    - Current regime and allocation
+    - Regime duration statistics
+    """
+    try:
+        if regime_loader is None:
+            return html.P("Regime loader not available", className='text-muted')
+
+        # Get VIX status
+        vix_status = regime_loader.get_vix_status()
+
+        # Get current regime
+        current_regime = regime_loader.get_current_regime()
+
+        # Get regime timeline for statistics
+        regime_data = regime_loader.get_regime_timeline(start_date, end_date)
+
+        # Calculate regime statistics
+        regime_counts = {}
+        if not regime_data.empty:
+            regime_counts = regime_data['regime'].value_counts().to_dict()
+            total_days = len(regime_data)
+        else:
+            total_days = 0
+
+        # Build statistics cards
+        cards = []
+
+        # VIX Status Card
+        vix_current = vix_status.get('vix_current', 0) or 0
+        intraday_change = vix_status.get('intraday_change_pct', 0) or 0
+        one_day_change = vix_status.get('one_day_change_pct', 0) or 0
+        three_day_change = vix_status.get('three_day_change_pct', 0) or 0
+        is_crash = vix_status.get('is_crash', False)
+
+        # VIX color based on level
+        if vix_current >= 35:
+            vix_color = COLORS['danger']
+        elif vix_current >= 25:
+            vix_color = COLORS['warning']
+        else:
+            vix_color = COLORS['bull_primary']
+
+        cards.append(
+            dbc.Card([
+                dbc.CardHeader("VIX Status", className='fw-bold small'),
+                dbc.CardBody([
+                    html.H4(f"{vix_current:.1f}", style={'color': vix_color}),
+                    html.Div([
+                        html.Span("Intraday: ", className='text-muted small'),
+                        html.Span(
+                            f"{intraday_change:+.1f}%",
+                            className='small',
+                            style={'color': COLORS['danger'] if intraday_change > 0 else COLORS['bull_primary']}
+                        )
+                    ]),
+                    html.Div([
+                        html.Span("1-Day: ", className='text-muted small'),
+                        html.Span(
+                            f"{one_day_change:+.1f}%",
+                            className='small',
+                            style={'color': COLORS['danger'] if one_day_change > 0 else COLORS['bull_primary']}
+                        )
+                    ]),
+                    html.Div([
+                        html.Span("3-Day: ", className='text-muted small'),
+                        html.Span(
+                            f"{three_day_change:+.1f}%",
+                            className='small',
+                            style={'color': COLORS['danger'] if three_day_change > 0 else COLORS['bull_primary']}
+                        )
+                    ]),
+                    html.Hr(className='my-2'),
+                    html.Div([
+                        html.I(className=f'fas fa-{"exclamation-triangle text-danger" if is_crash else "check-circle text-success"} me-1'),
+                        html.Span("CRASH" if is_crash else "Normal", className='small fw-bold')
+                    ])
+                ], className='p-2')
+            ], className='mb-2', style={'backgroundColor': COLORS['background_medium']})
+        )
+
+        # Current Regime Card
+        regime = current_regime.get('regime', 'UNKNOWN')
+        allocation = current_regime.get('allocation_pct', 0)
+        regime_colors_map = {
+            'TREND_BULL': COLORS['bull_primary'],
+            'TREND_NEUTRAL': COLORS['text_secondary'],
+            'TREND_BEAR': COLORS['warning'],
+            'CRASH': COLORS['danger'],
+            'UNKNOWN': COLORS['text_secondary']
+        }
+
+        cards.append(
+            dbc.Card([
+                dbc.CardHeader("Current Regime", className='fw-bold small'),
+                dbc.CardBody([
+                    html.H5(regime.replace('TREND_', ''), style={'color': regime_colors_map.get(regime, COLORS['text_secondary'])}),
+                    html.Div([
+                        html.Span("Allocation: ", className='text-muted small'),
+                        html.Span(f"{allocation}%", className='small fw-bold')
+                    ]),
+                    html.Div([
+                        html.Span("As of: ", className='text-muted small'),
+                        html.Span(current_regime.get('as_of_date', 'N/A'), className='small')
+                    ])
+                ], className='p-2')
+            ], className='mb-2', style={'backgroundColor': COLORS['background_medium']})
+        )
+
+        # Regime Distribution Card
+        if total_days > 0:
+            dist_items = []
+            for regime_name in ['TREND_BULL', 'TREND_NEUTRAL', 'TREND_BEAR', 'CRASH']:
+                count = regime_counts.get(regime_name, 0)
+                pct = (count / total_days) * 100
+                color = regime_colors_map.get(regime_name, COLORS['text_secondary'])
+                display_name = regime_name.replace('TREND_', '')
+                dist_items.append(
+                    html.Div([
+                        html.Span(f"{display_name}: ", className='text-muted small'),
+                        html.Span(f"{pct:.0f}%", className='small', style={'color': color}),
+                        html.Span(f" ({count}d)", className='text-muted small')
+                    ])
+                )
+
+            cards.append(
+                dbc.Card([
+                    dbc.CardHeader(f"Distribution ({total_days}d)", className='fw-bold small'),
+                    dbc.CardBody(dist_items, className='p-2')
+                ], className='mb-2', style={'backgroundColor': COLORS['background_medium']})
+            )
+
+        return html.Div(cards)
+
+    except Exception as e:
+        logger.error(f"Error updating regime statistics: {e}", exc_info=True)
+        return html.P(f"Error: {str(e)}", className='text-danger small')
+
+
+@app.callback(
     Output('equity-curve-graph', 'figure'),
     [Input('strategy-selector', 'value'),
      Input('date-range-picker', 'start_date'),
-     Input('date-range-picker', 'end_date')]
+     Input('date-range-picker', 'end_date'),
+     Input('interval-component', 'n_intervals')]
 )
-def update_equity_curve(strategy_name, start_date, end_date):
+def update_equity_curve(strategy_name, start_date, end_date, n):
     """
-    Update strategy equity curve visualization.
+    Update strategy equity curve visualization with live paper trading data.
 
-    NOTE: Backtest data not yet available. System A1 is running live on paper trading.
-    Historical backtest results were not serialized to disk.
+    Shows current portfolio P&L and positions summary from Alpaca paper account.
     """
-    return create_info_figure(
-        "Backtest Data Not Available",
-        "System A1 is running live on paper trading.\n"
-        "Historical backtest results were not saved.\n\n"
-        "View Live Portfolio tab for current positions."
-    )
+    import plotly.graph_objects as go
+
+    try:
+        if live_loader is None or live_loader.client is None:
+            return create_info_figure(
+                "Live Data Not Available",
+                f"Alpaca connection not established.\n{live_loader.init_error if live_loader else 'Loader not initialized'}"
+            )
+
+        # Get account and positions data
+        account = live_loader.get_account_status()
+        positions = live_loader.get_current_positions()
+
+        if not account:
+            return create_info_figure("No Account Data", "Unable to fetch account status from Alpaca")
+
+        # Extract key metrics
+        equity = account.get('equity', 0)
+        last_equity = account.get('last_equity', equity)
+        cash = account.get('cash', 0)
+        portfolio_value = account.get('portfolio_value', equity)
+
+        # Calculate daily P&L
+        daily_pnl = equity - last_equity
+        daily_pnl_pct = (daily_pnl / last_equity * 100) if last_equity > 0 else 0
+
+        # Create summary figure with portfolio metrics
+        fig = go.Figure()
+
+        # Add portfolio summary as annotations
+        fig.add_annotation(
+            text=f"<b>Paper Trading Portfolio</b>",
+            xref='paper', yref='paper',
+            x=0.5, y=0.95,
+            showarrow=False,
+            font=dict(size=20, color=COLORS['text_primary'])
+        )
+
+        fig.add_annotation(
+            text=f"<span style='font-size:36px;color:{COLORS['bull_primary'] if daily_pnl >= 0 else COLORS['danger']}'>${equity:,.2f}</span>",
+            xref='paper', yref='paper',
+            x=0.5, y=0.75,
+            showarrow=False,
+            font=dict(size=24, color=COLORS['text_primary'])
+        )
+
+        pnl_color = COLORS['bull_primary'] if daily_pnl >= 0 else COLORS['danger']
+        fig.add_annotation(
+            text=f"Today's P&L: <span style='color:{pnl_color}'>${daily_pnl:+,.2f} ({daily_pnl_pct:+.2f}%)</span>",
+            xref='paper', yref='paper',
+            x=0.5, y=0.55,
+            showarrow=False,
+            font=dict(size=16, color=COLORS['text_secondary'])
+        )
+
+        fig.add_annotation(
+            text=f"Cash: ${cash:,.2f} | Positions: {len(positions) if not positions.empty else 0}",
+            xref='paper', yref='paper',
+            x=0.5, y=0.40,
+            showarrow=False,
+            font=dict(size=14, color=COLORS['text_secondary'])
+        )
+
+        # Add positions summary if available
+        if not positions.empty:
+            total_unrealized = positions['unrealized_pl'].sum() if 'unrealized_pl' in positions.columns else 0
+            unrealized_color = COLORS['bull_primary'] if total_unrealized >= 0 else COLORS['danger']
+            fig.add_annotation(
+                text=f"Unrealized P&L: <span style='color:{unrealized_color}'>${total_unrealized:+,.2f}</span>",
+                xref='paper', yref='paper',
+                x=0.5, y=0.25,
+                showarrow=False,
+                font=dict(size=14, color=COLORS['text_secondary'])
+            )
+
+        fig.update_layout(
+            template='plotly_dark',
+            paper_bgcolor=COLORS['background_dark'],
+            plot_bgcolor=COLORS['background_dark'],
+            xaxis={'visible': False},
+            yaxis={'visible': False},
+            height=350,
+            margin=dict(l=20, r=20, t=20, b=20)
+        )
+
+        return fig
+
+    except Exception as e:
+        logger.error(f"Error updating equity curve: {e}", exc_info=True)
+        return create_error_figure(f"Error: {str(e)}")
 
 
 @app.callback(
     Output('rolling-metrics-graph', 'figure'),
-    Input('strategy-selector', 'value')
+    [Input('strategy-selector', 'value'),
+     Input('interval-component', 'n_intervals')]
 )
-def update_rolling_metrics(strategy_name):
-    """Rolling metrics placeholder."""
-    return create_info_figure("Rolling Metrics", "No historical data available")
+def update_rolling_metrics(strategy_name, n):
+    """Show current positions P&L breakdown."""
+    import plotly.graph_objects as go
+
+    try:
+        if live_loader is None or live_loader.client is None:
+            return create_info_figure("Live Data Not Available", "Alpaca connection not established")
+
+        positions = live_loader.get_current_positions()
+
+        if positions.empty:
+            return create_info_figure("No Open Positions", "No positions to display")
+
+        # Create bar chart of position P&L
+        symbols = positions['symbol'].tolist()
+        unrealized_pls = positions['unrealized_pl'].tolist() if 'unrealized_pl' in positions.columns else [0] * len(symbols)
+
+        colors = [COLORS['bull_primary'] if pl >= 0 else COLORS['danger'] for pl in unrealized_pls]
+
+        fig = go.Figure(data=[
+            go.Bar(
+                x=symbols,
+                y=unrealized_pls,
+                marker_color=colors,
+                text=[f"${pl:+,.2f}" for pl in unrealized_pls],
+                textposition='outside'
+            )
+        ])
+
+        fig.update_layout(
+            title={'text': 'Position P&L', 'font': {'color': COLORS['text_primary']}},
+            template='plotly_dark',
+            paper_bgcolor=COLORS['background_dark'],
+            plot_bgcolor=COLORS['background_dark'],
+            font={'color': COLORS['text_primary']},
+            xaxis={'title': 'Symbol', 'gridcolor': COLORS['grid']},
+            yaxis={'title': 'Unrealized P&L ($)', 'gridcolor': COLORS['grid']},
+            height=350,
+            showlegend=False
+        )
+
+        return fig
+
+    except Exception as e:
+        logger.error(f"Error updating rolling metrics: {e}")
+        return create_error_figure(f"Error: {str(e)}")
 
 
 @app.callback(
     Output('regime-comparison-graph', 'figure'),
-    Input('strategy-selector', 'value')
+    [Input('strategy-selector', 'value'),
+     Input('interval-component', 'n_intervals')]
 )
-def update_regime_comparison(strategy_name):
-    """Regime comparison placeholder."""
-    return create_info_figure("Regime Comparison", "No historical data available")
+def update_regime_comparison(strategy_name, n):
+    """Show position allocation pie chart."""
+    import plotly.graph_objects as go
+
+    try:
+        if live_loader is None or live_loader.client is None:
+            return create_info_figure("Live Data Not Available", "Alpaca connection not established")
+
+        positions = live_loader.get_current_positions()
+
+        if positions.empty:
+            return create_info_figure("No Open Positions", "No positions to display")
+
+        # Create pie chart of position allocation
+        symbols = positions['symbol'].tolist()
+        market_values = positions['market_value'].tolist() if 'market_value' in positions.columns else [0] * len(symbols)
+
+        fig = go.Figure(data=[go.Pie(
+            labels=symbols,
+            values=market_values,
+            hole=0.4,
+            textinfo='label+percent',
+            textposition='outside',
+            marker={'colors': [COLORS['bull_primary'], COLORS['info'], COLORS['warning'],
+                              COLORS['bull_secondary'], COLORS['bear_secondary'], COLORS['danger']]}
+        )])
+
+        fig.update_layout(
+            title={'text': 'Position Allocation', 'font': {'color': COLORS['text_primary']}},
+            template='plotly_dark',
+            paper_bgcolor=COLORS['background_dark'],
+            plot_bgcolor=COLORS['background_dark'],
+            font={'color': COLORS['text_primary']},
+            showlegend=True,
+            legend={'orientation': 'h', 'y': -0.1},
+            height=350
+        )
+
+        return fig
+
+    except Exception as e:
+        logger.error(f"Error updating regime comparison: {e}")
+        return create_error_figure(f"Error: {str(e)}")
 
 
 @app.callback(
     Output('trade-distribution-graph', 'figure'),
-    Input('strategy-selector', 'value')
+    [Input('strategy-selector', 'value'),
+     Input('interval-component', 'n_intervals')]
 )
-def update_trade_distribution(strategy_name):
-    """Trade distribution placeholder."""
-    return create_info_figure("Trade Distribution", "No historical data available")
+def update_trade_distribution(strategy_name, n):
+    """Show positions detail table as a horizontal bar chart."""
+    import plotly.graph_objects as go
+
+    try:
+        if live_loader is None or live_loader.client is None:
+            return create_info_figure("Live Data Not Available", "Alpaca connection not established")
+
+        positions = live_loader.get_current_positions()
+
+        if positions.empty:
+            return create_info_figure("No Open Positions", "No positions to display")
+
+        # Create horizontal bar chart showing position sizes
+        symbols = positions['symbol'].tolist()
+        quantities = positions['qty'].tolist() if 'qty' in positions.columns else [0] * len(symbols)
+        avg_prices = positions['avg_entry_price'].tolist() if 'avg_entry_price' in positions.columns else [0] * len(symbols)
+        current_prices = positions['current_price'].tolist() if 'current_price' in positions.columns else [0] * len(symbols)
+
+        # Calculate P&L percentage for coloring
+        pnl_pcts = []
+        for i in range(len(symbols)):
+            if avg_prices[i] > 0:
+                pnl_pct = ((current_prices[i] - avg_prices[i]) / avg_prices[i]) * 100
+            else:
+                pnl_pct = 0
+            pnl_pcts.append(pnl_pct)
+
+        colors = [COLORS['bull_primary'] if pct >= 0 else COLORS['danger'] for pct in pnl_pcts]
+
+        fig = go.Figure(data=[
+            go.Bar(
+                y=symbols,
+                x=pnl_pcts,
+                orientation='h',
+                marker_color=colors,
+                text=[f"{pct:+.1f}%" for pct in pnl_pcts],
+                textposition='outside'
+            )
+        ])
+
+        fig.update_layout(
+            title={'text': 'Position Performance (%)', 'font': {'color': COLORS['text_primary']}},
+            template='plotly_dark',
+            paper_bgcolor=COLORS['background_dark'],
+            plot_bgcolor=COLORS['background_dark'],
+            font={'color': COLORS['text_primary']},
+            xaxis={'title': 'P&L %', 'gridcolor': COLORS['grid']},
+            yaxis={'title': '', 'gridcolor': COLORS['grid']},
+            height=350,
+            showlegend=False
+        )
+
+        return fig
+
+    except Exception as e:
+        logger.error(f"Error updating trade distribution: {e}")
+        return create_error_figure(f"Error: {str(e)}")
 
 
 @app.callback(
