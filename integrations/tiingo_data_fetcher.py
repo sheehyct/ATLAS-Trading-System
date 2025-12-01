@@ -108,12 +108,16 @@ class TiingoDataFetcher:
                 )
 
                 # Rename columns to match VectorBT Pro convention
+                # Session 83K-19: Use RAW (unadjusted) columns instead of adjusted
+                # to match ThetaData's unadjusted options underlying prices.
+                # Previously used adjOpen/adjHigh/adjLow/adjClose/adjVolume which
+                # caused 6.9% price mismatch with ThetaData options data.
                 df = df.rename(columns={
-                    'adjOpen': 'Open',
-                    'adjHigh': 'High',
-                    'adjLow': 'Low',
-                    'adjClose': 'Close',
-                    'adjVolume': 'Volume'
+                    'open': 'Open',
+                    'high': 'High',
+                    'low': 'Low',
+                    'close': 'Close',
+                    'volume': 'Volume'
                 })
 
                 # Keep only OHLCV columns

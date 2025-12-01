@@ -46,7 +46,7 @@ import pandas as pd
 import numpy as np
 
 from validation.validation_runner import ValidationRunner, run_validation
-from validation.config import ValidationConfig
+from validation.config import ValidationConfig, WalkForwardConfigHoldout
 from validation.results import ValidationReport, ValidationSummary
 # NOTE: STRATOptionsStrategy import moved to _run_single_validation() to avoid circular import
 
@@ -318,8 +318,10 @@ class DataFetcher:
             except Exception as e:
                 logger.warning(f"Failed to load cache for {cache_key}: {e}")
 
-        # Fetch from Tiingo (primary data source per CLAUDE.md)
-        df = self._fetch_from_tiingo(symbol, timeframe, start_date, end_date)
+        # Session 83K-19: Fetch from Alpaca PRIMARY with split-only adjustment
+        # to match ThetaData's unadjusted options underlying prices.
+        # CLAUDE.md mandates: Alpaca = Primary, Tiingo = Secondary
+        df = self._fetch_from_alpaca(symbol, timeframe, start_date, end_date)
 
         if df is not None and not df.empty:
             # Save to cache
@@ -330,8 +332,8 @@ class DataFetcher:
             self._data_cache[cache_key] = df
             return df
 
-        # Fallback: Try Alpaca
-        df = self._fetch_from_alpaca(symbol, timeframe, start_date, end_date)
+        # Fallback: Try Tiingo (now uses raw/unadjusted columns)
+        df = self._fetch_from_tiingo(symbol, timeframe, start_date, end_date)
         if df is not None and not df.empty:
             self._data_cache[cache_key] = df
             return df
@@ -404,6 +406,20 @@ class DataFetcher:
         """Fetch from Alpaca via VectorBT Pro."""
         try:
             import vectorbtpro as vbt
+            import os
+            from dotenv import load_dotenv
+            load_dotenv()
+
+            # Configure VBT with Alpaca credentials from environment
+            api_key = os.getenv('ALPACA_API_KEY')
+            secret_key = os.getenv('ALPACA_SECRET_KEY')
+            if api_key and secret_key:
+                vbt.AlpacaData.set_custom_settings(
+                    client_config=dict(
+                        api_key=api_key,
+                        secret_key=secret_key
+                    )
+                )
 
             # Calculate default dates
             end = end_date or datetime.now().strftime('%Y-%m-%d')
@@ -413,12 +429,16 @@ class DataFetcher:
             tf_map = {'1D': '1Day', '1W': '1Week', '1M': '1Month'}
             alpaca_tf = tf_map.get(timeframe, '1Day')
 
+            # Session 83K-19: Use adjustment='split' to get unadjusted-for-dividends
+            # prices that match ThetaData's options underlying prices.
+            # 'split' preserves stock splits but removes dividend adjustments.
             data = vbt.AlpacaData.pull(
                 symbols=symbol,
                 start=start,
                 end=end,
                 timeframe=alpaca_tf,
-                tz='America/New_York'
+                tz='America/New_York',
+                adjustment='split'
             )
 
             df = data.get()
@@ -479,6 +499,7 @@ class ATLASSTRATValidator:
         output_dir: Optional[Path] = None,
         data_fetcher: Optional[DataFetcher] = None,
         require_thetadata: bool = True,
+        holdout_mode: bool = False,
     ):
         """
         Initialize validator.
@@ -490,6 +511,7 @@ class ATLASSTRATValidator:
             output_dir: Directory for results output
             data_fetcher: Custom data fetcher (optional)
             require_thetadata: Require ThetaData connection (default True)
+            holdout_mode: Use holdout (70/30) instead of walk-forward (Session 83K-14)
         """
         self.patterns = patterns or DEFAULT_PATTERNS.copy()
         self.timeframes = timeframes or DEFAULT_TIMEFRAMES.copy()
@@ -500,6 +522,8 @@ class ATLASSTRATValidator:
         self.data_fetcher = data_fetcher or DataFetcher()
         self.validation_runner = ValidationRunner()
         self.require_thetadata = require_thetadata
+        # Session 83K-14: Holdout mode for sparse pattern strategies
+        self.holdout_mode = holdout_mode
 
         # ThetaData components
         self.thetadata_fetcher: Optional[ThetaDataOptionsFetcher] = None
@@ -842,11 +866,20 @@ class ATLASSTRATValidator:
 
             # Run validation
             strategy_name = f"STRAT_{config.pattern}_{config.timeframe}_{config.symbol}"
+
+            # Session 83K-14: Create config with holdout mode if enabled
+            validation_config = None
+            if self.holdout_mode:
+                validation_config = ValidationConfig()
+                validation_config.walk_forward = WalkForwardConfigHoldout()
+                logger.info(f"Using holdout validation (70/30 split) for {config.run_id}")
+
             report = run_validation(
                 strategy=strategy,
                 data=data,
                 strategy_name=strategy_name,
                 is_options=True,  # Using options thresholds
+                config=validation_config,
             )
 
             # Extract trade count and data source metrics
@@ -868,10 +901,23 @@ class ATLASSTRATValidator:
                         data_metrics.thetadata_quotes = source_counts.get('ThetaData', 0)
                         data_metrics.blackscholes_fallback = source_counts.get('BlackScholes', 0)
                         data_metrics.mixed_source = source_counts.get('Mixed', 0)
+
+                        # Session 83K-18: Track Greeks usage (ThetaData includes Greeks)
+                        # When data_source='ThetaData', both quotes AND Greeks came from ThetaData
+                        # For Mixed, at least one leg used ThetaData Greeks
+                        if 'entry_source' in trades_df.columns:
+                            entry_td = (trades_df['entry_source'] == 'thetadata').sum()
+                            exit_td = (trades_df['exit_source'] == 'thetadata').sum() if 'exit_source' in trades_df.columns else 0
+                            # Count trades where at least one leg used ThetaData (which includes Greeks)
+                            data_metrics.thetadata_greeks = max(entry_td, exit_td)
+                        else:
+                            # Fallback: ThetaData data_source implies Greeks were used
+                            data_metrics.thetadata_greeks = source_counts.get('ThetaData', 0) + source_counts.get('Mixed', 0)
                     else:
                         # Assume ThetaData if fetcher was configured
                         if config.use_thetadata:
                             data_metrics.thetadata_quotes = data_metrics.total_trades
+                            data_metrics.thetadata_greeks = data_metrics.total_trades
 
                     trade_count = data_metrics.total_trades
             except Exception as e:
