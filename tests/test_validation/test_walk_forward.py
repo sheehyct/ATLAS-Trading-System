@@ -24,7 +24,7 @@ from validation.walk_forward import (
     calculate_sharpe_ratio,
     calculate_max_drawdown,
 )
-from validation.config import WalkForwardConfig, WalkForwardConfigOptions
+from validation.config import WalkForwardConfig, WalkForwardConfigOptions, WalkForwardConfigHoldout, ValidationConfig
 from validation.results import FoldResult, WalkForwardResults
 
 
@@ -157,53 +157,99 @@ class TestSharpeDegradationCalculation:
         config = WalkForwardConfig()
         validator = WalkForwardValidator(config)
 
-        degradation = validator._calculate_sharpe_degradation(1.0, 1.0)
+        # Session 83K-16: Now returns tuple (degradation, is_sign_reversal)
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(1.0, 1.0)
         assert degradation == 0.0
+        assert is_sign_reversal == False
 
     def test_typical_degradation(self):
         """Test typical 20% degradation."""
         config = WalkForwardConfig()
         validator = WalkForwardValidator(config)
 
-        degradation = validator._calculate_sharpe_degradation(1.0, 0.8)
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(1.0, 0.8)
         assert abs(degradation - 0.2) < 0.001
+        assert is_sign_reversal == False
 
     def test_thirty_percent_degradation(self):
         """Test 30% degradation threshold."""
         config = WalkForwardConfig()
         validator = WalkForwardValidator(config)
 
-        degradation = validator._calculate_sharpe_degradation(1.0, 0.7)
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(1.0, 0.7)
         assert abs(degradation - 0.3) < 0.001
+        assert is_sign_reversal == False
 
     def test_negative_degradation(self):
         """Test OOS better than IS (negative degradation)."""
         config = WalkForwardConfig()
         validator = WalkForwardValidator(config)
 
-        degradation = validator._calculate_sharpe_degradation(1.0, 1.2)
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(1.0, 1.2)
         assert degradation < 0
+        assert is_sign_reversal == False
 
     def test_zero_is_sharpe(self):
         """Test with zero IS Sharpe."""
         config = WalkForwardConfig()
         validator = WalkForwardValidator(config)
 
-        # Zero IS with positive OOS
-        degradation = validator._calculate_sharpe_degradation(0.0, 0.5)
+        # Zero IS with positive OOS - not a sign reversal (zero is neither positive nor negative)
+        # Session 83K-16: Sign reversal requires IS < 0 (strictly negative)
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(0.0, 0.5)
         assert degradation == 0.0
+        assert is_sign_reversal == False  # Zero is not negative, so no sign reversal
 
-        # Zero both
-        degradation = validator._calculate_sharpe_degradation(0.0, 0.0)
+        # Zero both - no sign reversal
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(0.0, 0.0)
         assert degradation == 1.0
+        assert is_sign_reversal == False
 
     def test_full_degradation(self):
         """Test 100% degradation (OOS = 0)."""
         config = WalkForwardConfig()
         validator = WalkForwardValidator(config)
 
-        degradation = validator._calculate_sharpe_degradation(1.5, 0.0)
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(1.5, 0.0)
         assert degradation == 1.0
+        assert is_sign_reversal == False
+
+    # Session 83K-16: New tests for sign reversal detection
+    def test_sign_reversal_negative_is_positive_oos(self):
+        """Test sign reversal: negative IS Sharpe, positive OOS Sharpe (like IWM case)."""
+        config = WalkForwardConfig()
+        validator = WalkForwardValidator(config)
+
+        # This is the IWM case: IS=-7.70, OOS=+4.09
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(-7.70, 4.09)
+        assert is_sign_reversal == True  # Sign reversal detected
+
+    def test_sign_reversal_positive_is_negative_oos(self):
+        """Test sign reversal: positive IS Sharpe, negative OOS Sharpe (overfitting case)."""
+        config = WalkForwardConfig()
+        validator = WalkForwardValidator(config)
+
+        # This is the SPY case: IS=+5.07, OOS=-16.90
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(5.07, -16.90)
+        assert is_sign_reversal == True  # Sign reversal detected
+
+    def test_no_sign_reversal_both_negative(self):
+        """Test no sign reversal when both IS and OOS are negative."""
+        config = WalkForwardConfig()
+        validator = WalkForwardValidator(config)
+
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(-2.0, -1.5)
+        assert degradation == 1.0  # Both bad
+        assert is_sign_reversal == False  # Same sign, no reversal
+
+    def test_no_sign_reversal_both_positive(self):
+        """Test no sign reversal when both IS and OOS are positive."""
+        config = WalkForwardConfig()
+        validator = WalkForwardValidator(config)
+
+        degradation, is_sign_reversal = validator._calculate_sharpe_degradation(2.0, 1.5)
+        assert abs(degradation - 0.25) < 0.001
+        assert is_sign_reversal == False  # Same sign, no reversal
 
 
 class TestParameterStability:
@@ -565,3 +611,277 @@ class TestEdgeCases:
         assert 'avg_oos_sharpe' in result_dict
         assert 'folds' in result_dict
         assert isinstance(result_dict['folds'], list)
+
+
+class TestHoldoutMode:
+    """
+    Tests for holdout validation mode (Session 83K-14).
+
+    Holdout mode uses a single 70/30 train/test split instead of
+    rolling walk-forward folds. This is appropriate for sparse
+    pattern strategies like STRAT where 15-fold walk-forward
+    produces meaningless 0-trade folds.
+    """
+
+    def test_holdout_generates_single_fold(self):
+        """Holdout mode should generate exactly one fold."""
+        config = WalkForwardConfig(validation_mode='holdout')
+        validator = WalkForwardValidator(config)
+        windows = validator._generate_fold_windows(total_bars=1000)
+
+        assert len(windows) == 1, "Holdout mode should generate exactly 1 fold"
+
+    def test_holdout_split_ratio_default(self):
+        """Holdout should split at 70/30 by default."""
+        config = WalkForwardConfig(validation_mode='holdout', holdout_train_pct=0.70)
+        validator = WalkForwardValidator(config)
+        windows = validator._generate_fold_windows(total_bars=1000)
+
+        window = windows[0]
+        assert window.train_start_idx == 0
+        assert window.train_end_idx == 700  # 70% of 1000
+        assert window.test_start_idx == 700
+        assert window.test_end_idx == 1000
+
+    def test_holdout_split_ratio_custom(self):
+        """Holdout should respect custom train percentage."""
+        config = WalkForwardConfig(validation_mode='holdout', holdout_train_pct=0.80)
+        validator = WalkForwardValidator(config)
+        windows = validator._generate_fold_windows(total_bars=1000)
+
+        window = windows[0]
+        assert window.train_end_idx == 800  # 80% of 1000
+        assert window.test_start_idx == 800
+
+    def test_holdout_fold_properties(self):
+        """Holdout fold should have correct size properties."""
+        config = WalkForwardConfig(validation_mode='holdout', holdout_train_pct=0.70)
+        validator = WalkForwardValidator(config)
+        windows = validator._generate_fold_windows(total_bars=1000)
+
+        window = windows[0]
+        assert window.train_size == 700
+        assert window.test_size == 300
+        assert window.fold_number == 1
+
+    def test_holdout_config_class(self):
+        """WalkForwardConfigHoldout should have correct defaults."""
+        config = WalkForwardConfigHoldout()
+
+        assert config.validation_mode == 'holdout'
+        assert config.holdout_train_pct == 0.70
+        assert config.min_trades_per_fold == 5
+        # Inherits from WalkForwardConfigOptions
+        assert config.max_sharpe_degradation == 0.40
+        assert config.min_oos_sharpe == 0.3
+
+    def test_holdout_mode_in_full_validation(self, mock_strategy, synthetic_daily_data):
+        """Test holdout mode in full validation workflow."""
+        config = WalkForwardConfigHoldout()
+        validator = WalkForwardValidator(config)
+
+        results = validator.validate(mock_strategy, synthetic_daily_data)
+
+        assert results.total_folds == 1
+        assert len(results.folds) == 1
+
+    def test_holdout_skips_profitable_folds_check(self):
+        """Holdout mode should not fail on profitable_folds_pct."""
+        # Create results where the single fold is not profitable
+        # Should still pass if OOS Sharpe is OK
+        from validation.results import FoldResult, WalkForwardResults
+        from datetime import datetime
+
+        # Create a single unprofitable fold with good OOS Sharpe
+        fold = FoldResult(
+            fold_number=1,
+            train_start=datetime(2020, 1, 1),
+            train_end=datetime(2023, 6, 30),
+            test_start=datetime(2023, 7, 1),
+            test_end=datetime(2024, 12, 31),
+            is_sharpe=2.0,
+            oos_sharpe=1.5,  # Good OOS Sharpe
+            is_return=0.50,
+            oos_return=-0.05,  # Unprofitable
+            is_trades=50,
+            oos_trades=15,
+            parameters={},
+            is_profitable=False  # Unprofitable fold
+        )
+
+        # Create config with holdout mode
+        config = WalkForwardConfigHoldout()
+        validator = WalkForwardValidator(config)
+
+        # Manually aggregate results
+        results = validator._aggregate_results([fold], [{}])
+
+        # Should pass - profitable_folds check is skipped in holdout mode
+        # (0% profitable folds would fail in walk-forward mode)
+        # Check that profitable_folds_pct failure reason is NOT in the list
+        profit_folds_failure = any('Profitable folds' in r for r in results.failure_reasons)
+        assert not profit_folds_failure, "Holdout should skip profitable_folds_pct check"
+
+    def test_holdout_skips_param_stability_check(self):
+        """Holdout mode should not fail on parameter stability."""
+        from datetime import datetime
+
+        # Create a single fold
+        fold = FoldResult(
+            fold_number=1,
+            train_start=datetime(2020, 1, 1),
+            train_end=datetime(2023, 6, 30),
+            test_start=datetime(2023, 7, 1),
+            test_end=datetime(2024, 12, 31),
+            is_sharpe=2.0,
+            oos_sharpe=1.5,
+            is_return=0.50,
+            oos_return=0.20,
+            is_trades=50,
+            oos_trades=15,
+            parameters={'sma': 20},  # Single parameter set
+            is_profitable=True
+        )
+
+        config = WalkForwardConfigHoldout()
+        validator = WalkForwardValidator(config)
+
+        # Aggregate with single parameter set
+        results = validator._aggregate_results([fold], [{'sma': 20}])
+
+        # Should not have param stability failures (only 1 fold = no CV calculation)
+        param_stability_failure = any('CV' in r for r in results.failure_reasons)
+        assert not param_stability_failure, "Holdout should skip param stability check"
+
+    def test_holdout_still_checks_oos_sharpe(self):
+        """Holdout mode should still validate OOS Sharpe threshold."""
+        from datetime import datetime
+
+        # Create fold with low OOS Sharpe
+        fold = FoldResult(
+            fold_number=1,
+            train_start=datetime(2020, 1, 1),
+            train_end=datetime(2023, 6, 30),
+            test_start=datetime(2023, 7, 1),
+            test_end=datetime(2024, 12, 31),
+            is_sharpe=2.0,
+            oos_sharpe=0.1,  # Below threshold (0.3)
+            is_return=0.50,
+            oos_return=0.05,
+            is_trades=50,
+            oos_trades=15,
+            parameters={},
+            is_profitable=True
+        )
+
+        config = WalkForwardConfigHoldout()
+        validator = WalkForwardValidator(config)
+        results = validator._aggregate_results([fold], [{}])
+
+        # Should fail due to low OOS Sharpe
+        assert not results.passes_validation
+        oos_failure = any('OOS Sharpe' in r for r in results.failure_reasons)
+        assert oos_failure, "Holdout should still check OOS Sharpe threshold"
+
+    def test_holdout_still_checks_min_trades(self):
+        """Holdout mode should still validate minimum trade count."""
+        from datetime import datetime
+
+        # Create fold with too few trades
+        fold = FoldResult(
+            fold_number=1,
+            train_start=datetime(2020, 1, 1),
+            train_end=datetime(2023, 6, 30),
+            test_start=datetime(2023, 7, 1),
+            test_end=datetime(2024, 12, 31),
+            is_sharpe=2.0,
+            oos_sharpe=1.5,
+            is_return=0.50,
+            oos_return=0.20,
+            is_trades=50,
+            oos_trades=2,  # Below threshold (5)
+            parameters={},
+            is_profitable=True
+        )
+
+        config = WalkForwardConfigHoldout()
+        validator = WalkForwardValidator(config)
+        results = validator._aggregate_results([fold], [{}])
+
+        # Should fail due to insufficient trades
+        assert not results.passes_validation
+        trades_failure = any('fewer than' in r for r in results.failure_reasons)
+        assert trades_failure, "Holdout should still check min trades"
+
+    def test_walk_forward_mode_unchanged(self, mock_strategy, synthetic_daily_data):
+        """Verify walk-forward mode still works correctly (regression test)."""
+        config = WalkForwardConfig(validation_mode='walk_forward', min_trades_per_fold=3)
+        validator = WalkForwardValidator(config)
+
+        results = validator.validate(mock_strategy, synthetic_daily_data)
+
+        # Should have multiple folds for sufficient data
+        assert results.total_folds > 1, "Walk-forward mode should generate multiple folds"
+
+
+class TestConfigForOptionsPreservation:
+    """
+    Session 83K-16: Tests for config.for_options() preservation of holdout mode.
+
+    Bug: Previously, config.for_options() would always create a new WalkForwardConfigOptions()
+    with default validation_mode='walk_forward', losing any holdout settings.
+    """
+
+    def test_for_options_preserves_holdout_mode(self):
+        """Verify for_options() preserves validation_mode='holdout'."""
+        # Create config with holdout mode
+        config = ValidationConfig()
+        config.walk_forward = WalkForwardConfigHoldout()
+
+        # Call for_options()
+        options_config = config.for_options()
+
+        # Holdout mode should be preserved
+        assert options_config.walk_forward.validation_mode == 'holdout', \
+            "for_options() should preserve validation_mode='holdout'"
+
+    def test_for_options_preserves_holdout_train_pct(self):
+        """Verify for_options() preserves holdout_train_pct setting."""
+        # Create config with custom holdout percentage
+        config = ValidationConfig()
+        config.walk_forward = WalkForwardConfigHoldout()
+        config.walk_forward.holdout_train_pct = 0.80  # Custom 80/20 split
+
+        # Call for_options()
+        options_config = config.for_options()
+
+        # Custom holdout percentage should be preserved
+        assert options_config.walk_forward.holdout_train_pct == 0.80, \
+            "for_options() should preserve holdout_train_pct"
+
+    def test_for_options_uses_options_thresholds_in_holdout(self):
+        """Verify for_options() uses WalkForwardConfigHoldout (with options thresholds) when in holdout mode."""
+        # Create config with holdout mode
+        config = ValidationConfig()
+        config.walk_forward = WalkForwardConfigHoldout()
+
+        # Call for_options()
+        options_config = config.for_options()
+
+        # Should have options-like thresholds
+        assert options_config.walk_forward.max_sharpe_degradation == 0.40, \
+            "Holdout config should use options threshold (0.40)"
+        assert options_config.walk_forward.min_oos_sharpe == 0.3, \
+            "Holdout config should use options threshold (0.3)"
+
+    def test_for_options_walk_forward_mode_unchanged(self):
+        """Verify for_options() keeps walk_forward mode when not in holdout."""
+        # Create config with default walk_forward mode
+        config = ValidationConfig()
+
+        # Call for_options()
+        options_config = config.for_options()
+
+        # Walk-forward mode should be preserved (default behavior)
+        assert options_config.walk_forward.validation_mode == 'walk_forward', \
+            "for_options() should keep validation_mode='walk_forward' when not in holdout"

@@ -821,20 +821,26 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
         if as_of is None:
             as_of = datetime.now() - timedelta(days=1)
 
-        # v3 parameters for history/greeks
-        # Session 83K-7 FIX: Removed interval=1h which caused 472 errors
+        # Session 83K-24 FIX: Use first_order endpoint instead of EOD
+        # CRITICAL: The EOD endpoint only has data from 2024 onwards!
+        # The first_order endpoint has FULL historical data (2020+)
+        #
+        # Endpoint comparison (verified via openapiv3.yaml):
+        # - /greeks/eod: Uses start_date/end_date, 2024+ data ONLY
+        # - /greeks/first_order: Uses date + interval, FULL historical data
+        #
+        # This bug was discovered multiple times - storing in OpenMemory for persistence.
         params = {
             'symbol': underlying.upper(),
             'expiration': self._format_expiration(expiration),
             'strike': self._format_strike(strike),
             'right': self._format_right(option_type),
             'date': self._format_date(as_of),
+            'interval': '1h',  # Hourly intervals for intraday Greeks
         }
 
         try:
-            # Session 83K-3 FIX: Use correct endpoint for first-order Greeks
-            # Wrong: /v3/option/history/greeks
-            # Correct: /v3/option/history/greeks/first_order
+            # Session 83K-24: Use first_order endpoint for full historical coverage
             result = self._make_request_v3('option/history/greeks/first_order', params)
 
             response_list = result.get('response', [])
@@ -852,14 +858,17 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
             if not data_list:
                 return None
 
-            # Get the last row
+            # Get the last row (end of day value)
             last_data = data_list[-1]
 
-            # Session 83 BUG FIX: Use _safe_float for all numeric conversions
-            # v3 field names - handle N/A, null, empty strings gracefully
-            iv_implied = self._safe_float(last_data.get('implied_volatility'), 0.0)
-            iv_fallback = self._safe_float(last_data.get('iv'), 0.0)
-            iv_value = iv_implied if iv_implied > 0 else iv_fallback
+            # Session 83K-24: Field mapping for first_order endpoint
+            # Returns: delta, theta, vega, rho, epsilon, lambda, implied_vol, underlying_price
+            # Note: IV field is 'implied_vol' (same as EOD)
+            iv_value = self._safe_float(last_data.get('implied_vol'), 0.0)
+            if iv_value == 0.0:
+                iv_value = self._safe_float(last_data.get('implied_volatility'), 0.0)
+            if iv_value == 0.0:
+                iv_value = self._safe_float(last_data.get('iv'), 0.0)
 
             return {
                 'delta': self._safe_float(last_data.get('delta'), 0.0),

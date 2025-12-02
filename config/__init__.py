@@ -14,6 +14,8 @@ from config.settings import (
     get_default_account,
     get_vbt_alpaca_config,
     is_config_loaded,
+    get_thetadata_config,
+    is_thetadata_available,
 )
 
 __all__ = [
@@ -26,4 +28,6 @@ __all__ = [
     'get_default_account',
     'get_vbt_alpaca_config',
     'is_config_loaded',
+    'get_thetadata_config',
+    'is_thetadata_available',
 ]

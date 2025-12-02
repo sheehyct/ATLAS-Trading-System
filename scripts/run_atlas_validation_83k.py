@@ -330,7 +330,30 @@ Examples:
         help='Enable verbose logging'
     )
 
+    # Session 83K-14: Holdout mode for sparse pattern strategies
+    parser.add_argument(
+        '--holdout',
+        action='store_true',
+        help='Use holdout validation (70/30 split) instead of walk-forward. '
+             'Recommended for sparse pattern strategies like STRAT.'
+    )
+
+    parser.add_argument(
+        '--include-nvda',
+        action='store_true',
+        help='Include NVDA in validation (excluded by default due to pre-split strike data issues)'
+    )
+
     args = parser.parse_args()
+
+    # Session 83K-14: Auto-exclude NVDA unless explicitly included
+    # NVDA pre-split strikes (pre-July 2021) cause ThetaData 472 errors
+    if not args.include_nvda:
+        if args.skip_symbols is None:
+            args.skip_symbols = ['NVDA']
+        elif 'NVDA' not in args.skip_symbols:
+            args.skip_symbols.append('NVDA')
+        print("[INFO] NVDA auto-excluded (pre-split strike data issues). Use --include-nvda to override.")
 
     # Setup
     output_dir = Path(args.output_dir)
@@ -342,10 +365,16 @@ Examples:
     print_banner()
 
     # Initialize validator
+    # Session 83K-14: Pass holdout_mode for sparse pattern strategies
     validator = ATLASSTRATValidator(
         output_dir=output_dir,
         require_thetadata=not args.no_thetadata,
+        holdout_mode=args.holdout,
     )
+
+    if args.holdout:
+        print("[INFO] Holdout mode enabled (70/30 train/test split)")
+        print("       Recommended for sparse pattern strategies like STRAT.")
 
     try:
         if args.dry_run:

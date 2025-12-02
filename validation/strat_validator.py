@@ -274,6 +274,12 @@ class CheckpointState:
 class DataFetcher:
     """Fetches OHLCV data for validation runs."""
 
+    # Session 83K-23: Cache version for invalidation
+    # Increment this when data format/adjustment changes
+    # v1 = dividend-adjusted (pre-83K-19, INCORRECT)
+    # v2 = split-only adjusted (83K-19+, matches ThetaData)
+    CACHE_VERSION = "v2_split_adjusted"
+
     def __init__(self, cache_dir: Optional[Path] = None):
         """
         Initialize data fetcher.
@@ -284,6 +290,55 @@ class DataFetcher:
         self.cache_dir = cache_dir or Path("data_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._data_cache: Dict[str, pd.DataFrame] = {}
+
+        # Session 83K-23: Validate cache version on init
+        self._validate_cache_version()
+
+    def _validate_cache_version(self):
+        """
+        Session 83K-23: Validate cache version and invalidate stale cache.
+
+        This prevents issues where old dividend-adjusted cache data is used
+        after the code was updated to use split-only adjustment (83K-19).
+        """
+        version_file = self.cache_dir / ".cache_version"
+
+        # Check existing version
+        if version_file.exists():
+            try:
+                current_version = version_file.read_text().strip()
+                if current_version == self.CACHE_VERSION:
+                    return  # Cache is valid
+
+                # Version mismatch - invalidate all cache files
+                logger.info(
+                    f"Cache version mismatch: {current_version} != {self.CACHE_VERSION}. "
+                    f"Clearing stale cache..."
+                )
+                self._clear_cache()
+            except Exception as e:
+                logger.warning(f"Failed to read cache version: {e}")
+                self._clear_cache()
+        else:
+            # No version file - clear any existing cache (might be v1)
+            if any(self.cache_dir.glob("*.parquet")):
+                logger.info("No cache version found. Clearing potentially stale cache...")
+                self._clear_cache()
+
+        # Write current version
+        try:
+            version_file.write_text(self.CACHE_VERSION)
+        except Exception as e:
+            logger.warning(f"Failed to write cache version: {e}")
+
+    def _clear_cache(self):
+        """Clear all parquet cache files."""
+        for cache_file in self.cache_dir.glob("*.parquet"):
+            try:
+                cache_file.unlink()
+                logger.debug(f"Deleted stale cache: {cache_file}")
+            except Exception as e:
+                logger.warning(f"Failed to delete {cache_file}: {e}")
 
     def get_data(
         self,

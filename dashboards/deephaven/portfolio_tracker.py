@@ -31,14 +31,39 @@ Reference: Deephaven real-time P&L tracking pattern
 from deephaven import new_table, time_table, merge, agg, empty_table
 from deephaven.column import string_col, double_col, int_col
 from deephaven import updateby as uby
-import deephaven.plot.express as dx
 from datetime import datetime
+
+# Try to import plotting - optional, not available in all Deephaven images
+try:
+    import deephaven.plot.express as dx
+    PLOTTING_AVAILABLE = True
+except ImportError:
+    PLOTTING_AVAILABLE = False
+    print("Note: deephaven.plot.express not available. Tables will work, plots disabled.")
 import os
 import sys
 
 # Add project root to Python path for imports
-sys.path.insert(0, '/app')
-from integrations.alpaca_trading_client import AlpacaTradingClient
+# Support both Docker (/app) and local development environments
+_project_root = os.environ.get('PROJECT_ROOT', '/app')
+if not os.path.exists(_project_root):
+    # Local development fallback - find project root by looking for pyproject.toml
+    _current = os.path.dirname(os.path.abspath(__file__))
+    while _current != os.path.dirname(_current):  # Stop at filesystem root
+        if os.path.exists(os.path.join(_current, 'pyproject.toml')):
+            _project_root = _current
+            break
+        _current = os.path.dirname(_current)
+sys.path.insert(0, _project_root)
+
+# Import Alpaca client directly to avoid integrations/__init__.py which imports VBT Pro
+import importlib.util
+_alpaca_client_path = os.path.join(_project_root, 'integrations', 'alpaca_trading_client.py')
+_spec = importlib.util.spec_from_file_location("alpaca_trading_client", _alpaca_client_path)
+_alpaca_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_alpaca_module)
+AlpacaTradingClient = _alpaca_module.AlpacaTradingClient
+
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestQuoteRequest
 
@@ -403,35 +428,40 @@ circuit_breaker_status = portfolio_summary.update([
 
 
 # ============================================================================
-# 10. Visualizations
+# 10. Visualizations (if available)
 # ============================================================================
-# Create plots for dashboard visualization
+# Create plots for dashboard visualization - requires deephaven.plot.express
 
-# Portfolio value over time
-equity_curve_plot = dx.line(
-    portfolio_history,
-    x="Timestamp",
-    y="EquityValue",
-    title="Portfolio Equity Curve (Real-Time)"
-)
+if PLOTTING_AVAILABLE:
+    # Portfolio value over time
+    equity_curve_plot = dx.line(
+        portfolio_history,
+        x="Timestamp",
+        y="EquityValue",
+        title="Portfolio Equity Curve (Real-Time)"
+    )
 
-# P&L by position
-pnl_by_position_plot = dx.bar(
-    portfolio_pnl,
-    x="Symbol",
-    y="UnrealizedPnL",
-    color="HeatStatus",
-    title="Unrealized P&L by Position"
-)
+    # P&L by position
+    pnl_by_position_plot = dx.bar(
+        portfolio_pnl,
+        x="Symbol",
+        y="UnrealizedPnL",
+        color="HeatStatus",
+        title="Unrealized P&L by Position"
+    )
 
-# Portfolio heat gauge
-heat_gauge_plot = dx.bar(
-    portfolio_pnl,
-    x="Symbol",
-    y="PositionHeat",
-    color="HeatStatus",
-    title="Position Heat Analysis"
-)
+    # Portfolio heat gauge
+    heat_gauge_plot = dx.bar(
+        portfolio_pnl,
+        x="Symbol",
+        y="PositionHeat",
+        color="HeatStatus",
+        title="Position Heat Analysis"
+    )
+else:
+    equity_curve_plot = None
+    pnl_by_position_plot = None
+    heat_gauge_plot = None
 
 
 # ============================================================================
@@ -453,10 +483,14 @@ print("  7. bottom_performers      - Underperforming positions")
 print("  8. portfolio_risk_metrics - Risk-adjusted performance")
 print("  9. circuit_breaker_status - Drawdown and circuit breakers")
 print(" 10. portfolio_history      - Time-series equity curve")
-print("\nAvailable Plots:")
-print("  - equity_curve_plot       - Portfolio value over time")
-print("  - pnl_by_position_plot    - P&L by position bar chart")
-print("  - heat_gauge_plot         - Position heat analysis")
+if PLOTTING_AVAILABLE:
+    print("\nAvailable Plots:")
+    print("  - equity_curve_plot       - Portfolio value over time")
+    print("  - pnl_by_position_plot    - P&L by position bar chart")
+    print("  - heat_gauge_plot         - Position heat analysis")
+else:
+    print("\nPlots: DISABLED (deephaven.plot.express not available)")
+    print("  Use Deephaven Enterprise or install plotly-express for plots")
 print("=" * 80)
 print("\nDashboard is now live! Monitor tables for real-time updates.")
 print("=" * 80)

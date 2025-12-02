@@ -111,6 +111,42 @@ services:
       start_period: 30s
 
   # ============================================================================
+  # Deephaven Real-Time Dashboard
+  # ============================================================================
+  deephaven:
+    build:
+      context: .
+      dockerfile: docker/deephaven/Dockerfile
+    image: strat-deephaven:latest
+    container_name: strat-deephaven
+    restart: unless-stopped
+    environment:
+      - START_OPTS=-Xmx4g
+      # Pass through Alpaca credentials for live data
+      - ALPACA_LARGE_KEY=${ALPACA_LARGE_KEY:-${ALPACA_API_KEY}}
+      - ALPACA_LARGE_SECRET=${ALPACA_LARGE_SECRET:-${ALPACA_API_SECRET}}
+      - ALPACA_MID_KEY=${ALPACA_MID_KEY}
+      - ALPACA_MID_SECRET=${ALPACA_MID_SECRET}
+      - PROJECT_ROOT=/app
+    ports:
+      - "${DEEPHAVEN_PORT:-10000}:10000"
+    volumes:
+      # Mount entire project for imports
+      - .:/app:ro
+      # Mount dashboards folder for easy access
+      - ./dashboards/deephaven:/app/dashboards/deephaven:ro
+    networks:
+      - strat-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 6G
+        reservations:
+          cpus: '1.0'
+          memory: 4G
+
+  # ============================================================================
   # Database Service
   # ============================================================================
   strat-db:

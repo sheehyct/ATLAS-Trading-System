@@ -267,16 +267,22 @@ Reward: $4.20 per contract (R:R = 2.3:1)
 
 ## 3. Greeks Analysis
 
-### Delta Requirements
+### Delta Selection (NOT Specified by STRAT)
+
+**IMPORTANT:** The STRAT methodology does NOT specify delta/strike selection. Strike selection
+is an optimization problem that depends on:
+- Days-to-magnitude for the pattern/timeframe
+- Theta decay considerations
+- Risk/reward preferences
 
 **Delta** = Rate of change in option price relative to stock price
 
-**Optimal Delta Range:** 0.50 - 0.80
+**Current Implementation Default:** 0.50 - 0.80 (configurable starting point)
 
-**Why:**
-- <0.50: Too far OTM, low probability
-- >0.80: Too expensive, low leverage
-- 0.50-0.80: Balance of probability and leverage
+**Considerations:**
+- Near expiration: ITM preferred (less theta decay risk)
+- Far from expiration: OTM may provide better leverage
+- Optimal selection requires validation of days-to-magnitude metrics per pattern
 
 ---
 

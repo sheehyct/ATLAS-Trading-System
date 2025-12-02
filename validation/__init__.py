@@ -49,6 +49,7 @@ from validation.config import (
     ValidationConfig,
     WalkForwardConfig,
     WalkForwardConfigOptions,
+    WalkForwardConfigHoldout,  # Session 83K-14
     MonteCarloConfig,
     MonteCarloConfigOptions,
     BiasDetectionConfig,
@@ -129,6 +130,7 @@ __all__ = [
     'ValidationConfig',
     'WalkForwardConfig',
     'WalkForwardConfigOptions',
+    'WalkForwardConfigHoldout',  # Session 83K-14
     'MonteCarloConfig',
     'MonteCarloConfigOptions',
     'BiasDetectionConfig',
@@ -184,5 +186,5 @@ __all__ = [
     'ThetaDataStatus',
 ]
 
-__version__ = '0.7.0'
-__session__ = '83K'
+__version__ = '0.7.1'
+__session__ = '83K-14'

@@ -1179,6 +1179,7 @@ class OptionsBacktester:
                         'osi_symbol': trade.contract.osi_symbol,
                         'entry_trigger': trade.entry_trigger,
                         'entry_price_underlying': None,
+                        'entry_date': None,  # Session 83K-25: Add entry_date field
                         'exit_price': None,
                         'exit_type': 'REJECTED',
                         'exit_date': None,
@@ -1243,6 +1244,19 @@ class OptionsBacktester:
                             # Use worst-case entry (high) capped at 0.2% slippage from trigger
                             max_slippage = trade.entry_trigger * 0.002
                             entry_price_underlying = min(high, trade.entry_trigger + max_slippage)
+
+                            # Session 83K-21 BUG FIX: Check if entry already exceeds target
+                            # This can happen when price gaps above target on entry bar
+                            # In this case, the setup is invalid - target was already hit
+                            # Skip this trade (entry=target means 0 P&L, entry>target means loss)
+                            if entry_price_underlying >= trade.target_exit:
+                                # Log warning and skip - invalid setup
+                                logger.debug(
+                                    f"Skipping trade: Entry ${entry_price_underlying:.2f} >= "
+                                    f"Target ${trade.target_exit:.2f} (bullish setup invalid)"
+                                )
+                                entry_hit = False  # Reset - treat as no valid entry
+                                break  # Skip this trade
                     else:  # Bearish
                         if low <= trade.entry_trigger:
                             entry_hit = True
@@ -1250,6 +1264,18 @@ class OptionsBacktester:
                             # Use worst-case entry (low) capped at 0.2% slippage from trigger
                             max_slippage = trade.entry_trigger * 0.002
                             entry_price_underlying = max(low, trade.entry_trigger - max_slippage)
+
+                            # Session 83K-21 BUG FIX: Check if entry already exceeds target
+                            # For bearish, entry below target means target already hit
+                            # Skip this trade - invalid setup
+                            if entry_price_underlying <= trade.target_exit:
+                                # Log warning and skip - invalid setup
+                                logger.debug(
+                                    f"Skipping trade: Entry ${entry_price_underlying:.2f} <= "
+                                    f"Target ${trade.target_exit:.2f} (bearish setup invalid)"
+                                )
+                                entry_hit = False  # Reset - treat as no valid entry
+                                break  # Skip this trade
                     continue
 
                 # Check exit (after entry)
@@ -1456,6 +1482,7 @@ class OptionsBacktester:
                     'osi_symbol': trade.contract.osi_symbol,
                     'entry_trigger': trade.entry_trigger,
                     'entry_price_underlying': entry_price_underlying,
+                    'entry_date': entry_date,  # Session 83K-25: Add actual entry date (was missing)
                     'exit_price': exit_price,
                     'exit_type': exit_type,
                     'exit_date': exit_date,

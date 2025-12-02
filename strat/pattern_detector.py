@@ -1,7 +1,7 @@
 r"""
 STRAT Pattern Detection VBT Custom Indicator
 
-Implements 3-1-2, 2-1-2, 2-2, and 3-2 pattern detection with measured move targets.
+Implements 3-1-2, 2-1-2, 2-2, 3-2, and 3-2-2 pattern detection with structural level targets.
 
 Pattern Types:
     3-1-2: Outside-Inside-Directional (reversal pattern)
@@ -24,18 +24,21 @@ Pattern Types:
         - Bar 2: Directional bar (classification = 2 or -2)
         - NO inside bar - outside bar rejection/reversal
 
+    3-2-2: Outside-Directional-Reversal (outside bar reversal pattern)
+        - Bar 1: Outside bar (classification = 3)
+        - Bar 2: First directional bar (2D or 2U)
+        - Bar 3: Opposite directional bar (reversal confirmed)
+
 Entry/Stop/Target Calculation:
     3-1-2 & 2-1-2: Entry at inside bar high/low
-    2-2: Entry at trigger bar high/low (no inside bar)
-    Stop: Structural level (first bar opposite extreme)
-    Target: Measured move = entry + pattern_height
+    2-2 & 3-2-2: Entry at trigger bar high/low (no inside bar)
+    Stop: Structural level (opposite extreme)
+    Target: Structural level (bar extreme per STRAT methodology)
 
-Algorithm ported from:
-    C:\STRAT-Algorithmic-Trading-System-V3\core\analyzer.py lines 521-674
-    (verified CORRECT implementation per OLD_STRAT_SYSTEM_ANALYSIS.md)
-
-CRITICAL: Uses MEASURED MOVE targets, NOT structural levels
-    (Old system bug: used data['high'].iloc[idx-2] which was incorrect)
+CRITICAL: Uses STRUCTURAL LEVEL targets per STRAT methodology
+    - 3-1-2: Target = Outside bar extreme (high[i-2] or low[i-2])
+    - 2-1-2: Target = First directional bar extreme (high[i-2] or low[i-2])
+    - 2-2, 3-2, 3-2-2: Target = Bar[i-2] extreme (already correct)
 """
 
 import numpy as np
@@ -73,13 +76,13 @@ def detect_312_patterns_nb(classifications, high, low):
     Examples:
     ---------
     3-1-2 Bullish Pattern:
-        Bar 0 (idx=2): Outside (H=110, L=90, classification=3, range=20)
+        Bar 0 (idx=2): Outside (H=110, L=90, classification=3)
         Bar 1 (idx=3): Inside (H=105, L=95, classification=1)
         Bar 2 (idx=4): 2U directional (classification=2) - TRIGGER
 
         Entry: 105 (inside bar high)
         Stop: 90 (outside bar low)
-        Target: 105 + 20 = 125 (measured move)
+        Target: 110 (outside bar high - structural level)
         Direction: 1 (bullish)
     """
     # Handle both 1D and 2D arrays from VBT
@@ -106,12 +109,10 @@ def detect_312_patterns_nb(classifications, high, low):
 
                     # Entry trigger: Inside bar high
                     # Stop: Outside bar low (structural level)
-                    # Target: Measured move (outside bar range projected from entry)
+                    # Target: Outside bar high (structural level per STRAT methodology)
                     trigger_price = high[i-1]  # Inside bar high
                     stops[i] = low[i-2]  # Outside bar low
-
-                    pattern_height = high[i-2] - low[i-2]  # Outside bar range
-                    targets[i] = trigger_price + pattern_height
+                    targets[i] = high[i-2]  # Outside bar high (structural level)
 
                 # Bearish 3-1-2D pattern (reversal to downside)
                 elif bar3_class == -2:
@@ -120,12 +121,10 @@ def detect_312_patterns_nb(classifications, high, low):
 
                     # Entry trigger: Inside bar low
                     # Stop: Outside bar high (structural level)
-                    # Target: Measured move (outside bar range projected from entry)
+                    # Target: Outside bar low (structural level per STRAT methodology)
                     trigger_price = low[i-1]  # Inside bar low
                     stops[i] = high[i-2]  # Outside bar high
-
-                    pattern_height = high[i-2] - low[i-2]  # Outside bar range
-                    targets[i] = trigger_price - pattern_height
+                    targets[i] = low[i-2]  # Outside bar low (structural level)
 
     else:  # 2D arrays (n, 1) from VBT
         n = classifications.shape[0]
@@ -150,12 +149,10 @@ def detect_312_patterns_nb(classifications, high, low):
 
                     # Entry trigger: Inside bar high
                     # Stop: Outside bar low (structural level)
-                    # Target: Measured move (outside bar range projected from entry)
+                    # Target: Outside bar high (structural level per STRAT methodology)
                     trigger_price = high[i-1, 0]  # Inside bar high
                     stops[i, 0] = low[i-2, 0]  # Outside bar low
-
-                    pattern_height = high[i-2, 0] - low[i-2, 0]  # Outside bar range
-                    targets[i, 0] = trigger_price + pattern_height
+                    targets[i, 0] = high[i-2, 0]  # Outside bar high (structural level)
 
                 # Bearish 3-1-2D pattern (reversal to downside)
                 elif bar3_class == -2:
@@ -164,12 +161,10 @@ def detect_312_patterns_nb(classifications, high, low):
 
                     # Entry trigger: Inside bar low
                     # Stop: Outside bar high (structural level)
-                    # Target: Measured move (outside bar range projected from entry)
+                    # Target: Outside bar low (structural level per STRAT methodology)
                     trigger_price = low[i-1, 0]  # Inside bar low
                     stops[i, 0] = high[i-2, 0]  # Outside bar high
-
-                    pattern_height = high[i-2, 0] - low[i-2, 0]  # Outside bar range
-                    targets[i, 0] = trigger_price - pattern_height
+                    targets[i, 0] = low[i-2, 0]  # Outside bar low (structural level)
 
     return (entries, stops, targets, directions)
 
@@ -210,13 +205,13 @@ def detect_212_patterns_nb(classifications, high, low):
     Examples:
     ---------
     2-1-2 Bullish Continuation (2U-1-2U):
-        Bar 0 (idx=2): 2U directional (H=105, L=96, classification=2, range=9)
+        Bar 0 (idx=2): 2U directional (H=105, L=96, classification=2)
         Bar 1 (idx=3): Inside (H=104, L=97, classification=1)
         Bar 2 (idx=4): 2U directional (classification=2) - TRIGGER
 
         Entry: 104 (inside bar high)
         Stop: 97 (inside bar low)
-        Target: 104 + 9 = 113 (measured move using first directional bar range)
+        Target: 105 (first directional bar high - structural level)
         Direction: 1 (bullish)
     """
     # Handle both 1D and 2D arrays from VBT
@@ -243,12 +238,10 @@ def detect_212_patterns_nb(classifications, high, low):
 
                     # Entry trigger: Inside bar high
                     # Stop: Inside bar low (tighter stop than 3-1-2)
-                    # Target: Measured move (first directional bar range)
+                    # Target: First directional bar high (structural level)
                     trigger_price = high[i-1]  # Inside bar high
                     stops[i] = low[i-1]  # Inside bar low
-
-                    pattern_height = high[i-2] - low[i-2]  # First directional bar range
-                    targets[i] = trigger_price + pattern_height
+                    targets[i] = high[i-2]  # First directional bar high (structural level)
 
                 # Bearish continuation: 2D-1-2D
                 elif bar1_class == -2 and bar3_class == -2:
@@ -257,34 +250,34 @@ def detect_212_patterns_nb(classifications, high, low):
 
                     # Entry trigger: Inside bar low
                     # Stop: Inside bar high (tighter stop than 3-1-2)
-                    # Target: Measured move (first directional bar range)
+                    # Target: First directional bar low (structural level)
                     trigger_price = low[i-1]  # Inside bar low
                     stops[i] = high[i-1]  # Inside bar high
-
-                    pattern_height = high[i-2] - low[i-2]  # First directional bar range
-                    targets[i] = trigger_price - pattern_height
+                    targets[i] = low[i-2]  # First directional bar low (structural level)
 
                 # Bullish reversal: 2D-1-2U (failed breakdown)
                 elif bar1_class == -2 and bar3_class == 2:
                     entries[i] = True
                     directions[i] = 1  # Bullish
 
+                    # Entry trigger: Inside bar high
+                    # Stop: Inside bar low
+                    # Target: First directional bar high (structural level)
                     trigger_price = high[i-1]  # Inside bar high
                     stops[i] = low[i-1]  # Inside bar low
-
-                    pattern_height = high[i-2] - low[i-2]  # First directional bar range
-                    targets[i] = trigger_price + pattern_height
+                    targets[i] = high[i-2]  # First directional bar high (structural level)
 
                 # Bearish reversal: 2U-1-2D (failed breakout)
                 elif bar1_class == 2 and bar3_class == -2:
                     entries[i] = True
                     directions[i] = -1  # Bearish
 
+                    # Entry trigger: Inside bar low
+                    # Stop: Inside bar high
+                    # Target: First directional bar low (structural level)
                     trigger_price = low[i-1]  # Inside bar low
                     stops[i] = high[i-1]  # Inside bar high
-
-                    pattern_height = high[i-2] - low[i-2]  # First directional bar range
-                    targets[i] = trigger_price - pattern_height
+                    targets[i] = low[i-2]  # First directional bar low (structural level)
 
     else:  # 2D arrays (n, 1) from VBT
         n = classifications.shape[0]
@@ -309,12 +302,9 @@ def detect_212_patterns_nb(classifications, high, low):
 
                     # Entry trigger: Inside bar high
                     # Stop: Inside bar low (tighter stop than 3-1-2)
-                    # Target: Measured move (first directional bar range)
-                    trigger_price = high[i-1, 0]  # Inside bar high
+                    # Target: First directional bar high (structural level)
                     stops[i, 0] = low[i-1, 0]  # Inside bar low
-
-                    pattern_height = high[i-2, 0] - low[i-2, 0]  # First directional bar range
-                    targets[i, 0] = trigger_price + pattern_height
+                    targets[i, 0] = high[i-2, 0]  # First directional bar high (structural level)
 
                 # Bearish continuation: 2D-1-2D
                 elif bar1_class == -2 and bar3_class == -2:
@@ -323,34 +313,25 @@ def detect_212_patterns_nb(classifications, high, low):
 
                     # Entry trigger: Inside bar low
                     # Stop: Inside bar high (tighter stop than 3-1-2)
-                    # Target: Measured move (first directional bar range)
-                    trigger_price = low[i-1, 0]  # Inside bar low
+                    # Target: First directional bar low (structural level)
                     stops[i, 0] = high[i-1, 0]  # Inside bar high
-
-                    pattern_height = high[i-2, 0] - low[i-2, 0]  # First directional bar range
-                    targets[i, 0] = trigger_price - pattern_height
+                    targets[i, 0] = low[i-2, 0]  # First directional bar low (structural level)
 
                 # Bullish reversal: 2D-1-2U (failed breakdown)
                 elif bar1_class == -2 and bar3_class == 2:
                     entries[i, 0] = True
                     directions[i, 0] = 1  # Bullish
 
-                    trigger_price = high[i-1, 0]  # Inside bar high
                     stops[i, 0] = low[i-1, 0]  # Inside bar low
-
-                    pattern_height = high[i-2, 0] - low[i-2, 0]  # First directional bar range
-                    targets[i, 0] = trigger_price + pattern_height
+                    targets[i, 0] = high[i-2, 0]  # First directional bar high (structural level)
 
                 # Bearish reversal: 2U-1-2D (failed breakout)
                 elif bar1_class == 2 and bar3_class == -2:
                     entries[i, 0] = True
                     directions[i, 0] = -1  # Bearish
 
-                    trigger_price = low[i-1, 0]  # Inside bar low
                     stops[i, 0] = high[i-1, 0]  # Inside bar high
-
-                    pattern_height = high[i-2, 0] - low[i-2, 0]  # First directional bar range
-                    targets[i, 0] = trigger_price - pattern_height
+                    targets[i, 0] = low[i-2, 0]  # First directional bar low (structural level)
 
     return (entries, stops, targets, directions)
 

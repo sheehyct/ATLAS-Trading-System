@@ -107,6 +107,12 @@ nul
 .cache/
 cache/
 *.cache
+data_cache/
+
+# Audio files
+*.mp3
+*.wav
+*.m4a
 
 # Backtest outputs (regenerable)
 backtest_results/

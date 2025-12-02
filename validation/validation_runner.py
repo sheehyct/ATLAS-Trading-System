@@ -114,8 +114,17 @@ class ValidationRunner:
         start_time = time.time()
         logger.info(f"Starting validation for strategy: {strategy_name}")
 
-        # Use options config if needed
-        config = self.config.for_options() if is_options else self.config
+        # Use options config if needed, but preserve holdout mode (Session 83K-15 fix)
+        if is_options:
+            # Check if holdout mode is already set - preserve it
+            if self.config.walk_forward.validation_mode == 'holdout':
+                # Preserve holdout walk_forward config, apply other options settings
+                config = self.config.for_options()
+                config.walk_forward = self.config.walk_forward  # Restore holdout config
+            else:
+                config = self.config.for_options()
+        else:
+            config = self.config
 
         # Results containers
         wf_results: Optional[WalkForwardResults] = None

@@ -38,14 +38,14 @@ class TestSynthetic312Patterns:
 
         Pattern:
             Bar 0: Reference (H=100, L=95)
-            Bar 1: Outside (H=110, L=90, range=20)
+            Bar 1: Outside (H=110, L=90)
             Bar 2: Inside (H=105, L=95)
             Bar 3: 2U directional (H=112, L=96) - TRIGGER
 
         Expected:
             Entry: Index 3
             Stop: 90.0 (outside bar low)
-            Target: 105.0 + 20.0 = 125.0 (trigger + range)
+            Target: 110.0 (outside bar high - structural level)
             Direction: 1 (bullish)
         """
         high = np.array([100.0, 110.0, 105.0, 112.0])
@@ -66,7 +66,7 @@ class TestSynthetic312Patterns:
         # Verify pattern detected at index 3
         assert entries[3] == True, "Entry should be True at index 3"
         assert abs(stops[3] - 90.0) < 0.01, f"Stop should be 90.0, got {stops[3]}"
-        assert abs(targets[3] - 125.0) < 0.01, f"Target should be 125.0, got {targets[3]}"
+        assert abs(targets[3] - 110.0) < 0.01, f"Target should be 110.0 (structural level), got {targets[3]}"
         assert directions[3] == 1, f"Direction should be 1 (bullish), got {directions[3]}"
 
         # Verify no patterns at other indices
@@ -80,14 +80,14 @@ class TestSynthetic312Patterns:
 
         Pattern:
             Bar 0: Reference (H=100, L=95)
-            Bar 1: Outside (H=110, L=90, range=20)
+            Bar 1: Outside (H=110, L=90)
             Bar 2: Inside (H=105, L=95)
             Bar 3: 2D directional (H=103, L=88) - TRIGGER
 
         Expected:
             Entry: Index 3
             Stop: 110.0 (outside bar high)
-            Target: 95.0 - 20.0 = 75.0 (trigger - range)
+            Target: 90.0 (outside bar low - structural level)
             Direction: -1 (bearish)
         """
         high = np.array([100.0, 110.0, 105.0, 103.0])
@@ -103,7 +103,7 @@ class TestSynthetic312Patterns:
         # Verify pattern detected at index 3
         assert entries[3] == True
         assert abs(stops[3] - 110.0) < 0.01, f"Stop should be 110.0, got {stops[3]}"
-        assert abs(targets[3] - 75.0) < 0.01, f"Target should be 75.0, got {targets[3]}"
+        assert abs(targets[3] - 90.0) < 0.01, f"Target should be 90.0 (structural level), got {targets[3]}"
         assert directions[3] == -1, f"Direction should be -1 (bearish), got {directions[3]}"
 
 
@@ -116,14 +116,14 @@ class TestSynthetic212Patterns:
 
         Pattern:
             Bar 0: Reference (H=100, L=95)
-            Bar 1: 2U directional (H=105, L=96, range=9)
+            Bar 1: 2U directional (H=105, L=96)
             Bar 2: Inside (H=104, L=97)
             Bar 3: 2U directional (H=108, L=98) - TRIGGER
 
         Expected:
             Entry: Index 3
             Stop: 97.0 (inside bar low)
-            Target: 104.0 + 9.0 = 113.0
+            Target: 105.0 (first directional bar high - structural level)
             Direction: 1 (bullish)
         """
         high = np.array([100.0, 105.0, 104.0, 108.0])
@@ -140,7 +140,7 @@ class TestSynthetic212Patterns:
 
         assert entries[3] == True
         assert abs(stops[3] - 97.0) < 0.01, f"Stop should be 97.0, got {stops[3]}"
-        assert abs(targets[3] - 113.0) < 0.01, f"Target should be 113.0, got {targets[3]}"
+        assert abs(targets[3] - 105.0) < 0.01, f"Target should be 105.0 (structural level), got {targets[3]}"
         assert directions[3] == 1
 
     def test_212_bearish_continuation(self):
@@ -149,14 +149,14 @@ class TestSynthetic212Patterns:
 
         Pattern:
             Bar 0: Reference (H=100, L=95)
-            Bar 1: 2D directional (H=99, L=90, range=9)
+            Bar 1: 2D directional (H=99, L=90)
             Bar 2: Inside (H=98, L=91)
             Bar 3: 2D directional (H=97, L=88) - TRIGGER
 
         Expected:
             Entry: Index 3
             Stop: 98.0 (inside bar high)
-            Target: 91.0 - 9.0 = 82.0
+            Target: 90.0 (first directional bar low - structural level)
             Direction: -1 (bearish)
         """
         high = np.array([100.0, 99.0, 98.0, 97.0])
@@ -173,7 +173,7 @@ class TestSynthetic212Patterns:
 
         assert entries[3] == True
         assert abs(stops[3] - 98.0) < 0.01
-        assert abs(targets[3] - 82.0) < 0.01
+        assert abs(targets[3] - 90.0) < 0.01, f"Target should be 90.0 (structural level), got {targets[3]}"
         assert directions[3] == -1
 
     def test_212_bullish_reversal(self):
@@ -182,14 +182,14 @@ class TestSynthetic212Patterns:
 
         Pattern:
             Bar 0: Reference (H=100, L=95)
-            Bar 1: 2D directional (H=99, L=90, range=9)
+            Bar 1: 2D directional (H=99, L=90)
             Bar 2: Inside (H=98, L=91)
             Bar 3: 2U directional (H=102, L=92) - TRIGGER (reversal!)
 
         Expected:
             Entry: Index 3
             Stop: 91.0 (inside bar low)
-            Target: 98.0 + 9.0 = 107.0
+            Target: 99.0 (first directional bar high - structural level)
             Direction: 1 (bullish reversal)
         """
         high = np.array([100.0, 99.0, 98.0, 102.0])
@@ -206,7 +206,7 @@ class TestSynthetic212Patterns:
 
         assert entries[3] == True
         assert abs(stops[3] - 91.0) < 0.01
-        assert abs(targets[3] - 107.0) < 0.01
+        assert abs(targets[3] - 99.0) < 0.01, f"Target should be 99.0 (structural level), got {targets[3]}"
         assert directions[3] == 1  # Bullish reversal
 
     def test_212_bearish_reversal(self):
@@ -215,14 +215,14 @@ class TestSynthetic212Patterns:
 
         Pattern:
             Bar 0: Reference (H=100, L=95)
-            Bar 1: 2U directional (H=105, L=96, range=9)
+            Bar 1: 2U directional (H=105, L=96)
             Bar 2: Inside (H=104, L=97)
             Bar 3: 2D directional (H=103, L=93) - TRIGGER (reversal!)
 
         Expected:
             Entry: Index 3
             Stop: 104.0 (inside bar high)
-            Target: 97.0 - 9.0 = 88.0
+            Target: 96.0 (first directional bar low - structural level)
             Direction: -1 (bearish reversal)
         """
         high = np.array([100.0, 105.0, 104.0, 103.0])
@@ -239,7 +239,7 @@ class TestSynthetic212Patterns:
 
         assert entries[3] == True
         assert abs(stops[3] - 104.0) < 0.01
-        assert abs(targets[3] - 88.0) < 0.01
+        assert abs(targets[3] - 96.0) < 0.01, f"Target should be 96.0 (structural level), got {targets[3]}"
         assert directions[3] == -1  # Bearish reversal
 
 
@@ -339,7 +339,7 @@ class TestVBTIntegration:
         # Verify 3-1-2 pattern at index 3
         assert result.entries_312.iloc[3] == True
         assert abs(result.stops_312.iloc[3] - 90.0) < 0.01
-        assert abs(result.targets_312.iloc[3] - 125.0) < 0.01
+        assert abs(result.targets_312.iloc[3] - 110.0) < 0.01  # Structural level: outside bar high
         assert result.directions_312.iloc[3] == 1
 
     def test_vbt_indicator_212_accuracy(self):
@@ -353,7 +353,7 @@ class TestVBTIntegration:
         # Verify 2-1-2 pattern at index 3
         assert result.entries_212.iloc[3] == True
         assert abs(result.stops_212.iloc[3] - 98.0) < 0.01
-        assert abs(result.targets_212.iloc[3] - 82.0) < 0.01
+        assert abs(result.targets_212.iloc[3] - 90.0) < 0.01  # Structural level: first directional bar low
         assert result.directions_212.iloc[3] == -1
 
 

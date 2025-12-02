@@ -28,6 +28,8 @@ class WalkForwardConfig:
     - Test period: 63 days (3 months)
     - Acceptance: OOS Sharpe degradation < 30%, OOS Sharpe > 0.5
 
+    Session 83K-14: Added holdout mode for sparse pattern strategies.
+
     Attributes:
         train_period: Number of bars for training (default 252 = 1 year daily)
         test_period: Number of bars for testing (default 63 = 3 months daily)
@@ -37,6 +39,8 @@ class WalkForwardConfig:
         min_oos_sharpe: Minimum out-of-sample Sharpe ratio
         min_param_stability: Maximum coefficient of variation for parameters
         min_profitable_folds: Minimum percentage of profitable folds (0.60 = 60%)
+        validation_mode: 'walk_forward' or 'holdout' (Session 83K-14)
+        holdout_train_pct: Train percentage for holdout mode (default 0.70 = 70%)
     """
     train_period: int = 252
     test_period: int = 63
@@ -46,6 +50,9 @@ class WalkForwardConfig:
     min_oos_sharpe: float = 0.5
     min_param_stability: float = 0.20
     min_profitable_folds: float = 0.60
+    # Session 83K-14: Holdout mode for sparse pattern strategies
+    validation_mode: str = 'walk_forward'  # 'walk_forward' or 'holdout'
+    holdout_train_pct: float = 0.70  # 70% train, 30% test
 
     def __post_init__(self):
         """Set step_size to test_period if not specified."""
@@ -64,6 +71,23 @@ class WalkForwardConfigOptions(WalkForwardConfig):
     max_sharpe_degradation: float = 0.40  # 40% degradation allowed
     min_oos_sharpe: float = 0.3  # Lower Sharpe acceptable
     min_trades_per_fold: int = 5  # Fewer trades typical for options
+
+
+@dataclass
+class WalkForwardConfigHoldout(WalkForwardConfigOptions):
+    """
+    Holdout validation configuration for sparse pattern strategies.
+
+    Session 83K-14: Walk-forward with 15 folds is inappropriate for sparse
+    STRAT patterns (13-24 trades over 5 years). Holdout uses a single 70/30
+    train/test split instead.
+
+    Inherits from WalkForwardConfigOptions for options thresholds.
+    Skips parameter stability and profitable folds checks (meaningless with 1 fold).
+    """
+    validation_mode: str = 'holdout'
+    holdout_train_pct: float = 0.70  # 70% train, 30% test
+    min_trades_per_fold: int = 5  # Need at least 5 OOS trades for meaningful stats
 
 
 @dataclass
@@ -254,9 +278,23 @@ class ValidationConfig:
         Return a copy configured for options strategies.
 
         Applies looser thresholds and enables options-specific features.
+
+        Session 83K-16: Now preserves validation_mode (holdout vs walk_forward)
+        from the original config. Previously, calling for_options() would
+        always create a new WalkForwardConfigOptions() with default
+        validation_mode='walk_forward', losing any holdout settings.
         """
+        # Session 83K-16: Preserve validation_mode from original config
+        if self.walk_forward.validation_mode == 'holdout':
+            walk_forward_config = WalkForwardConfigHoldout()
+        else:
+            walk_forward_config = WalkForwardConfigOptions()
+
+        # Preserve holdout settings even if not in holdout mode
+        walk_forward_config.holdout_train_pct = self.walk_forward.holdout_train_pct
+
         config = ValidationConfig(
-            walk_forward=WalkForwardConfigOptions(),
+            walk_forward=walk_forward_config,
             monte_carlo=MonteCarloConfigOptions(),
             bias_detection=BiasDetectionConfig(),
             pattern_metrics=self.pattern_metrics,
@@ -275,6 +313,8 @@ class ValidationConfig:
                 'min_trades_per_fold': self.walk_forward.min_trades_per_fold,
                 'max_sharpe_degradation': self.walk_forward.max_sharpe_degradation,
                 'min_oos_sharpe': self.walk_forward.min_oos_sharpe,
+                'validation_mode': self.walk_forward.validation_mode,
+                'holdout_train_pct': self.walk_forward.holdout_train_pct,
             },
             'monte_carlo': {
                 'n_simulations': self.monte_carlo.n_simulations,

@@ -169,9 +169,13 @@ class WalkForwardValidator:
 
     def _generate_fold_windows(self, total_bars: int) -> List[FoldWindow]:
         """
-        Generate rolling window fold definitions.
+        Generate fold window definitions based on validation mode.
 
-        Creates non-overlapping test windows with rolling train windows.
+        Session 83K-14: Added holdout mode for sparse pattern strategies.
+
+        Modes:
+        - walk_forward: Rolling windows with multiple folds (default)
+        - holdout: Single 70/30 train/test split
 
         Args:
             total_bars: Total number of bars in dataset
@@ -179,6 +183,23 @@ class WalkForwardValidator:
         Returns:
             List of FoldWindow objects defining each fold
         """
+        # Session 83K-14: Holdout mode - single 70/30 split
+        if self.config.validation_mode == 'holdout':
+            split_idx = int(total_bars * self.config.holdout_train_pct)
+            logger.info(
+                f"Holdout mode: {self.config.holdout_train_pct:.0%} train "
+                f"({split_idx} bars), {1-self.config.holdout_train_pct:.0%} test "
+                f"({total_bars - split_idx} bars)"
+            )
+            return [FoldWindow(
+                fold_number=1,
+                train_start_idx=0,
+                train_end_idx=split_idx,
+                test_start_idx=split_idx,
+                test_end_idx=total_bars
+            )]
+
+        # Standard walk-forward: rolling windows
         windows = []
         train_period = self.config.train_period
         test_period = self.config.test_period
@@ -269,7 +290,32 @@ class WalkForwardValidator:
                 parameters=best_params
             )
 
+        # Session 83K-16: Verify OOS trades fall within test period
+        oos_trade_count = oos_result.trade_count
+        if oos_result.trades is not None and not oos_result.trades.empty:
+            if 'entry_date' in oos_result.trades.columns:
+                # Convert test dates to comparable format
+                test_start_ts = pd.Timestamp(test_start)
+                test_end_ts = pd.Timestamp(test_end)
+
+                # Check each trade's entry date
+                entry_dates = pd.to_datetime(oos_result.trades['entry_date'])
+                trades_in_period = (entry_dates >= test_start_ts) & (entry_dates <= test_end_ts)
+                trades_in_period_count = trades_in_period.sum()
+
+                if trades_in_period_count != len(oos_result.trades):
+                    trades_outside = len(oos_result.trades) - trades_in_period_count
+                    logger.warning(
+                        f"Fold {window.fold_number}: {trades_outside} of {len(oos_result.trades)} "
+                        f"OOS trades have entry dates outside test period "
+                        f"({test_start_ts.date()} to {test_end_ts.date()}). "
+                        f"This may indicate a data leakage issue in the strategy."
+                    )
+                    # Update trade count to only include trades in period
+                    oos_trade_count = trades_in_period_count
+
         # Create fold result
+        # Session 83K-16: Use oos_trade_count which may be filtered to test period
         return FoldResult(
             fold_number=window.fold_number,
             train_start=train_start,
@@ -281,7 +327,7 @@ class WalkForwardValidator:
             is_return=is_result.total_return,
             oos_return=oos_result.total_return,
             is_trades=is_result.trade_count,
-            oos_trades=oos_result.trade_count,
+            oos_trades=oos_trade_count,  # May be filtered count if trades outside period
             parameters=best_params,
             is_profitable=(oos_result.total_return > 0)
         )
@@ -317,7 +363,17 @@ class WalkForwardValidator:
         avg_oos_sharpe = np.mean(oos_sharpes) if oos_sharpes else 0.0
 
         # Calculate Sharpe degradation
-        sharpe_degradation = self._calculate_sharpe_degradation(avg_is_sharpe, avg_oos_sharpe)
+        # Session 83K-16: Now returns tuple (degradation, is_sign_reversal)
+        sharpe_degradation, has_sign_reversal = self._calculate_sharpe_degradation(avg_is_sharpe, avg_oos_sharpe)
+
+        # Session 83K-16: Generate sign reversal warning message if applicable
+        sign_reversal_warning = None
+        if has_sign_reversal:
+            sign_reversal_warning = (
+                f"IS/OOS Sharpe sign reversal detected (IS={avg_is_sharpe:.2f}, OOS={avg_oos_sharpe:.2f}). "
+                f"This may indicate regime change, data issues, or luck. Manual review recommended."
+            )
+            logger.warning(sign_reversal_warning)
 
         # Calculate parameter stability
         param_stability = self._calculate_parameter_stability(all_parameters)
@@ -328,33 +384,38 @@ class WalkForwardValidator:
 
         # Determine pass/fail with reasons
         failure_reasons = []
+        is_holdout = self.config.validation_mode == 'holdout'
 
-        # Check OOS Sharpe
+        # Check OOS Sharpe - applies to both modes
         if avg_oos_sharpe < self.config.min_oos_sharpe:
             failure_reasons.append(
                 f"OOS Sharpe {avg_oos_sharpe:.2f} below minimum {self.config.min_oos_sharpe:.2f}"
             )
 
-        # Check Sharpe degradation
+        # Check Sharpe degradation - applies to both modes
         if sharpe_degradation > self.config.max_sharpe_degradation:
             failure_reasons.append(
                 f"Sharpe degradation {sharpe_degradation:.1%} exceeds maximum {self.config.max_sharpe_degradation:.1%}"
             )
 
-        # Check profitable folds
-        if profitable_folds_pct < self.config.min_profitable_folds:
-            failure_reasons.append(
-                f"Profitable folds {profitable_folds_pct:.1%} below minimum {self.config.min_profitable_folds:.1%}"
-            )
-
-        # Check parameter stability
-        for param_name, cv in param_stability.items():
-            if cv > self.config.min_param_stability:
+        # Check profitable folds - SKIP for holdout mode (meaningless with 1 fold)
+        # Session 83K-14: Holdout has only 1 fold, so this is always 0% or 100%
+        if not is_holdout:
+            if profitable_folds_pct < self.config.min_profitable_folds:
                 failure_reasons.append(
-                    f"Parameter '{param_name}' CV {cv:.1%} exceeds maximum {self.config.min_param_stability:.1%}"
+                    f"Profitable folds {profitable_folds_pct:.1%} below minimum {self.config.min_profitable_folds:.1%}"
                 )
 
-        # Check minimum trades per fold
+        # Check parameter stability - SKIP for holdout mode (single parameter set)
+        # Session 83K-14: CV cannot be calculated with only 1 fold
+        if not is_holdout:
+            for param_name, cv in param_stability.items():
+                if cv > self.config.min_param_stability:
+                    failure_reasons.append(
+                        f"Parameter '{param_name}' CV {cv:.1%} exceeds maximum {self.config.min_param_stability:.1%}"
+                    )
+
+        # Check minimum trades per fold - applies to both modes
         low_trade_folds = [
             f for f in fold_results
             if f.oos_trades < self.config.min_trades_per_fold
@@ -380,13 +441,16 @@ class WalkForwardValidator:
             min_oos_sharpe=self.config.min_oos_sharpe,
             min_profitable_folds=self.config.min_profitable_folds,
             max_param_cv=self.config.min_param_stability,
+            # Session 83K-16: Sign reversal warning
+            has_sign_reversal_warning=has_sign_reversal,
+            sign_reversal_warning=sign_reversal_warning,
         )
 
     def _calculate_sharpe_degradation(
         self,
         is_sharpe: float,
         oos_sharpe: float
-    ) -> float:
+    ) -> Tuple[float, bool]:
         """
         Calculate Sharpe ratio degradation from IS to OOS.
 
@@ -397,23 +461,33 @@ class WalkForwardValidator:
         - 100% degradation = OOS is 0
         - Negative = OOS better than IS (unusual, may indicate luck)
 
+        Session 83K-16: Added sign reversal detection. When IS and OOS Sharpe have
+        opposite signs, this indicates a suspicious pattern that should be flagged
+        for manual review. Could indicate regime change or data issues.
+
         Args:
             is_sharpe: In-sample Sharpe ratio
             oos_sharpe: Out-of-sample Sharpe ratio
 
         Returns:
-            Degradation as decimal (0.30 = 30% degradation)
+            Tuple of (degradation, is_sign_reversal):
+            - degradation: Decimal (0.30 = 30% degradation)
+            - is_sign_reversal: True if IS and OOS Sharpe have opposite signs
         """
+        # Session 83K-16: Detect sign reversal (IS and OOS have opposite signs)
+        is_sign_reversal = (is_sharpe < 0 and oos_sharpe > 0) or (is_sharpe > 0 and oos_sharpe < 0)
+
         if is_sharpe <= 0:
             # Cannot calculate meaningful degradation if IS Sharpe is zero or negative
             if oos_sharpe > 0:
-                return 0.0  # OOS positive, IS not - unusual but not degradation
-            return 1.0  # Both bad
+                # Negative IS, positive OOS - flag as sign reversal
+                return (0.0, is_sign_reversal)
+            return (1.0, False)  # Both bad - no sign reversal
 
         degradation = 1.0 - (oos_sharpe / is_sharpe)
 
         # Cap at reasonable range (-1 to 1)
-        return max(-1.0, min(1.0, degradation))
+        return (max(-1.0, min(1.0, degradation)), is_sign_reversal)
 
     def _calculate_parameter_stability(
         self,
@@ -482,6 +556,9 @@ class WalkForwardValidator:
             min_oos_sharpe=self.config.min_oos_sharpe,
             min_profitable_folds=self.config.min_profitable_folds,
             max_param_cv=self.config.min_param_stability,
+            # Session 83K-16: No sign reversal warning for empty results
+            has_sign_reversal_warning=False,
+            sign_reversal_warning=None,
         )
 
     def passes(self, results: WalkForwardResults) -> bool:

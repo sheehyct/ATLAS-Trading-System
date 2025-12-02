@@ -114,6 +114,10 @@ class WalkForwardResults:
     min_profitable_folds: float = 0.60
     max_param_cv: float = 0.20
 
+    # Session 83K-16: Sign reversal warning (IS/OOS Sharpe have opposite signs)
+    has_sign_reversal_warning: bool = False
+    sign_reversal_warning: Optional[str] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -125,6 +129,8 @@ class WalkForwardResults:
             'total_folds': self.total_folds,
             'passes_validation': self.passes_validation,
             'failure_reasons': self.failure_reasons,
+            'has_sign_reversal_warning': self.has_sign_reversal_warning,
+            'sign_reversal_warning': self.sign_reversal_warning,
             'folds': [f.to_dict() for f in self.folds],
         }
 
@@ -152,6 +158,12 @@ class WalkForwardResults:
             lines.append("Failure Reasons:")
             for reason in self.failure_reasons:
                 lines.append(f"  - {reason}")
+
+        # Session 83K-16: Show sign reversal warning
+        if self.has_sign_reversal_warning:
+            lines.append("")
+            lines.append("WARNINGS:")
+            lines.append(f"  [!] {self.sign_reversal_warning}")
 
         lines.append("=" * 60)
         return "\n".join(lines)
