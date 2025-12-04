@@ -47,13 +47,19 @@ class PatternType(Enum):
     PATTERN_212_DOWN = "2-1-2D"
     PATTERN_22_UP = "2D-2U"  # Bullish reversal (2D-2U) - SAFE
     PATTERN_22_DOWN = "2U-2D"  # Bearish reversal (2U-2D) - DANGEROUS without filters
+    # Session 83K-38: Add missing 3-2 and 3-2-2 pattern types
+    PATTERN_32_UP = "3-2U"
+    PATTERN_32_DOWN = "3-2D"
+    PATTERN_322_UP = "3-2-2U"
+    PATTERN_322_DOWN = "3-2-2D"
 
 
 class Timeframe(Enum):
     """Supported timeframes for Tier 1 patterns."""
+    HOURLY = "1H"   # Session 83K-31: Added for intraday patterns
+    DAILY = "1D"
     WEEKLY = "1W"
     MONTHLY = "1M"
-    DAILY = "1D"
 
 
 @dataclass

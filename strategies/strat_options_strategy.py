@@ -71,7 +71,10 @@ class STRATOptionsConfig:
 
     def get_timeframe_enum(self) -> Timeframe:
         """Convert string timeframe to Timeframe enum."""
+        # Session 83K-33: Added '1H' mapping - was MISSING, causing hourly
+        # time filters to never activate (fell back to WEEKLY default)
         mapping = {
+            '1H': Timeframe.HOURLY,
             '1D': Timeframe.DAILY,
             '1W': Timeframe.WEEKLY,
             '1M': Timeframe.MONTHLY,
@@ -313,6 +316,51 @@ class STRATOptionsStrategy:
             all_signals, df, classifications, config.min_continuation_bars
         )
 
+        # Session 83K-38: Apply hourly time filter (STRAT rules)
+        # 2-2 patterns: NOT before 10:30 ET
+        # 3-bar patterns: NOT before 11:30 ET
+        filtered = self._apply_hourly_time_filter(filtered, timeframe)
+
+        return filtered
+
+    def _apply_hourly_time_filter(self, signals: List[PatternSignal], timeframe: Timeframe) -> List[PatternSignal]:
+        """
+        Session 83K-38: Filter hourly signals by STRAT time rules.
+        
+        CRITICAL: Without this filter, patterns are entered at invalid times:
+        - 2-2 patterns: NOT before 10:30 ET (need 2 bars to form)
+        - 3-bar patterns (3-1-2, 2-1-2, 3-2, 3-2-2): NOT before 11:30 ET
+        
+        The first bar of the day is 09:30. Patterns need time to form:
+        - 2-bar pattern (2-2): Can form after 2nd bar (10:30)
+        - 3-bar pattern: Can form after 3rd bar (11:30)
+        """
+        if timeframe != Timeframe.HOURLY:
+            return signals
+        
+        filtered = []
+        for signal in signals:
+            ts = signal.timestamp
+            if not hasattr(ts, 'hour'):
+                filtered.append(signal)
+                continue
+                
+            hour, minute = ts.hour, ts.minute
+            signal_minutes = hour * 60 + minute
+            
+            # Determine pattern type
+            ptype = signal.pattern_type.value if hasattr(signal.pattern_type, 'value') else str(signal.pattern_type)
+            
+            # 2-2 patterns: NOT before 10:30 ET (630 minutes from midnight)
+            if '2D-2U' in ptype or '2U-2D' in ptype or ('2-2' in ptype and '3-2-2' not in ptype):
+                first_entry_minutes = 10 * 60 + 30  # 10:30
+            else:
+                # 3-bar patterns: NOT before 11:30 ET (690 minutes from midnight)
+                first_entry_minutes = 11 * 60 + 30  # 11:30
+            
+            if signal_minutes >= first_entry_minutes:
+                filtered.append(signal)
+        
         return filtered
 
     def _detect_312(self, df, classifications, timeframe) -> List[PatternSignal]:
@@ -381,11 +429,11 @@ class STRATOptionsStrategy:
                 elif pattern_base == '22':
                     ptype = PatternType.PATTERN_22_UP if direction == 1 else PatternType.PATTERN_22_DOWN
                 elif pattern_base == '32':
-                    # Create custom type for 3-2
-                    ptype = PatternType.PATTERN_312_UP if direction == 1 else PatternType.PATTERN_312_DOWN
+                    # Session 83K-38: Use proper 3-2 pattern types
+                    ptype = PatternType.PATTERN_32_UP if direction == 1 else PatternType.PATTERN_32_DOWN
                 elif pattern_base == '322':
-                    # Create custom type for 3-2-2
-                    ptype = PatternType.PATTERN_312_UP if direction == 1 else PatternType.PATTERN_312_DOWN
+                    # Session 83K-38: Use proper 3-2-2 pattern types
+                    ptype = PatternType.PATTERN_322_UP if direction == 1 else PatternType.PATTERN_322_DOWN
                 else:
                     ptype = PatternType.PATTERN_312_UP if direction == 1 else PatternType.PATTERN_312_DOWN
 
@@ -492,6 +540,10 @@ class STRATOptionsStrategy:
         # Convert to BacktestResult format
         trades_df = execution_log.to_dataframe()
 
+        # Session 83K-27: Preserve magnitude_pct from backtest_df (lost in TradeExecutionLog conversion)
+        if 'magnitude_pct' in backtest_df.columns and len(trades_df) == len(backtest_df):
+            trades_df['magnitude_pct'] = backtest_df['magnitude_pct'].values
+
         return self._create_backtest_result(trades_df, data)
 
     def _equity_backtest(
@@ -527,6 +579,12 @@ class STRATOptionsStrategy:
                 low = row[low_col]
 
                 if not entry_hit:
+                    # Session 83K-33: For hourly, skip entries on the 15:00 bar (no time to exit)
+                    if config.timeframe == '1H':
+                        bar_time = data.index[j]
+                        if hasattr(bar_time, 'hour') and bar_time.hour >= 15:
+                            continue  # Skip entry on last bar of day
+
                     if signal.direction == 1 and high >= signal.entry_price:
                         entry_hit = True
                         entry_idx = j
@@ -558,6 +616,24 @@ class STRATOptionsStrategy:
                     elif high >= signal.stop_price:
                         exit_price = signal.stop_price
                         exit_reason = ExitReason.STOP.value
+                        exit_idx = j
+                        break
+
+                # Session 83K-33: Hourly forced exit - no overnight holds
+                # For hourly timeframe, must close by 15:30 ET (15:00 bar is last tradeable)
+                # Also force exit if we've crossed into a new day (overnight hold)
+                if config.timeframe == '1H':
+                    bar_time = data.index[j]
+                    entry_time = data.index[entry_idx]
+
+                    # Check end of day (15:00+ bar) or next day
+                    is_end_of_day = hasattr(bar_time, 'hour') and bar_time.hour >= 15
+                    is_next_day = hasattr(bar_time, 'date') and hasattr(entry_time, 'date') and bar_time.date() > entry_time.date()
+
+                    if is_end_of_day or is_next_day:
+                        close_col = 'close' if 'close' in data.columns else 'Close'
+                        exit_price = row[close_col] if close_col in row.index else row.get('close', high)
+                        exit_reason = ExitReason.TIME_EXIT.value
                         exit_idx = j
                         break
 
@@ -607,11 +683,14 @@ class STRATOptionsStrategy:
             signal = self._find_signal(row, signals)
 
             # Determine exit reason
+            # Session 83K-33: Added TIME_EXIT handling for hourly forced exits
             exit_type = row.get('exit_type', 'UNKNOWN')
             if exit_type == 'TARGET':
                 exit_reason = ExitReason.TARGET.value
             elif exit_type == 'STOP':
                 exit_reason = ExitReason.STOP.value
+            elif exit_type == 'TIME_EXIT':
+                exit_reason = ExitReason.TIME_EXIT.value
             elif exit_type == 'REJECTED':
                 exit_reason = ExitReason.REJECTED.value
             else:
