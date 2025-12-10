@@ -39,19 +39,143 @@ from strat.pattern_detector import (
 from strat.bar_classifier import classify_bars_nb
 
 
-class PatternType(Enum):
-    """Tier 1 pattern types."""
+class PatternType(str, Enum):
+    """
+    Tier 1 pattern types with full bar sequence notation.
+
+    STRAT Bar Classification Rule: Every directional bar MUST be classified as 2U or 2D.
+    Pattern naming uses full bar sequences (e.g., "2U-1-2U" not "2-1-2U").
+
+    Session 83K-52: Consolidated to single source of truth. Removed duplicates from
+    paper_trading.py and pattern_metrics.py.
+    """
+    # 3-1-2 patterns (outside bar is neutral, only exit bar direction matters)
     PATTERN_312_UP = "3-1-2U"
     PATTERN_312_DOWN = "3-1-2D"
-    PATTERN_212_UP = "2-1-2U"
-    PATTERN_212_DOWN = "2-1-2D"
+
+    # 2-1-2 patterns - all 4 variants with full bar sequence
+    # Session 83K-44: Added full bar sequences for proper classification
+    PATTERN_212_2U12U = "2U-1-2U"  # Bullish continuation
+    PATTERN_212_2D12D = "2D-1-2D"  # Bearish continuation
+    PATTERN_212_2D12U = "2D-1-2U"  # Bullish reversal (failed breakdown)
+    PATTERN_212_2U12D = "2U-1-2D"  # Bearish reversal (failed breakout)
+    # Legacy aliases for backward compatibility
+    PATTERN_212_UP = "2-1-2U"      # DEPRECATED: Use specific variants above
+    PATTERN_212_DOWN = "2-1-2D"    # DEPRECATED: Use specific variants above
+
+    # 2-2 reversal patterns (already have full bar sequence)
     PATTERN_22_UP = "2D-2U"  # Bullish reversal (2D-2U) - SAFE
     PATTERN_22_DOWN = "2U-2D"  # Bearish reversal (2U-2D) - DANGEROUS without filters
-    # Session 83K-38: Add missing 3-2 and 3-2-2 pattern types
+
+    # 3-2 patterns (outside bar followed by directional)
     PATTERN_32_UP = "3-2U"
     PATTERN_32_DOWN = "3-2D"
-    PATTERN_322_UP = "3-2-2U"
-    PATTERN_322_DOWN = "3-2-2D"
+
+    # 3-2-2 patterns - all 4 variants with full bar sequence
+    # Session 83K-44: Added full bar sequences for proper classification
+    PATTERN_322_32U2U = "3-2U-2U"  # Outside bar, bullish continuation
+    PATTERN_322_32D2D = "3-2D-2D"  # Outside bar, bearish continuation
+    PATTERN_322_32D2U = "3-2D-2U"  # Outside bar, bullish reversal
+    PATTERN_322_32U2D = "3-2U-2D"  # Outside bar, bearish reversal
+    # Legacy aliases for backward compatibility
+    PATTERN_322_UP = "3-2-2U"      # DEPRECATED: Use specific variants above
+    PATTERN_322_DOWN = "3-2-2D"    # DEPRECATED: Use specific variants above
+
+    # Aliases for pattern_metrics.py backward compatibility (Session 83K-52)
+    # These match the old naming convention used in pattern_metrics tests
+    PATTERN_312U = "3-1-2U"        # Alias for PATTERN_312_UP
+    PATTERN_312D = "3-1-2D"        # Alias for PATTERN_312_DOWN
+    PATTERN_212U = "2-1-2U"        # Alias for PATTERN_212_UP (legacy simple notation)
+    PATTERN_212D = "2-1-2D"        # Alias for PATTERN_212_DOWN (legacy simple notation)
+    PATTERN_2D2U = "2D-2U"         # Alias for PATTERN_22_UP
+    PATTERN_2U2D = "2U-2D"         # Alias for PATTERN_22_DOWN
+    PATTERN_32U = "3-2U"           # Alias for PATTERN_32_UP
+    PATTERN_32D = "3-2D"           # Alias for PATTERN_32_DOWN
+    PATTERN_32D2U = "3-2D-2U"      # Alias for PATTERN_322_32D2U
+    PATTERN_32U2D = "3-2U-2D"      # Alias for PATTERN_322_32U2D
+
+    # Unknown/fallback for parsing
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def from_string(cls, pattern_str: str) -> 'PatternType':
+        """
+        Convert string to PatternType enum with legacy mapping support.
+
+        Handles various string formats including full bar sequences and legacy notation.
+
+        Args:
+            pattern_str: Pattern string (e.g., '2U-1-2U', '2-1-2U', '2D-2U')
+
+        Returns:
+            Matching PatternType enum member, or UNKNOWN if not found
+        """
+        # Normalize string (uppercase, strip)
+        pattern_str = pattern_str.strip().upper()
+
+        # Map common variations to canonical enum members
+        pattern_map = {
+            # Full bar sequences (preferred - CLAUDE.md Section 12)
+            '2U-1-2U': cls.PATTERN_212_2U12U,
+            '2D-1-2D': cls.PATTERN_212_2D12D,
+            '2D-1-2U': cls.PATTERN_212_2D12U,
+            '2U-1-2D': cls.PATTERN_212_2U12D,
+            '3-2U-2U': cls.PATTERN_322_32U2U,
+            '3-2D-2D': cls.PATTERN_322_32D2D,
+            '3-2D-2U': cls.PATTERN_322_32D2U,
+            '3-2U-2D': cls.PATTERN_322_32U2D,
+            # 2-2 patterns
+            '2D-2U': cls.PATTERN_22_UP,
+            '2U-2D': cls.PATTERN_22_DOWN,
+            # 3-1-2 patterns
+            '3-1-2U': cls.PATTERN_312_UP,
+            '3-1-2D': cls.PATTERN_312_DOWN,
+            # 3-2 patterns
+            '3-2U': cls.PATTERN_32_UP,
+            '3-2D': cls.PATTERN_32_DOWN,
+            # Legacy mappings (backward compatibility)
+            '2-1-2U': cls.PATTERN_212_UP,
+            '2-1-2D': cls.PATTERN_212_DOWN,
+            '212U': cls.PATTERN_212_UP,
+            '212D': cls.PATTERN_212_DOWN,
+            '312U': cls.PATTERN_312_UP,
+            '312D': cls.PATTERN_312_DOWN,
+            '3-2-2U': cls.PATTERN_322_UP,
+            '3-2-2D': cls.PATTERN_322_DOWN,
+            # Paper trading legacy (incorrect but mapped for compat)
+            '2-2U': cls.PATTERN_22_UP,
+            '2-2D': cls.PATTERN_22_DOWN,
+        }
+
+        return pattern_map.get(pattern_str, cls.UNKNOWN)
+
+    def is_bullish(self) -> bool:
+        """Check if pattern is bullish (ends with U)."""
+        return self.value.endswith('U')
+
+    def is_bearish(self) -> bool:
+        """Check if pattern is bearish (ends with D)."""
+        return self.value.endswith('D')
+
+    def base_pattern(self) -> str:
+        """
+        Get base pattern type without direction (e.g., '3-1-2').
+
+        Returns:
+            Base pattern string: '3-1-2', '2-1-2', '3-2-2', '3-2', '2-2', or 'UNKNOWN'
+        """
+        val = self.value
+        if '3-1-2' in val:
+            return '3-1-2'
+        elif '2U-1-2' in val or '2D-1-2' in val or '2-1-2' in val:
+            return '2-1-2'
+        elif '3-2U-2' in val or '3-2D-2' in val or '3-2-2' in val:
+            return '3-2-2'
+        elif '3-2' in val:
+            return '3-2'
+        elif '2D-2U' in val or '2U-2D' in val:
+            return '2-2'
+        return 'UNKNOWN'
 
 
 class Timeframe(Enum):
@@ -254,7 +378,12 @@ class Tier1Detector:
         classifications: np.ndarray,
         timeframe: Timeframe
     ) -> List[PatternSignal]:
-        """Detect 2-1-2 patterns."""
+        """
+        Detect 2-1-2 patterns with full bar sequence classification.
+
+        Session 83K-44: Now uses full bar sequences (2U-1-2U, 2D-1-2D, etc.)
+        instead of simplified notation (2-1-2U, 2-1-2D).
+        """
         entries, stops, targets, directions = detect_212_patterns_nb(
             classifications,
             data['high'].values,
@@ -265,10 +394,31 @@ class Tier1Detector:
         for i in range(len(entries)):
             if entries[i]:
                 direction = int(directions[i])
-                pattern_type = (
-                    PatternType.PATTERN_212_UP if direction == 1
-                    else PatternType.PATTERN_212_DOWN
-                )
+
+                # Session 83K-44: Determine full bar sequence from classifications
+                # Bar at i-2 is first directional, bar at i is trigger directional
+                bar1_class = int(classifications[i-2])  # First directional bar
+                bar3_class = int(classifications[i])    # Trigger bar
+
+                # Determine pattern type based on actual bar sequence
+                if bar1_class == 2 and bar3_class == 2:
+                    # 2U-1-2U: Bullish continuation
+                    pattern_type = PatternType.PATTERN_212_2U12U
+                elif bar1_class == -2 and bar3_class == -2:
+                    # 2D-1-2D: Bearish continuation
+                    pattern_type = PatternType.PATTERN_212_2D12D
+                elif bar1_class == -2 and bar3_class == 2:
+                    # 2D-1-2U: Bullish reversal (failed breakdown)
+                    pattern_type = PatternType.PATTERN_212_2D12U
+                elif bar1_class == 2 and bar3_class == -2:
+                    # 2U-1-2D: Bearish reversal (failed breakout)
+                    pattern_type = PatternType.PATTERN_212_2U12D
+                else:
+                    # Fallback to legacy types (should not happen)
+                    pattern_type = (
+                        PatternType.PATTERN_212_UP if direction == 1
+                        else PatternType.PATTERN_212_DOWN
+                    )
 
                 signal = PatternSignal(
                     pattern_type=pattern_type,
