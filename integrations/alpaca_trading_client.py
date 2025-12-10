@@ -37,10 +37,22 @@ from alpaca.trading.requests import (
     MarketOrderRequest,
     LimitOrderRequest,
     StopOrderRequest,
-    GetOrdersRequest
+    GetOrdersRequest,
+    GetOptionContractsRequest,
+    ClosePositionRequest,
 )
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderStatus
+from alpaca.trading.enums import (
+    OrderSide,
+    TimeInForce,
+    OrderStatus,
+    AssetStatus,
+    ContractType,
+)
 from alpaca.common.exceptions import APIError
+
+# Market data imports for stock quotes (Session 83K-50)
+from alpaca.data import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestQuoteRequest, StockLatestBarRequest
 
 
 class AlpacaTradingClient:
@@ -111,6 +123,7 @@ class AlpacaTradingClient:
 
         # Trading client (initialized in connect())
         self.client: Optional[TradingClient] = None
+        self.data_client: Optional[StockHistoricalDataClient] = None
         self.connected = False
 
         # Rate limiting (200 requests per minute for paper trading)
@@ -151,6 +164,12 @@ class AlpacaTradingClient:
                 api_key=self.api_key,
                 secret_key=self.secret_key,
                 paper=True  # Always use paper trading for safety
+            )
+
+            # Initialize market data client (Session 83K-50)
+            self.data_client = StockHistoricalDataClient(
+                api_key=self.api_key,
+                secret_key=self.secret_key
             )
 
             # Test connection by fetching account info
@@ -522,6 +541,318 @@ class AlpacaTradingClient:
         if side.lower() not in ['buy', 'sell']:
             raise ValueError(f"Side must be 'buy' or 'sell': {side}")
 
+    # =========================================================================
+    # OPTIONS TRADING METHODS (Session 83K-47)
+    # =========================================================================
+
+    def get_option_contracts(
+        self,
+        underlying: str,
+        expiration_date: Optional[str] = None,
+        expiration_date_gte: Optional[str] = None,
+        expiration_date_lte: Optional[str] = None,
+        contract_type: Optional[str] = None,
+        strike_price_gte: Optional[float] = None,
+        strike_price_lte: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get available option contracts for an underlying symbol.
+
+        Args:
+            underlying: Underlying symbol (e.g., 'SPY', 'AAPL')
+            expiration_date: Filter by exact expiration (YYYY-MM-DD format)
+            expiration_date_gte: Minimum expiration date (YYYY-MM-DD format)
+            expiration_date_lte: Maximum expiration date (YYYY-MM-DD format)
+            contract_type: 'call' or 'put'
+            strike_price_gte: Minimum strike price
+            strike_price_lte: Maximum strike price
+
+        Returns:
+            List of option contract dicts with symbol, strike, expiration, type
+        """
+        self._ensure_connected()
+
+        # Build request
+        request_params = {
+            'underlying_symbols': [underlying.upper()],
+            'status': AssetStatus.ACTIVE,
+        }
+
+        if expiration_date:
+            request_params['expiration_date'] = expiration_date
+
+        if expiration_date_gte:
+            request_params['expiration_date_gte'] = expiration_date_gte
+
+        if expiration_date_lte:
+            request_params['expiration_date_lte'] = expiration_date_lte
+
+        if contract_type:
+            if contract_type.lower() == 'call':
+                request_params['type'] = ContractType.CALL
+            elif contract_type.lower() == 'put':
+                request_params['type'] = ContractType.PUT
+
+        if strike_price_gte is not None:
+            request_params['strike_price_gte'] = str(strike_price_gte)
+
+        if strike_price_lte is not None:
+            request_params['strike_price_lte'] = str(strike_price_lte)
+
+        request = GetOptionContractsRequest(**request_params)
+
+        response = self._retry_api_call(
+            self.client.get_option_contracts,
+            request
+        )
+
+        contracts = []
+        if response and hasattr(response, 'option_contracts'):
+            for contract in response.option_contracts:
+                contracts.append({
+                    'symbol': contract.symbol,
+                    'underlying': contract.underlying_symbol,
+                    'strike': float(contract.strike_price),
+                    'expiration': contract.expiration_date.isoformat() if contract.expiration_date else None,
+                    'type': contract.type.value if contract.type else None,
+                    'status': contract.status.value if contract.status else None,
+                    'tradable': contract.tradable,
+                })
+
+        self.logger.info(
+            f"Found {len(contracts)} option contracts for {underlying}"
+        )
+
+        return contracts
+
+    def submit_option_market_order(
+        self,
+        symbol: str,
+        qty: int,
+        side: str
+    ) -> Dict[str, Any]:
+        """
+        Submit market order for options.
+
+        Args:
+            symbol: OCC-format option symbol (e.g., 'SPY241220C00450000')
+            qty: Number of contracts (positive integer)
+            side: 'buy' or 'sell'
+
+        Returns:
+            Dict with order details
+
+        Raises:
+            RuntimeError: If not connected
+            ValueError: If invalid parameters
+        """
+        self._ensure_connected()
+        self._validate_option_order_params(symbol, qty, side)
+
+        order_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
+
+        order_request = MarketOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=order_side,
+            time_in_force=TimeInForce.DAY  # Options must use DAY
+        )
+
+        self.logger.info(
+            f"Submitting option market order: {side.upper()} {qty} {symbol}"
+        )
+
+        order = self._retry_api_call(
+            self.client.submit_order,
+            order_request
+        )
+
+        order_dict = self._order_to_dict(order)
+        order_dict['asset_class'] = 'option'
+
+        self.logger.info(
+            f"Option order submitted: id={order.id}, status={order.status}"
+        )
+
+        return order_dict
+
+    def submit_option_limit_order(
+        self,
+        symbol: str,
+        qty: int,
+        side: str,
+        limit_price: float
+    ) -> Dict[str, Any]:
+        """
+        Submit limit order for options.
+
+        Args:
+            symbol: OCC-format option symbol (e.g., 'SPY241220C00450000')
+            qty: Number of contracts
+            side: 'buy' or 'sell'
+            limit_price: Limit price per contract ($/share, not total)
+
+        Returns:
+            Dict with order details
+
+        Raises:
+            RuntimeError: If not connected
+            ValueError: If invalid parameters
+        """
+        self._ensure_connected()
+        self._validate_option_order_params(symbol, qty, side)
+
+        if limit_price <= 0:
+            raise ValueError(f"Limit price must be positive: {limit_price}")
+
+        order_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
+
+        order_request = LimitOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=order_side,
+            time_in_force=TimeInForce.DAY,  # Options must use DAY
+            limit_price=limit_price
+        )
+
+        self.logger.info(
+            f"Submitting option limit order: "
+            f"{side.upper()} {qty} {symbol} @ ${limit_price:.2f}"
+        )
+
+        order = self._retry_api_call(
+            self.client.submit_order,
+            order_request
+        )
+
+        order_dict = self._order_to_dict(order)
+        order_dict['asset_class'] = 'option'
+
+        self.logger.info(f"Option limit order submitted: id={order.id}")
+
+        return order_dict
+
+    def get_option_position(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Get current position for an option contract.
+
+        Args:
+            symbol: OCC-format option symbol
+
+        Returns:
+            Dict with position details or None if no position
+        """
+        self._ensure_connected()
+
+        try:
+            position = self._retry_api_call(
+                self.client.get_open_position,
+                symbol
+            )
+
+            return {
+                'symbol': position.symbol,
+                'qty': int(position.qty),
+                'side': 'long' if int(position.qty) > 0 else 'short',
+                'avg_entry_price': float(position.avg_entry_price),
+                'market_value': float(position.market_value),
+                'cost_basis': float(position.cost_basis),
+                'unrealized_pl': float(position.unrealized_pl),
+                'unrealized_plpc': float(position.unrealized_plpc),
+                'current_price': float(position.current_price),
+                'asset_class': 'option',
+            }
+
+        except APIError as e:
+            if 'position does not exist' in str(e).lower():
+                return None
+            raise
+
+    def list_option_positions(self) -> List[Dict[str, Any]]:
+        """
+        Get all current option positions.
+
+        Returns:
+            List of option position dicts
+        """
+        self._ensure_connected()
+
+        all_positions = self._retry_api_call(self.client.get_all_positions)
+
+        option_positions = []
+        for pos in all_positions:
+            # Filter for options (OCC symbols are typically longer)
+            # OCC format: underlying + YYMMDD + C/P + strike (8 digits)
+            if len(pos.symbol) > 10 and ('C' in pos.symbol[-9:] or 'P' in pos.symbol[-9:]):
+                option_positions.append({
+                    'symbol': pos.symbol,
+                    'qty': int(pos.qty),
+                    'side': 'long' if int(pos.qty) > 0 else 'short',
+                    'avg_entry_price': float(pos.avg_entry_price),
+                    'market_value': float(pos.market_value),
+                    'cost_basis': float(pos.cost_basis),
+                    'unrealized_pl': float(pos.unrealized_pl),
+                    'unrealized_plpc': float(pos.unrealized_plpc),
+                    'current_price': float(pos.current_price),
+                    'asset_class': 'option',
+                })
+
+        return option_positions
+
+    def close_option_position(
+        self,
+        symbol: str,
+        qty: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Close an option position.
+
+        Args:
+            symbol: OCC-format option symbol
+            qty: Number of contracts to close (None = close all)
+
+        Returns:
+            Dict with close order details
+
+        Raises:
+            RuntimeError: If not connected or no position exists
+        """
+        self._ensure_connected()
+
+        # Get current position first
+        position = self.get_option_position(symbol)
+        if not position:
+            raise RuntimeError(f"No open position for {symbol}")
+
+        close_qty = qty if qty is not None else abs(position['qty'])
+
+        # Determine side (opposite of current position)
+        close_side = 'sell' if position['qty'] > 0 else 'buy'
+
+        self.logger.info(
+            f"Closing option position: {close_side.upper()} {close_qty} {symbol}"
+        )
+
+        return self.submit_option_market_order(symbol, close_qty, close_side)
+
+    def _validate_option_order_params(self, symbol: str, qty: int, side: str):
+        """Validate option order parameters."""
+        if not symbol or not isinstance(symbol, str):
+            raise ValueError(f"Invalid option symbol: {symbol}")
+
+        # Basic OCC format validation (minimum length check)
+        if len(symbol) < 15:
+            raise ValueError(
+                f"Invalid OCC option symbol format: {symbol}. "
+                f"Expected format like 'SPY241220C00450000'"
+            )
+
+        if qty <= 0 or not isinstance(qty, int):
+            raise ValueError(f"Quantity must be positive integer: {qty}")
+
+        if side.lower() not in ['buy', 'sell']:
+            raise ValueError(f"Side must be 'buy' or 'sell': {side}")
+
     def _order_to_dict(self, order) -> Dict[str, Any]:
         """Convert Alpaca order object to dict."""
         return {
@@ -538,3 +869,102 @@ class AlpacaTradingClient:
             'submitted_at': order.submitted_at.isoformat() if order.submitted_at else None,
             'filled_at': order.filled_at.isoformat() if order.filled_at else None,
         }
+
+    # =========================================================================
+    # MARKET DATA METHODS (Session 83K-50)
+    # =========================================================================
+
+    def get_stock_quote(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Get latest quote for a stock symbol.
+
+        Uses Alpaca's market data API to get real-time bid/ask quotes.
+        This works even if you don't hold a position in the stock.
+
+        Args:
+            symbol: Stock symbol (e.g., 'SPY', 'AAPL')
+
+        Returns:
+            Dict with quote data (bid, ask, mid, timestamp) or None if unavailable
+        """
+        self._ensure_connected()
+
+        if self.data_client is None:
+            self.logger.warning("Market data client not initialized")
+            return None
+
+        try:
+            request = StockLatestQuoteRequest(symbol_or_symbols=[symbol.upper()])
+            quotes = self.data_client.get_stock_latest_quote(request)
+
+            quote = quotes.get(symbol.upper())
+            if quote:
+                return {
+                    'symbol': symbol.upper(),
+                    'bid': float(quote.bid_price),
+                    'ask': float(quote.ask_price),
+                    'mid': (float(quote.bid_price) + float(quote.ask_price)) / 2,
+                    'bid_size': int(quote.bid_size),
+                    'ask_size': int(quote.ask_size),
+                    'timestamp': quote.timestamp.isoformat() if quote.timestamp else None,
+                }
+
+        except Exception as e:
+            self.logger.warning(f"Error fetching quote for {symbol}: {e}")
+
+        return None
+
+    def get_stock_quotes(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Get latest quotes for multiple stock symbols.
+
+        Args:
+            symbols: List of stock symbols
+
+        Returns:
+            Dict mapping symbol to quote data
+        """
+        self._ensure_connected()
+
+        if self.data_client is None:
+            self.logger.warning("Market data client not initialized")
+            return {}
+
+        result = {}
+        try:
+            upper_symbols = [s.upper() for s in symbols]
+            request = StockLatestQuoteRequest(symbol_or_symbols=upper_symbols)
+            quotes = self.data_client.get_stock_latest_quote(request)
+
+            for symbol, quote in quotes.items():
+                result[symbol] = {
+                    'symbol': symbol,
+                    'bid': float(quote.bid_price),
+                    'ask': float(quote.ask_price),
+                    'mid': (float(quote.bid_price) + float(quote.ask_price)) / 2,
+                    'bid_size': int(quote.bid_size),
+                    'ask_size': int(quote.ask_size),
+                    'timestamp': quote.timestamp.isoformat() if quote.timestamp else None,
+                }
+
+        except Exception as e:
+            self.logger.warning(f"Error fetching quotes: {e}")
+
+        return result
+
+    def get_stock_price(self, symbol: str) -> Optional[float]:
+        """
+        Get the latest price (mid-point) for a stock symbol.
+
+        Convenience method that returns just the mid price.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            Mid price (average of bid/ask) or None if unavailable
+        """
+        quote = self.get_stock_quote(symbol)
+        if quote:
+            return quote.get('mid')
+        return None

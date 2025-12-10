@@ -443,14 +443,17 @@ class SignalExecutor:
             option_type = OptionType.PUT
             contract_type = 'put'
 
-        # Calculate target expiration
-        target_date = datetime.now() + timedelta(days=self.config.target_dte)
+        # Calculate expiration date range
+        min_exp_date = (datetime.now() + timedelta(days=self.config.min_dte)).strftime('%Y-%m-%d')
+        max_exp_date = (datetime.now() + timedelta(days=self.config.max_dte)).strftime('%Y-%m-%d')
 
-        # Get available contracts from Alpaca
+        # Get available contracts from Alpaca with DTE filter
         try:
             contracts = self._trading_client.get_option_contracts(
                 underlying=signal.symbol,
                 contract_type=contract_type,
+                expiration_date_gte=min_exp_date,
+                expiration_date_lte=max_exp_date,
                 strike_price_gte=underlying_price * 0.85,
                 strike_price_lte=underlying_price * 1.15,
             )
@@ -459,23 +462,23 @@ class SignalExecutor:
             return None
 
         if not contracts:
-            logger.warning(f"No contracts found for {signal.symbol}")
+            logger.warning(
+                f"No contracts found for {signal.symbol} "
+                f"(DTE {self.config.min_dte}-{self.config.max_dte}, "
+                f"strike {underlying_price * 0.85:.0f}-{underlying_price * 1.15:.0f})"
+            )
             return None
 
-        # Filter by DTE
+        # Add DTE to contracts for selection
         valid_contracts = []
         for c in contracts:
             if c.get('expiration'):
                 exp_date = datetime.fromisoformat(c['expiration'])
-                dte = (exp_date - datetime.now()).days
-                if self.config.min_dte <= dte <= self.config.max_dte:
-                    c['dte'] = dte
-                    valid_contracts.append(c)
+                c['dte'] = (exp_date - datetime.now()).days
+                valid_contracts.append(c)
 
         if not valid_contracts:
-            logger.warning(
-                f"No contracts in DTE range {self.config.min_dte}-{self.config.max_dte}"
-            )
+            logger.warning(f"No valid contracts after filtering for {signal.symbol}")
             return None
 
         # Select strike closest to target delta
