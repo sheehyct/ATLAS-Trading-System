@@ -55,6 +55,8 @@ from dashboard.components.options_panel import (
     create_options_panel,
     create_signals_table,
     create_positions_table,
+    create_pnl_summary,
+    create_trade_progress_chart,
 )
 
 # Import data loaders
@@ -1325,6 +1327,58 @@ def update_options_positions(n_intervals, active_tab):
     except Exception as e:
         logger.error(f"Error updating options positions: {e}")
         return create_positions_table([]), dbc.Badge('!', color='danger')
+
+
+@app.callback(
+    Output('pnl-summary-content', 'children'),
+    [Input('options-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_pnl_summary(n_intervals, active_tab):
+    """
+    Update P&L summary with live position data.
+
+    Only updates when options tab is active.
+    """
+    try:
+        if active_tab != 'options-tab':
+            from dash import no_update
+            return no_update
+
+        if options_loader is None:
+            return create_pnl_summary([])
+
+        positions = options_loader.get_option_positions()
+        return create_pnl_summary(positions)
+
+    except Exception as e:
+        logger.error(f"Error updating P&L summary: {e}")
+        return create_pnl_summary([])
+
+
+@app.callback(
+    Output('trade-progress-chart', 'figure'),
+    [Input('options-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_trade_progress(n_intervals, active_tab):
+    """
+    Update trade progress chart with live position data.
+
+    Only updates when options tab is active.
+    """
+    try:
+        if active_tab != 'options-tab':
+            from dash import no_update
+            return no_update
+
+        # For now, return empty chart since we don't have signal-position linkage
+        # In future, this would link positions to their original signals for target tracking
+        return create_trade_progress_chart([])
+
+    except Exception as e:
+        logger.error(f"Error updating trade progress: {e}")
+        return create_trade_progress_chart([])
 
 
 # ============================================

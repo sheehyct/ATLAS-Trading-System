@@ -434,54 +434,20 @@ def create_options_panel():
 # ============================================
 
 def _create_strat_signal_placeholder():
-    """Create placeholder for STRAT signal display."""
+    """Create placeholder when no active signal."""
     return html.Div([
-        # Pattern Type Badge
-        html.Div([
-            dbc.Badge('2-1-2 Up', color='success', className='me-2 mb-2', style={'fontSize': '1rem'}),
-            dbc.Badge('WEEKLY', color='info', className='mb-2', style={'fontSize': '0.8rem'}),
-        ]),
-
-        # Signal Details
-        html.Table([
-            html.Tr([
-                html.Td('Symbol:', style={'color': DARK_THEME['text_secondary'], 'paddingRight': '1rem'}),
-                html.Td('SPY', style={'color': DARK_THEME['text_primary'], 'fontWeight': 'bold'})
-            ]),
-            html.Tr([
-                html.Td('Entry:', style={'color': DARK_THEME['text_secondary']}),
-                html.Td('$598.50', style={'color': DARK_THEME['text_primary']})
-            ]),
-            html.Tr([
-                html.Td('Target:', style={'color': DARK_THEME['text_secondary']}),
-                html.Td('$612.00', style={'color': DARK_THEME['accent_green'], 'fontWeight': 'bold'})
-            ]),
-            html.Tr([
-                html.Td('Stop:', style={'color': DARK_THEME['text_secondary']}),
-                html.Td('$592.00', style={'color': DARK_THEME['accent_red']})
-            ]),
-            html.Tr([
-                html.Td('R:R:', style={'color': DARK_THEME['text_secondary']}),
-                html.Td('2.08', style={'color': DARK_THEME['accent_blue']})
-            ]),
-            html.Tr([
-                html.Td('Regime:', style={'color': DARK_THEME['text_secondary']}),
-                html.Td([
-                    html.Span('●', style={'color': DARK_THEME['accent_green'], 'marginRight': '0.5rem'}),
-                    'TREND_BULL'
-                ], style={'color': DARK_THEME['accent_green']})
-            ]),
-        ], style={'width': '100%'}),
-
-        # Suggested Option
-        html.Hr(style={'borderColor': DARK_THEME['border']}),
-        html.P([
-            html.I(className='fas fa-lightbulb me-2', style={'color': DARK_THEME['accent_yellow']}),
-            html.Strong('Suggested: '),
-            'SPY Jan 17 $600 CALL @ ~$8.50'
-        ], style={'color': DARK_THEME['text_secondary'], 'fontSize': '0.9rem', 'marginBottom': '0'}),
-
-    ], style={'padding': '0.5rem'})
+        html.I(className='fas fa-crosshairs fa-2x mb-3',
+               style={'color': DARK_THEME['text_muted']}),
+        html.P('No active signal', style={
+            'color': DARK_THEME['text_muted'],
+            'marginBottom': '0.25rem'
+        }),
+        html.Small('Signals from the daemon will appear here',
+                   style={'color': DARK_THEME['text_muted']})
+    ], style={
+        'textAlign': 'center',
+        'padding': '2rem'
+    })
 
 
 def _create_no_signals_placeholder():
@@ -890,9 +856,56 @@ def _create_sample_trades_table():
 
 
 def _create_pnl_summary_cards():
-    """Create P&L summary cards."""
-    return html.Div([
+    """Create placeholder P&L summary cards - will be updated by callback."""
+    return html.Div(id='pnl-summary-content', children=[
+        html.Div([
+            html.I(className='fas fa-chart-pie fa-2x mb-3',
+                   style={'color': DARK_THEME['text_muted']}),
+            html.P('Loading P&L data...', style={
+                'color': DARK_THEME['text_muted'],
+                'marginBottom': '0'
+            })
+        ], style={'textAlign': 'center', 'padding': '2rem'})
+    ])
 
+
+def create_pnl_summary(positions: List[Dict]) -> html.Div:
+    """
+    Create P&L summary cards from live position data.
+
+    Args:
+        positions: List of position dictionaries from Alpaca
+
+    Returns:
+        HTML div with P&L summary
+    """
+    if not positions:
+        return html.Div([
+            html.I(className='fas fa-inbox fa-2x mb-3',
+                   style={'color': DARK_THEME['text_muted']}),
+            html.P('No positions', style={
+                'color': DARK_THEME['text_muted'],
+                'marginBottom': '0.25rem'
+            }),
+            html.Small('P&L summary will appear when positions are held',
+                       style={'color': DARK_THEME['text_muted']})
+        ], style={'textAlign': 'center', 'padding': '2rem'})
+
+    # Calculate totals from positions
+    total_pnl = sum(p.get('unrealized_pl', 0) for p in positions)
+    total_cost = sum(p.get('cost_basis', 0) for p in positions)
+    total_pnl_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0
+
+    winning = sum(1 for p in positions if p.get('unrealized_pl', 0) >= 0)
+    losing = len(positions) - winning
+
+    pnls = [p.get('unrealized_pl', 0) for p in positions]
+    largest_win = max(pnls) if pnls else 0
+    largest_loss = min(pnls) if pnls else 0
+
+    pnl_color = DARK_THEME['accent_green'] if total_pnl >= 0 else DARK_THEME['accent_red']
+
+    return html.Div([
         # Total P&L
         html.Div([
             html.P('Total P&L', style={
@@ -900,12 +913,12 @@ def _create_pnl_summary_cards():
                 'marginBottom': '0.25rem',
                 'fontSize': '0.9rem'
             }),
-            html.H3('$665.00', style={
-                'color': DARK_THEME['accent_green'],
+            html.H3(f'${total_pnl:,.2f}', style={
+                'color': pnl_color,
                 'marginBottom': '0',
                 'fontWeight': 'bold'
             }),
-            html.Small('+18.3%', style={'color': DARK_THEME['accent_green']})
+            html.Small(f'{total_pnl_pct:+.1f}%', style={'color': pnl_color})
         ], style={
             'backgroundColor': DARK_THEME['card_header'],
             'padding': '1rem',
@@ -923,7 +936,7 @@ def _create_pnl_summary_cards():
                         'marginBottom': '0.25rem',
                         'fontSize': '0.8rem'
                     }),
-                    html.H5('2', style={
+                    html.H5(str(winning), style={
                         'color': DARK_THEME['accent_green'],
                         'marginBottom': '0'
                     }),
@@ -943,7 +956,7 @@ def _create_pnl_summary_cards():
                         'marginBottom': '0.25rem',
                         'fontSize': '0.8rem'
                     }),
-                    html.H5('1', style={
+                    html.H5(str(losing), style={
                         'color': DARK_THEME['accent_red'],
                         'marginBottom': '0'
                     }),
@@ -961,11 +974,17 @@ def _create_pnl_summary_cards():
         html.Div([
             html.Div([
                 html.Span('Largest Win: ', style={'color': DARK_THEME['text_secondary']}),
-                html.Span('$465.00', style={'color': DARK_THEME['accent_green'], 'fontWeight': 'bold'}),
+                html.Span(f'${largest_win:,.2f}', style={
+                    'color': DARK_THEME['accent_green'],
+                    'fontWeight': 'bold'
+                }),
             ], style={'marginBottom': '0.5rem'}),
             html.Div([
                 html.Span('Largest Loss: ', style={'color': DARK_THEME['text_secondary']}),
-                html.Span('-$140.00', style={'color': DARK_THEME['accent_red'], 'fontWeight': 'bold'}),
+                html.Span(f'${largest_loss:,.2f}', style={
+                    'color': DARK_THEME['accent_red'],
+                    'fontWeight': 'bold'
+                }),
             ]),
         ], style={
             'backgroundColor': DARK_THEME['card_header'],
@@ -974,7 +993,6 @@ def _create_pnl_summary_cards():
             'fontSize': '0.9rem',
             'border': f'1px solid {DARK_THEME["border"]}'
         }),
-
     ])
 
 
@@ -988,42 +1006,39 @@ def create_trade_progress_chart(trades: Optional[List[Dict]] = None) -> go.Figur
 
     Features:
     - Bullet chart style for each trade
-    - Entry → Current → Target visualization
+    - Entry -> Current -> Target visualization
     - Stop loss indicator
     - Color-coded by profit/loss status
 
     Args:
-        trades: List of trade dictionaries
+        trades: List of trade dictionaries with entry/current/target/stop
 
     Returns:
         Plotly figure with trade progress visualization
     """
 
-    # Sample data if none provided
-    if trades is None:
-        trades = [
-            {
-                'name': 'SPY $600C',
-                'entry': 598.50,
-                'current': 605.30,
-                'target': 612.00,
-                'stop': 592.00,
-            },
-            {
-                'name': 'QQQ $520C',
-                'entry': 512.00,
-                'current': 515.40,
-                'target': 535.00,
-                'stop': 505.00,
-            },
-            {
-                'name': 'AAPL $230C',
-                'entry': 228.00,
-                'current': 235.80,
-                'target': 245.00,
-                'stop': 222.00,
-            },
-        ]
+    # Return empty chart if no trades
+    if not trades:
+        fig = go.Figure()
+        fig.update_layout(
+            height=250,
+            template='plotly_dark',
+            paper_bgcolor=DARK_THEME['card_bg'],
+            plot_bgcolor=DARK_THEME['card_bg'],
+            margin=dict(l=20, r=20, t=20, b=20),
+            annotations=[{
+                'text': 'No active positions to track',
+                'x': 0.5,
+                'y': 0.5,
+                'xref': 'paper',
+                'yref': 'paper',
+                'showarrow': False,
+                'font': {'color': DARK_THEME['text_muted'], 'size': 14}
+            }],
+            xaxis={'visible': False},
+            yaxis={'visible': False}
+        )
+        return fig
 
     fig = go.Figure()
 
@@ -1339,5 +1354,6 @@ __all__ = [
     'create_trade_progress_bar',
     'create_signals_table',
     'create_positions_table',
+    'create_pnl_summary',
     'DARK_THEME'
 ]

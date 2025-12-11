@@ -123,8 +123,14 @@ class OptionsDataLoader:
         """
         Normalize API signal data to dashboard format.
 
-        Converts datetime strings back to formatted display strings.
+        Maps API field names to dashboard expected names and
+        converts datetime strings to formatted display strings.
         """
+        # Map API field names to dashboard expected names
+        signal_data['pattern'] = signal_data.get('pattern_type', '')
+        signal_data['target'] = signal_data.get('target_price', 0)
+        signal_data['stop'] = signal_data.get('stop_price', 0)
+
         # Parse and format detected_time if present
         detected_time = signal_data.get('detected_time')
         if detected_time and isinstance(detected_time, str):
