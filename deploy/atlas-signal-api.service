@@ -1,0 +1,16 @@
+[Unit]
+Description=ATLAS Signal API Server
+After=network.target atlas-daemon.service
+Wants=atlas-daemon.service
+
+[Service]
+Type=simple
+User=atlas
+WorkingDirectory=/home/atlas/vectorbt-workspace
+Environment="PATH=/home/atlas/.local/bin:/usr/bin"
+ExecStart=/home/atlas/.local/bin/uv run python scripts/signal_api.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

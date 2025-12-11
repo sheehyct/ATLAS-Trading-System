@@ -49,6 +49,7 @@ dependencies = [
     "hmmlearn>=0.3.0",
     "tiingo>=0.16.1",
     "apscheduler>=3.10.0",
+    "flask>=3.0.0",
 ]
 
 [dependency-groups]

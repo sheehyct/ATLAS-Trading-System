@@ -8,43 +8,62 @@ Data Sources:
 - Alpaca API: Live option positions via AlpacaTradingClient
 
 Session 83K-75: Initial implementation for dashboard integration.
+Session 83K-76: Added VPS API support for Railway deployment.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
+
+import requests
 
 from integrations.alpaca_trading_client import AlpacaTradingClient
 from strat.signal_automation.signal_store import SignalStore, StoredSignal
 
 logger = logging.getLogger(__name__)
 
+# VPS Signal API URL - set this for Railway deployments
+VPS_SIGNAL_API_URL = os.getenv('VPS_SIGNAL_API_URL', '')
+
 
 class OptionsDataLoader:
     """Load options signals and positions for dashboard."""
 
-    def __init__(self, account: str = 'SMALL'):
+    def __init__(self, account: str = 'SMALL', vps_api_url: str = None):
         """
         Initialize the options data loader.
 
         Args:
             account: Alpaca account tier ('SMALL', 'MID', 'LARGE')
+            vps_api_url: Optional VPS signal API URL (overrides env var)
         """
         self.account = account
         self.client = AlpacaTradingClient(account=account)
-        self.signal_store = SignalStore()
         self._connected = False
         self.init_error = None
 
-        # Try to connect on init
+        # VPS API URL for remote signal fetching (Railway deployment)
+        self.vps_api_url = vps_api_url or VPS_SIGNAL_API_URL
+        self.use_remote = bool(self.vps_api_url)
+
+        # Only create local signal store if not using remote API
+        if self.use_remote:
+            logger.info(f"OptionsDataLoader using VPS API: {self.vps_api_url}")
+            self.signal_store = None
+        else:
+            logger.info("OptionsDataLoader using local SignalStore")
+            self.signal_store = SignalStore()
+
+        # Try to connect to Alpaca on init
         try:
             self._connected = self.client.connect()
             if self._connected:
                 logger.info(f"OptionsDataLoader connected to Alpaca {account} account")
             else:
                 self.init_error = "Alpaca connection returned False"
-                logger.warning(f"OptionsDataLoader: Alpaca connection failed")
+                logger.warning("OptionsDataLoader: Alpaca connection failed")
         except Exception as e:
             self.init_error = str(e)
             logger.warning(f"OptionsDataLoader init error: {e}")
@@ -59,6 +78,58 @@ class OptionsDataLoader:
                 self._connected = False
         return self._connected
 
+    def _fetch_from_api(self, endpoint: str) -> List[Dict]:
+        """
+        Fetch signals from VPS API.
+
+        Args:
+            endpoint: API endpoint path (e.g., '/signals/active')
+
+        Returns:
+            List of signal dictionaries from API
+        """
+        if not self.vps_api_url:
+            return []
+
+        url = f"{self.vps_api_url.rstrip('/')}{endpoint}"
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            # API returns list directly for these endpoints
+            if isinstance(data, list):
+                return [self._normalize_api_signal(s) for s in data]
+            return []
+        except requests.RequestException as e:
+            logger.error(f"Error fetching from VPS API {url}: {e}")
+            return []
+
+    def _normalize_api_signal(self, signal_data: Dict) -> Dict:
+        """
+        Normalize API signal data to dashboard format.
+
+        Converts datetime strings back to formatted display strings.
+        """
+        # Parse and format detected_time if present
+        detected_time = signal_data.get('detected_time')
+        if detected_time and isinstance(detected_time, str):
+            try:
+                dt = datetime.fromisoformat(detected_time)
+                signal_data['detected_time'] = dt.strftime('%Y-%m-%d %H:%M')
+            except ValueError:
+                pass
+
+        # Parse and format triggered_at if present
+        triggered_at = signal_data.get('triggered_at')
+        if triggered_at and isinstance(triggered_at, str):
+            try:
+                dt = datetime.fromisoformat(triggered_at)
+                signal_data['triggered_at'] = dt.strftime('%Y-%m-%d %H:%M')
+            except ValueError:
+                pass
+
+        return signal_data
+
     def get_pending_signals(self) -> List[Dict]:
         """
         Get SETUP signals awaiting entry trigger.
@@ -67,6 +138,8 @@ class OptionsDataLoader:
             List of signal dictionaries ready for monitoring
         """
         try:
+            if self.use_remote:
+                return self._fetch_from_api('/signals/pending')
             signals = self.signal_store.get_setup_signals_for_monitoring()
             return [self._signal_to_dict(s) for s in signals]
         except Exception as e:
@@ -81,6 +154,8 @@ class OptionsDataLoader:
             List of signal dictionaries (all statuses except EXPIRED/CONVERTED)
         """
         try:
+            if self.use_remote:
+                return self._fetch_from_api('/signals/active')
             all_signals = self.signal_store.load_signals()
             active = [
                 s for s in all_signals.values()
@@ -101,6 +176,8 @@ class OptionsDataLoader:
             List of triggered signal dictionaries
         """
         try:
+            if self.use_remote:
+                return self._fetch_from_api('/signals/triggered')
             all_signals = self.signal_store.load_signals()
             triggered = [
                 s for s in all_signals.values()

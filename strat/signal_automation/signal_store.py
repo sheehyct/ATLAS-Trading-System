@@ -250,6 +250,15 @@ class SignalStore:
         else:
             logger.info(f"No existing signals file at {self.signals_file}")
 
+    def load_signals(self) -> Dict[str, StoredSignal]:
+        """
+        Get all signals from the store.
+
+        Returns:
+            Dictionary mapping signal_key to StoredSignal
+        """
+        return self._signals.copy()
+
     def _save(self) -> None:
         """Save signals to disk."""
         try:
