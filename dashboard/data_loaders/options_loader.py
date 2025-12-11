@@ -20,12 +20,26 @@ from datetime import datetime
 import requests
 
 from integrations.alpaca_trading_client import AlpacaTradingClient
-from strat.signal_automation.signal_store import SignalStore, StoredSignal
 
 logger = logging.getLogger(__name__)
 
 # VPS Signal API URL - set this for Railway deployments
 VPS_SIGNAL_API_URL = os.getenv('VPS_SIGNAL_API_URL', '')
+
+# Lazy import SignalStore only when needed (avoids numba dependency on Railway)
+SignalStore = None
+StoredSignal = None
+
+
+def _get_signal_store_classes():
+    """Lazy import SignalStore to avoid numba dependency on Railway."""
+    global SignalStore, StoredSignal
+    if SignalStore is None:
+        from strat.signal_automation.signal_store import SignalStore as SS
+        from strat.signal_automation.signal_store import StoredSignal as SSig
+        SignalStore = SS
+        StoredSignal = SSig
+    return SignalStore, StoredSignal
 
 
 class OptionsDataLoader:
@@ -54,7 +68,8 @@ class OptionsDataLoader:
             self.signal_store = None
         else:
             logger.info("OptionsDataLoader using local SignalStore")
-            self.signal_store = SignalStore()
+            SignalStoreClass, _ = _get_signal_store_classes()
+            self.signal_store = SignalStoreClass()
 
         # Try to connect to Alpaca on init
         try:
