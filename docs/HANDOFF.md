@@ -60,9 +60,15 @@ sudo journalctl -u atlas-daemon -f
 
 ### Session 83K-76 Priorities
 
-1. **Connect VPS to Dashboard** - Display VPS daemon status on dashboard
-2. **Monitor First Live Signals** - Watch for SETUP triggers during market hours
-3. **Add Discord Webhook to VPS** - Enable alert notifications
+1. **Connect Dashboard to VPS Signals (CRITICAL)**
+   - Dashboard options panel currently shows NO live data
+   - Need to create API endpoint on VPS to serve signals
+   - Update OptionsDataLoader to fetch from VPS instead of local files
+   - Architecture: VPS (178.156.223.251:5000) -> Railway Dashboard
+
+2. **Add Discord Webhook to VPS** - Enable alert notifications
+
+3. **Monitor First Live Signals** - Watch for SETUP triggers during market hours
 
 ### Plan Mode Recommendation
 
