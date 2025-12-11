@@ -1,9 +1,72 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 10, 2025 (Session 83K-74)
+**Last Updated:** December 11, 2025 (Session 83K-75)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Entry Monitoring LIVE
-**Status:** Contract selection fixed, daemon operational, ready for VPS deployment
+**Phase:** Paper Trading - VPS DEPLOYED
+**Status:** Signal daemon running on Hetzner VPS, dashboard options integration complete
+
+---
+
+## Session 83K-75: VPS Deployment + Dashboard Options Integration
+
+**Date:** December 11, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - VPS deployed, daemon running, dashboard integrated
+
+### VPS Deployment - COMPLETE
+
+| Component | Details |
+|-----------|---------|
+| Provider | Hetzner Cloud |
+| Plan | CPX21 (3 vCPU AMD, 4GB RAM, 80GB NVMe) |
+| Cost | $8.99/mo |
+| Location | Ashburn, VA (5-10ms to NYSE) |
+| IP | 178.156.223.251 |
+| OS | Ubuntu 24.04 |
+| Service | systemd (auto-restart, survives reboot) |
+
+**Deployment Steps Completed:**
+1. SSH key generation (ed25519)
+2. Hetzner server provisioning
+3. User setup (atlas) with sudo
+4. Python 3.12 + uv installation
+5. GitHub deploy key for private repo
+6. VectorBT Pro installation (via GitHub token)
+7. systemd service configuration
+8. Daemon running and scanning
+
+**VPS Commands:**
+```bash
+ssh atlas@178.156.223.251
+sudo systemctl status atlas-daemon
+sudo journalctl -u atlas-daemon -f
+```
+
+### Dashboard Options Integration - COMPLETE
+
+**Files Created:**
+- `dashboard/data_loaders/options_loader.py` - OptionsDataLoader class
+
+**Files Modified:**
+- `dashboard/data_loaders/__init__.py` - Added OptionsDataLoader export
+- `dashboard/components/options_panel.py` - Added callback targets, live data tables
+- `dashboard/app.py` - Added OptionsDataLoader init + callbacks
+
+**Features:**
+- Live signal display from signal_store
+- Live option positions from Alpaca API
+- Auto-refresh every 30 seconds
+- Count badges on panel headers
+
+### Session 83K-76 Priorities
+
+1. **Connect VPS to Dashboard** - Display VPS daemon status on dashboard
+2. **Monitor First Live Signals** - Watch for SETUP triggers during market hours
+3. **Add Discord Webhook to VPS** - Enable alert notifications
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Monitoring and minor integration work.
 
 ---
 

@@ -27,7 +27,7 @@ from typing import List, Dict, Any, Optional
 import pandas as pd
 import numpy as np
 
-from dashboard.config import COLORS, CHART_HEIGHT
+from dashboard.config import COLORS, CHART_HEIGHT, REFRESH_INTERVALS
 
 
 # ============================================
@@ -306,15 +306,15 @@ def create_options_panel():
         ], className='mb-4'),
 
         # ============================================
-        # ROW 2: Active Options Trades with Progress
+        # ROW 2: Pending STRAT Signals
         # ============================================
         dbc.Row([
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader([
-                        html.I(className='fas fa-list-ol me-2', style={'color': DARK_THEME['accent_blue']}),
-                        'Active Options Trades',
-                        dbc.Badge('3', color='success', className='ms-2')  # Trade count
+                        html.I(className='fas fa-crosshairs me-2', style={'color': DARK_THEME['accent_yellow']}),
+                        'Pending STRAT Signals',
+                        html.Span(id='options-signals-count', className='ms-2')
                     ], style={
                         'backgroundColor': DARK_THEME['card_header'],
                         'color': DARK_THEME['text_primary'],
@@ -322,8 +322,36 @@ def create_options_panel():
                         'borderBottom': f'1px solid {DARK_THEME["border"]}'
                     }),
                     dbc.CardBody([
-                        html.Div(id='active-options-trades', children=[
-                            _create_sample_trades_table()
+                        html.Div(id='options-signals-container', children=[
+                            _create_no_signals_placeholder()
+                        ])
+                    ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': '0'})
+                ], style={
+                    'backgroundColor': DARK_THEME['card_bg'],
+                    'border': f'1px solid {DARK_THEME["border"]}'
+                }, className='shadow')
+            ], width=12)
+        ], className='mb-4'),
+
+        # ============================================
+        # ROW 3: Live Option Positions
+        # ============================================
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.I(className='fas fa-list-ol me-2', style={'color': DARK_THEME['accent_blue']}),
+                        'Live Option Positions',
+                        html.Span(id='options-positions-count', className='ms-2')
+                    ], style={
+                        'backgroundColor': DARK_THEME['card_header'],
+                        'color': DARK_THEME['text_primary'],
+                        'fontWeight': 'bold',
+                        'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                    }),
+                    dbc.CardBody([
+                        html.Div(id='options-positions-container', children=[
+                            _create_no_positions_placeholder()
                         ])
                     ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': '0'})
                 ], style={
@@ -390,6 +418,14 @@ def create_options_panel():
         # Hidden storage for trade data
         dcc.Store(id='options-trades-store', data=[]),
 
+        # Auto-refresh interval for live data (30 seconds)
+        dcc.Interval(
+            id='options-refresh-interval',
+            interval=REFRESH_INTERVALS.get('live_positions', 30000),
+            n_intervals=0,
+            disabled=False
+        ),
+
     ], fluid=True, style={'backgroundColor': DARK_THEME['background']})
 
 
@@ -446,6 +482,262 @@ def _create_strat_signal_placeholder():
         ], style={'color': DARK_THEME['text_secondary'], 'fontSize': '0.9rem', 'marginBottom': '0'}),
 
     ], style={'padding': '0.5rem'})
+
+
+def _create_no_signals_placeholder():
+    """Create placeholder when no signals are available."""
+    return html.Div([
+        html.I(className='fas fa-satellite-dish fa-2x mb-3',
+               style={'color': DARK_THEME['text_muted']}),
+        html.P('No pending signals', style={
+            'color': DARK_THEME['text_muted'],
+            'marginBottom': '0.25rem'
+        }),
+        html.Small('Run signal_daemon.py scan-all to detect patterns',
+                   style={'color': DARK_THEME['text_muted']})
+    ], style={
+        'textAlign': 'center',
+        'padding': '2rem',
+        'backgroundColor': DARK_THEME['card_bg']
+    })
+
+
+def _create_no_positions_placeholder():
+    """Create placeholder when no positions are held."""
+    return html.Div([
+        html.I(className='fas fa-inbox fa-2x mb-3',
+               style={'color': DARK_THEME['text_muted']}),
+        html.P('No open positions', style={
+            'color': DARK_THEME['text_muted'],
+            'marginBottom': '0.25rem'
+        }),
+        html.Small('Options positions from Alpaca will appear here',
+                   style={'color': DARK_THEME['text_muted']})
+    ], style={
+        'textAlign': 'center',
+        'padding': '2rem',
+        'backgroundColor': DARK_THEME['card_bg']
+    })
+
+
+def create_signals_table(signals: List[Dict]) -> html.Table:
+    """
+    Create table displaying pending STRAT signals.
+
+    Args:
+        signals: List of signal dictionaries from OptionsDataLoader
+
+    Returns:
+        HTML table component
+    """
+    if not signals:
+        return _create_no_signals_placeholder()
+
+    rows = []
+    for signal in signals:
+        # Direction color
+        dir_color = DARK_THEME['accent_green'] if signal.get('direction') == 'CALL' else DARK_THEME['accent_red']
+
+        # Status badge color
+        status = signal.get('status', 'UNKNOWN')
+        if status in ('ALERTED', 'DETECTED'):
+            status_color = 'info'
+        elif status == 'TRIGGERED':
+            status_color = 'success'
+        elif status == 'HISTORICAL_TRIGGERED':
+            status_color = 'secondary'
+        else:
+            status_color = 'warning'
+
+        rows.append(
+            html.Tr([
+                # Symbol + Timeframe
+                html.Td([
+                    html.Div(signal.get('symbol', ''), style={
+                        'fontWeight': 'bold',
+                        'color': DARK_THEME['text_primary']
+                    }),
+                    html.Small(signal.get('timeframe', ''), style={
+                        'color': DARK_THEME['text_secondary']
+                    })
+                ], style={'padding': '0.75rem'}),
+
+                # Pattern
+                html.Td([
+                    dbc.Badge(signal.get('pattern', ''), color='dark',
+                              style={'fontSize': '0.85rem'})
+                ], style={'padding': '0.75rem'}),
+
+                # Direction
+                html.Td([
+                    html.Span(signal.get('direction', ''), style={
+                        'color': dir_color,
+                        'fontWeight': 'bold'
+                    })
+                ], style={'padding': '0.75rem'}),
+
+                # Entry Trigger
+                html.Td([
+                    html.Div(f"${signal.get('entry_trigger', 0):.2f}", style={
+                        'color': DARK_THEME['text_primary']
+                    })
+                ], style={'padding': '0.75rem'}),
+
+                # Target / Stop
+                html.Td([
+                    html.Span(f"${signal.get('target', 0):.2f}",
+                              style={'color': DARK_THEME['accent_green']}),
+                    html.Span(' / ', style={'color': DARK_THEME['text_muted']}),
+                    html.Span(f"${signal.get('stop', 0):.2f}",
+                              style={'color': DARK_THEME['accent_red']})
+                ], style={'padding': '0.75rem'}),
+
+                # Magnitude
+                html.Td([
+                    f"{signal.get('magnitude_pct', 0):.2f}%"
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['text_secondary']
+                }),
+
+                # R:R
+                html.Td([
+                    f"{signal.get('risk_reward', 0):.1f}"
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['accent_blue']
+                }),
+
+                # Status
+                html.Td([
+                    dbc.Badge(status, color=status_color)
+                ], style={'padding': '0.75rem'}),
+
+            ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
+        )
+
+    return html.Table([
+        html.Thead([
+            html.Tr([
+                html.Th('Symbol', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Pattern', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Dir', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Entry', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Target / Stop', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Mag', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('R:R', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Status', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+            ], style={'backgroundColor': DARK_THEME['card_header']})
+        ]),
+        html.Tbody(rows)
+    ], style={
+        'width': '100%',
+        'borderCollapse': 'collapse',
+        'backgroundColor': DARK_THEME['card_bg']
+    })
+
+
+def create_positions_table(positions: List[Dict]) -> html.Table:
+    """
+    Create table displaying live option positions.
+
+    Args:
+        positions: List of position dictionaries from Alpaca
+
+    Returns:
+        HTML table component
+    """
+    if not positions:
+        return _create_no_positions_placeholder()
+
+    rows = []
+    for pos in positions:
+        # P&L color
+        pnl = pos.get('unrealized_pl', 0)
+        pnl_pct = pos.get('unrealized_plpc', 0)
+        pnl_color = DARK_THEME['accent_green'] if pnl >= 0 else DARK_THEME['accent_red']
+
+        # Get display contract or parse OCC symbol
+        contract = pos.get('display_contract', pos.get('symbol', ''))
+
+        rows.append(
+            html.Tr([
+                # Contract
+                html.Td([
+                    html.Div(contract, style={
+                        'fontWeight': 'bold',
+                        'color': DARK_THEME['text_primary']
+                    }),
+                    html.Small(f"Qty: {pos.get('qty', 0)}", style={
+                        'color': DARK_THEME['text_secondary']
+                    })
+                ], style={'padding': '0.75rem'}),
+
+                # Entry Price
+                html.Td([
+                    f"${pos.get('avg_entry_price', 0):.2f}"
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['text_primary']
+                }),
+
+                # Current Price
+                html.Td([
+                    f"${pos.get('current_price', 0):.2f}"
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['text_primary']
+                }),
+
+                # Market Value
+                html.Td([
+                    f"${pos.get('market_value', 0):,.2f}"
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['text_secondary']
+                }),
+
+                # P&L
+                html.Td([
+                    html.Div(f"${pnl:+,.2f}", style={
+                        'color': pnl_color,
+                        'fontWeight': 'bold'
+                    }),
+                    html.Small(f"({pnl_pct:+.1f}%)", style={'color': pnl_color})
+                ], style={'padding': '0.75rem', 'textAlign': 'right'}),
+
+                # Actions
+                html.Td([
+                    dbc.Button(
+                        html.I(className='fas fa-times'),
+                        color='danger',
+                        size='sm',
+                        outline=True,
+                        title='Close Position',
+                        id={'type': 'close-position-btn', 'index': pos.get('symbol', '')}
+                    )
+                ], style={'padding': '0.75rem', 'textAlign': 'center'}),
+
+            ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
+        )
+
+    return html.Table([
+        html.Thead([
+            html.Tr([
+                html.Th('Contract', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Entry', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Current', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Value', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('P&L', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem', 'textAlign': 'right'}),
+                html.Th('Actions', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem', 'textAlign': 'center'}),
+            ], style={'backgroundColor': DARK_THEME['card_header']})
+        ]),
+        html.Tbody(rows)
+    ], style={
+        'width': '100%',
+        'borderCollapse': 'collapse',
+        'backgroundColor': DARK_THEME['card_bg']
+    })
 
 
 def _create_sample_trades_table():
@@ -1045,5 +1337,7 @@ __all__ = [
     'create_options_panel',
     'create_trade_progress_chart',
     'create_trade_progress_bar',
+    'create_signals_table',
+    'create_positions_table',
     'DARK_THEME'
 ]

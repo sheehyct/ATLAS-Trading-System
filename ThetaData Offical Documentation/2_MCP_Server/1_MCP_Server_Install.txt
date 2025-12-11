@@ -1,0 +1,56 @@
+MCP Server in Theta Data Terminal v3
+Theta Data now offers an MCP (Model Context Protocol) server so you can interact with Theta Terminal V3 from popular LLM CLIs (e.g., Gemini CLI, Claude CLI) using natural language.
+
+REQUIRED
+
+You must be running the latest version of the Theta Data v3 Terminal to use the MCP Server. You also need a subscription to use the MCP Server.
+
+Installation
+You can connect the Theta Data MCP server to supported LLM CLIs with a quick setup.
+
+Gemini CLI
+Install the Gemini CLI using npm install -g @google/gemini-cli.
+Run gemini once and complete authentication.
+Edit your Gemini CLI config file (~/.gemini/config.json) and add the following MCP Servers section:
+
+{
+    "mcpServers": {
+        "Theta Data": {
+            "url": "http://localhost:25503/mcp/sse",
+            "timeout": 30000
+        }
+    }
+}
+Claude CLI
+Install the Claude CLI using npm install -g @claude-ai/claude-cli.
+Run claude once and complete authentication.
+Run command claude mcp add --transport sse ThetaData http://localhost:25503/mcp/sse
+How to use the MCP Server
+Start up the Theta Terminal v3 so that the MCP Server is running.
+Open LLM CLI to connect to MCP Server.
+Verify that the LLM CLI is connected to the MCP Server. run the following inside your LLM cli /mcp to see if the MCP is ready/connected.
+Start making prompts to get data from Theta Terminal v3 into your LLM CLI.
+Examples
+Warning
+
+As all LLMs are different and constantly changing, this example might not work perfectly for you.
+
+You can now use natural language to make requests to Theta Terminal v3. For example, to make a request similar to http://localhost:25503/v3/option/history/greeks/eod?symbol=AAPL&right=C&strike=200.0&expiration=2025-08-01&start_date=2025-07-28&end_date=2025-08-01 you can enter the following prompt into your LLM CLI: Get the eod greek for last week for AAPL strike 200.00 CALL and expiration 2025-08-01. You can also add additional instructions to your prompts to get more insight on your request, such as, Put this in a table showing the delta change.
+
+Tips for better results
+Be explicit with symbol, expirations (YYYY-MM-DD), right (C/P), strikes (as a deceminal 200.00) and date ranges.
+Add formatting instructions to your prompts, such as, Put this in a table showing the delta change.
+For large results, narrow the range to specific dates or contract specific.
+Troubleshooting
+"Cannot connect" or timeouts
+Ensure the Theta Terminal v3 is running and the MCP Server has started.
+You may need to restart your LLM CLI after starting the Theta Terminal v3.
+Firewalls or VPNs may block port 25503.
+Gemini CLI isn't seeing the MCP Server
+Ensure the Theta Terminal v3 is running and the MCP Server has started.
+Double-check your Gemini CLI config file (~/.gemini/config.json) has the correct MCP Servers section here.
+Restart your Gemini CLI after starting the Theta Terminal v3.
+Claude CLI isn't seeing the MCP Server
+Ensure the Theta Terminal v3 is running and the MCP Server has started.
+Double-check that the Claude CLI has mcp server added here.
+Restart your Claude CLI after starting the Theta Terminal v3.

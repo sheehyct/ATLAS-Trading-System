@@ -31,7 +31,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import vectorbtpro as vbt
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -39,14 +39,20 @@ from pathlib import Path
 env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
-# Add project root to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add project root to path (MUST be before local imports)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, project_root)
+
+# Session 83K-53: VIX correlation analysis (import after path setup)
+from analysis.vix_data import fetch_vix_data, get_vix_at_date, categorize_vix, get_vix_bucket_name
 
 from strat.bar_classifier import StratBarClassifier, classify_bars
 from strat.pattern_detector import StratPatternDetector
 from strat.timeframe_continuity import TimeframeContinuityChecker, get_continuity_strength
 from strat.tier1_detector import Tier1Detector, Timeframe as T1Timeframe, PatternType
 from integrations.tiingo_data_fetcher import TiingoDataFetcher
+# Session 83K-53: Import expanded symbols for cross-instrument comparison
+from validation.strat_validator import EXPANDED_SYMBOLS, TICKER_CATEGORIES, get_ticker_category
 # ATLAS integration not used in initial validation (testing patterns alone first)
 # from strat.atlas_integration import filter_strat_signals
 
@@ -101,7 +107,16 @@ VALIDATION_CONFIG = {
     },
     'metrics': {
         'magnitude_window': 5,  # Bars to check for magnitude hit (patterns can take 1-5 bars)
-        'max_holding_bars': 30,  # Maximum bars to hold before considering failed
+        # Session 83K-64: Max holding reduced to match DTE (with 3-day exit buffer)
+        # Rationale: 90% of patterns hit magnitude in 1-5 bars anyway.
+        # DTE must >= max holding equivalent days to avoid option expiring before exit.
+        # Formula: max_holding = (DTE - 3 day buffer) converted to bars
+        'max_holding_bars': {
+            '1H': 28,   # 7 day DTE - 3 day buffer = 4 days = ~28 hourly bars
+            '1D': 18,   # 21 day DTE - 3 day buffer = 18 trading days
+            '1W': 4,    # 35 day DTE - 3 day buffer = ~4.5 weeks = 4 bars
+            '1M': 2,    # 75 day DTE - 3 day buffer = ~2.4 months = 2 bars
+        },
         'magnitude_hit_threshold': 0.50,  # 50% minimum hit rate (realistic per research)
         'risk_reward_threshold': 2.0,  # 2:1 minimum R:R for GO decision
         'min_pattern_count': 100  # Need 100+ patterns for statistical significance
@@ -1034,14 +1049,33 @@ class EquityValidationBacktest:
         end_date = self.config['backtest_period']['end']
         detection_timeframes = self.config['timeframes']['detection']
         continuity_timeframes = self.config['timeframes']['continuity_check']
-        max_holding_bars = self.config['metrics']['max_holding_bars']
+        # Session 83K-53: Timeframe-specific holding windows
+        max_holding_bars_config = self.config['metrics']['max_holding_bars']
 
         all_results = {}
 
+        # Session 83K-53: Fetch VIX data for entire date range (once for all timeframes)
+        try:
+            # Add buffer before start for lookback
+            vix_start = (pd.Timestamp(start_date) - pd.Timedelta(days=30)).strftime('%Y-%m-%d')
+            vix_end = (pd.Timestamp(end_date) + pd.Timedelta(days=7)).strftime('%Y-%m-%d')
+            vix_data = fetch_vix_data(vix_start, vix_end)
+            print(f"VIX data loaded: {len(vix_data)} days ({vix_data.index.min().date()} to {vix_data.index.max().date()})")
+        except Exception as e:
+            print(f"WARNING: Could not fetch VIX data: {e}")
+            print("Continuing without VIX analysis...")
+            vix_data = None
+
         # Run validation for each detection timeframe
         for detection_tf in detection_timeframes:
+            # Session 83K-53: Get timeframe-specific holding window
+            if isinstance(max_holding_bars_config, dict):
+                max_holding_bars = max_holding_bars_config.get(detection_tf, 30)
+            else:
+                max_holding_bars = max_holding_bars_config  # Backward compatibility
+
             print(f"\n{'='*80}")
-            print(f"DETECTION TIMEFRAME: {detection_tf}")
+            print(f"DETECTION TIMEFRAME: {detection_tf} (max_holding_bars: {max_holding_bars})")
             print(f"{'='*80}")
 
             all_patterns = []
@@ -1105,6 +1139,24 @@ class EquityValidationBacktest:
 
                     # Combine pattern + outcome
                     pattern_with_outcome = {**pattern, **outcome}
+
+                    # Session 83K-53: Add VIX data at entry date
+                    if vix_data is not None:
+                        entry_date = pattern.get('entry_date')
+                        if entry_date is not None:
+                            vix_value = get_vix_at_date(vix_data, pd.Timestamp(entry_date))
+                            pattern_with_outcome['vix_at_entry'] = vix_value
+                            pattern_with_outcome['vix_bucket'] = categorize_vix(vix_value)
+                            pattern_with_outcome['vix_bucket_name'] = get_vix_bucket_name(pattern_with_outcome['vix_bucket'])
+                        else:
+                            pattern_with_outcome['vix_at_entry'] = None
+                            pattern_with_outcome['vix_bucket'] = 0
+                            pattern_with_outcome['vix_bucket_name'] = 'UNKNOWN'
+                    else:
+                        pattern_with_outcome['vix_at_entry'] = None
+                        pattern_with_outcome['vix_bucket'] = 0
+                        pattern_with_outcome['vix_bucket_name'] = 'UNKNOWN'
+
                     all_patterns.append(pattern_with_outcome)
 
                 print(f" {len(patterns)} patterns")
@@ -1225,8 +1277,53 @@ class EquityValidationBacktest:
 
 
 def main():
-    """Run STRAT equity validation backtest."""
-    backtest = EquityValidationBacktest()
+    """
+    Run STRAT equity validation backtest.
+
+    Session 83K-53: Added CLI support for expanded universe.
+
+    Usage:
+        python scripts/backtest_strat_equity_validation.py                    # Default 50 stocks
+        python scripts/backtest_strat_equity_validation.py --universe expanded  # 16 ETFs/mega caps
+        python scripts/backtest_strat_equity_validation.py --universe index     # 4 index ETFs only
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description='STRAT Equity Validation Backtest')
+    parser.add_argument(
+        '--universe',
+        type=str,
+        choices=['default', 'expanded', 'index', 'sector'],
+        default='default',
+        help='Symbol universe: default (50 stocks), expanded (16 ETFs/mega caps), index (4 ETFs), sector (4 sector ETFs)'
+    )
+    args = parser.parse_args()
+
+    # Select symbols based on universe choice
+    if args.universe == 'expanded':
+        symbols = EXPANDED_SYMBOLS
+        print(f"[INFO] Using EXPANDED universe: {len(symbols)} symbols")
+    elif args.universe == 'index':
+        symbols = TICKER_CATEGORIES['index_etf']
+        print(f"[INFO] Using INDEX universe: {symbols}")
+    elif args.universe == 'sector':
+        symbols = TICKER_CATEGORIES['sector_etf']
+        print(f"[INFO] Using SECTOR universe: {symbols}")
+    else:
+        symbols = None  # Use default from VALIDATION_CONFIG
+        print("[INFO] Using DEFAULT universe (50 stocks)")
+
+    # Create config with selected symbols
+    if symbols:
+        config = VALIDATION_CONFIG.copy()
+        config['stock_universe'] = {
+            'symbols': symbols,
+            'count': len(symbols),
+        }
+        backtest = EquityValidationBacktest(config)
+    else:
+        backtest = EquityValidationBacktest()
+
     results = backtest.run_validation()
 
     return results

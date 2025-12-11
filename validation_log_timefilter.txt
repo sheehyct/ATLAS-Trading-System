@@ -1,0 +1,101 @@
+2025-12-04 10:32:35,047 - thetadata_client - INFO - Connected to ThetaData terminal v3 at localhost:25503
+[INFO] NVDA auto-excluded (pre-split strike data issues). Use --include-nvda to override.
+
+======================================================================
+ATLAS STRAT VALIDATION - Session 83K
+======================================================================
+Start Time: 2025-12-04 10:32:34
+
+Validation Matrix:
+  Patterns:   3-1-2, 2-1-2, 2-2, 3-2, 3-2-2
+  Timeframes: 1H, 1D, 1W, 1M
+  Symbols:    SPY, QQQ, AAPL, IWM, DIA, NVDA
+  Total Runs: 120
+
+ThetaData Standard Tier:
+  - Historical quotes (bid/ask)
+  - Greeks 1st Order (delta, theta, vega, rho)
+  - Implied volatility
+  - 8 years of data
+======================================================================
+
+[INFO] Holdout mode enabled (70/30 train/test split)
+       Recommended for sparse pattern strategies like STRAT.
+Verifying ThetaData connection...
+2025-12-04 10:32:35,047 | INFO     | thetadata_client | Connected to ThetaData terminal v3 at localhost:25503
+2025-12-04 10:32:35,047 | INFO     | validation.strat_validator | ThetaData connected on localhost:25503
+2025-12-04 10:32:35,503 | INFO     | validation.strat_validator | Quotes endpoint: AVAILABLE
+2025-12-04 10:32:35,589 | INFO     | validation.strat_validator | Greeks endpoint: AVAILABLE
+2025-12-04 10:32:35,826 - thetadata_client - INFO - Connected to ThetaData terminal v3 at localhost:25503
+2025-12-04 10:32:35,826 | INFO     | thetadata_client | Connected to ThetaData terminal v3 at localhost:25503
+
+ThetaData Status:
+  Connected:        True
+  Quotes Available: True
+  Greeks Available: True
+  Symbols OK:       SPY, QQQ, AAPL, IWM, DIA, NVDA
+
+
+Starting full validation...
+
+2025-12-04 10:32:35,827 | INFO     | validation.strat_validator | ============================================================
+2025-12-04 10:32:35,827 | INFO     | validation.strat_validator | ATLAS STRAT FULL VALIDATION
+2025-12-04 10:32:35,827 | INFO     | validation.strat_validator | ============================================================
+2025-12-04 10:32:35,827 | INFO     | validation.strat_validator | Patterns: ['3-1-2', '2-1-2', '2-2', '3-2', '3-2-2']
+2025-12-04 10:32:35,827 | INFO     | validation.strat_validator | Timeframes: ['1H', '1D', '1W', '1M']
+2025-12-04 10:32:35,827 | INFO     | validation.strat_validator | Symbols: ['SPY', 'QQQ', 'AAPL', 'IWM', 'DIA', 'NVDA']
+2025-12-04 10:32:35,827 | INFO     | validation.strat_validator | Total runs: 120
+2025-12-04 10:32:35,921 - thetadata_client - INFO - Connected to ThetaData terminal v3 at localhost:25503
+2025-12-04 10:32:35,921 | INFO     | thetadata_client | Connected to ThetaData terminal v3 at localhost:25503
+2025-12-04 10:32:35,921 | INFO     | validation.strat_validator | ThetaData connected on localhost:25503
+2025-12-04 10:32:36,264 | INFO     | validation.strat_validator | Quotes endpoint: AVAILABLE
+2025-12-04 10:32:36,296 | INFO     | validation.strat_validator | Greeks endpoint: AVAILABLE
+2025-12-04 10:32:36,521 - thetadata_client - INFO - Connected to ThetaData terminal v3 at localhost:25503
+2025-12-04 10:32:36,521 | INFO     | thetadata_client | Connected to ThetaData terminal v3 at localhost:25503
+2025-12-04 10:32:36,522 | INFO     | validation.strat_validator | ThetaData: Quotes=True, Greeks=True
+2025-12-04 10:32:36,522 | INFO     | validation.strat_validator | 
+--- Batch: 3-1-2 ---
+2025-12-04 10:32:36,522 | INFO     | validation.strat_validator | Running: 3-1-2_1H_SPY
+2025-12-04 10:32:36,907 | DEBUG    | validation.strat_validator | Market hours filter: 5124 -> 5124 bars (0 extended hours bars removed)
+2025-12-04 10:32:37,005 | DEBUG    | validation.strat_validator | ThetaData fetcher wired to 3-1-2_1H_SPY backtester
+2025-12-04 10:32:37,006 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 3-1-2_1H_SPY
+2025-12-04 10:32:37,006 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_3-1-2_1H_SPY
+2025-12-04 10:32:37,858 | INFO     | validation.walk_forward | Starting walk-forward validation: 5124 bars
+2025-12-04 10:32:37,858 | INFO     | validation.walk_forward | Holdout mode: 70% train (3586 bars), 30% test (1538 bars)
+2025-12-04 10:32:37,858 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-04 10:32:37,985 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=0.44, OOS Sharpe=0.00, Degradation=100.0%
+2025-12-04 10:32:37,985 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-04 10:32:37,985 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-04 10:32:37,985 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 4 trades, 10000 iterations
+2025-12-04 10:32:37,985 | WARNING  | validation.monte_carlo | Insufficient trades (4) for Monte Carlo
+2025-12-04 10:32:37,985 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-04 10:32:38,003 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-04 10:32:38,003 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-04 10:32:38,003 | INFO     | validation.validation_runner | Validation completed in 1.00s - FAILED
+2025-12-04 10:32:38,062 | DEBUG    | validation.strat_validator | Exported 4 trades to validation_results\session_83k_hourly_timefilter\trades\3-1-2_1H_SPY_trades.csv
+2025-12-04 10:32:38,062 | INFO     | validation.strat_validator |   3-1-2_1H_SPY: FAILED (4 trades, 1.5s, ThetaData: 100%)
+2025-12-04 10:32:38,062 | INFO     | validation.strat_validator | Running: 3-1-2_1H_QQQ
+2025-12-04 10:32:38,073 | DEBUG    | validation.strat_validator | Market hours filter: 5124 -> 5124 bars (0 extended hours bars removed)
+2025-12-04 10:32:38,073 | DEBUG    | validation.strat_validator | ThetaData fetcher wired to 3-1-2_1H_QQQ backtester
+2025-12-04 10:32:38,073 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 3-1-2_1H_QQQ
+2025-12-04 10:32:38,073 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_3-1-2_1H_QQQ
+2025-12-04 10:32:38,204 | INFO     | validation.walk_forward | Starting walk-forward validation: 5124 bars
+2025-12-04 10:32:38,205 | INFO     | validation.walk_forward | Holdout mode: 70% train (3586 bars), 30% test (1538 bars)
+2025-12-04 10:32:38,205 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-04 10:32:38,402 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=-2.65, OOS Sharpe=0.00, Degradation=100.0%
+2025-12-04 10:32:38,402 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-04 10:32:38,402 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-04 10:32:38,402 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 6 trades, 10000 iterations
+2025-12-04 10:32:38,402 | INFO     | validation.monte_carlo | Original metrics: Sharpe=-1.56, MaxDD=14.7%
+2025-12-04 10:32:38,429 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-04 10:32:38,456 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-04 10:32:38,486 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-04 10:32:38,514 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-04 10:32:38,540 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-04 10:32:38,568 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-04 10:32:38,595 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-04 10:32:38,621 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-04 10:32:38,647 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-04 10:32:38,675 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-04 10:32:38,677 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-04 10:32:38,677 | INFO     | validation.validation_runner | Monte Carlo: FAILED

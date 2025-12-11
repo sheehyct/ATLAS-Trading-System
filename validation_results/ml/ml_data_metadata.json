@@ -1,0 +1,67 @@
+{
+  "created": "2025-12-04T15:16:29.538226",
+  "session": "83K-40",
+  "patterns": [
+    "2-2",
+    "3-2"
+  ],
+  "timeframes": [
+    "1D",
+    "1W",
+    "1M"
+  ],
+  "total_trades": 1095,
+  "train_trades": 652,
+  "val_trades": 213,
+  "test_trades": 218,
+  "train_metrics": {
+    "n_trades": 652,
+    "total_pnl": 402360.6524935299,
+    "avg_pnl": 617.1175651741256,
+    "win_rate": 65.03067484662577,
+    "avg_delta": 0.4984014686637284,
+    "target_rate": 64.7239263803681,
+    "stop_rate": 35.2760736196319,
+    "sharpe": 3.9729639003902344
+  },
+  "vix_date_range": [
+    "2019-12-09",
+    "2025-12-02"
+  ],
+  "features": [
+    "pnl",
+    "pnl_pct",
+    "entry_date",
+    "exit_date",
+    "days_held",
+    "pattern_type",
+    "exit_type",
+    "symbol",
+    "direction",
+    "pattern_timestamp",
+    "entry_price",
+    "exit_price",
+    "stop_price",
+    "target_price",
+    "strike",
+    "option_type",
+    "entry_delta",
+    "exit_delta",
+    "validation_passed",
+    "data_source",
+    "magnitude_pct",
+    "timeframe",
+    "source_file",
+    "timeframe_encoded",
+    "pattern_base",
+    "pattern_encoded",
+    "symbol_encoded",
+    "day_of_week",
+    "vix_close",
+    "vix_bucket",
+    "win",
+    "target_hit",
+    "stop_hit",
+    "delta_bucket"
+  ]
+}

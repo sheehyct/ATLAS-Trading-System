@@ -1,0 +1,202 @@
+[
+  {
+    "run_id": "3-1-2_1H_SPY",
+    "pattern": "3-1-2",
+    "timeframe": "1H",
+    "symbol": "SPY",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.805003"
+  },
+  {
+    "run_id": "3-1-2_1H_QQQ",
+    "pattern": "3-1-2",
+    "timeframe": "1H",
+    "symbol": "QQQ",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.818004"
+  },
+  {
+    "run_id": "3-1-2_1H_AAPL",
+    "pattern": "3-1-2",
+    "timeframe": "1H",
+    "symbol": "AAPL",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.828005"
+  },
+  {
+    "run_id": "3-1-2_1H_IWM",
+    "pattern": "3-1-2",
+    "timeframe": "1H",
+    "symbol": "IWM",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.841003"
+  },
+  {
+    "run_id": "3-1-2_1H_DIA",
+    "pattern": "3-1-2",
+    "timeframe": "1H",
+    "symbol": "DIA",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.852004"
+  },
+  {
+    "run_id": "2-1-2_1H_SPY",
+    "pattern": "2-1-2",
+    "timeframe": "1H",
+    "symbol": "SPY",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.856004"
+  },
+  {
+    "run_id": "2-1-2_1H_QQQ",
+    "pattern": "2-1-2",
+    "timeframe": "1H",
+    "symbol": "QQQ",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.857003"
+  },
+  {
+    "run_id": "2-1-2_1H_AAPL",
+    "pattern": "2-1-2",
+    "timeframe": "1H",
+    "symbol": "AAPL",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.858004"
+  },
+  {
+    "run_id": "2-1-2_1H_IWM",
+    "pattern": "2-1-2",
+    "timeframe": "1H",
+    "symbol": "IWM",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.860008"
+  },
+  {
+    "run_id": "2-1-2_1H_DIA",
+    "pattern": "2-1-2",
+    "timeframe": "1H",
+    "symbol": "DIA",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.861008"
+  },
+  {
+    "run_id": "2-2_1H_SPY",
+    "pattern": "2-2",
+    "timeframe": "1H",
+    "symbol": "SPY",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.863008"
+  },
+  {
+    "run_id": "2-2_1H_QQQ",
+    "pattern": "2-2",
+    "timeframe": "1H",
+    "symbol": "QQQ",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.864009"
+  },
+  {
+    "run_id": "2-2_1H_AAPL",
+    "pattern": "2-2",
+    "timeframe": "1H",
+    "symbol": "AAPL",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.866011"
+  },
+  {
+    "run_id": "2-2_1H_IWM",
+    "pattern": "2-2",
+    "timeframe": "1H",
+    "symbol": "IWM",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.867009"
+  },
+  {
+    "run_id": "2-2_1H_DIA",
+    "pattern": "2-2",
+    "timeframe": "1H",
+    "symbol": "DIA",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.869008"
+  },
+  {
+    "run_id": "3-2_1H_SPY",
+    "pattern": "3-2",
+    "timeframe": "1H",
+    "symbol": "SPY",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.872007"
+  },
+  {
+    "run_id": "3-2_1H_QQQ",
+    "pattern": "3-2",
+    "timeframe": "1H",
+    "symbol": "QQQ",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.873007"
+  },
+  {
+    "run_id": "3-2_1H_AAPL",
+    "pattern": "3-2",
+    "timeframe": "1H",
+    "symbol": "AAPL",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.874512"
+  },
+  {
+    "run_id": "3-2_1H_IWM",
+    "pattern": "3-2",
+    "timeframe": "1H",
+    "symbol": "IWM",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.875516"
+  },
+  {
+    "run_id": "3-2_1H_DIA",
+    "pattern": "3-2",
+    "timeframe": "1H",
+    "symbol": "DIA",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.876516"
+  },
+  {
+    "run_id": "3-2-2_1H_SPY",
+    "pattern": "3-2-2",
+    "timeframe": "1H",
+    "symbol": "SPY",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.879279"
+  },
+  {
+    "run_id": "3-2-2_1H_QQQ",
+    "pattern": "3-2-2",
+    "timeframe": "1H",
+    "symbol": "QQQ",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.880834"
+  },
+  {
+    "run_id": "3-2-2_1H_AAPL",
+    "pattern": "3-2-2",
+    "timeframe": "1H",
+    "symbol": "AAPL",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.882409"
+  },
+  {
+    "run_id": "3-2-2_1H_IWM",
+    "pattern": "3-2-2",
+    "timeframe": "1H",
+    "symbol": "IWM",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.883449"
+  },
+  {
+    "run_id": "3-2-2_1H_DIA",
+    "pattern": "3-2-2",
+    "timeframe": "1H",
+    "symbol": "DIA",
+    "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+    "timestamp": "2025-12-04T08:49:32.884997"
+  }
+]

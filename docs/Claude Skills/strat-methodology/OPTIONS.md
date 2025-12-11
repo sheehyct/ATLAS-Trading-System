@@ -14,6 +14,7 @@
 5. [Position Sizing for Options](#5-position-sizing-for-options)
 6. [Liquidity Requirements](#6-liquidity-requirements)
 7. [Cheap Options Strategy](#7-cheap-options-strategy)
+8. [Hourly Timeframe Requirements (CRITICAL)](#8-hourly-timeframe-requirements-critical)
 
 ---
 
@@ -400,9 +401,13 @@ def evaluate_vega_risk(pattern_type, current_iv, historical_iv, vega):
 
 | Pattern TF | Expected Duration | Minimum DTE | Recommended DTE |
 |------------|-------------------|-------------|-----------------|
+| **Monthly** | 2-8 weeks | 45 DTE | 60-90 DTE |
+| **Weekly** | 5-15 days | 21 DTE | 30-45 DTE |
 | **Daily** | 3-7 days | 7 DTE | 14-30 DTE |
 | **60min** | 1-3 days | 3 DTE | 7-14 DTE |
 | **15min** | 0-1 day | 1 DTE | 2-7 DTE |
+
+> ⚠️ **PENDING VALIDATION:** Weekly/Monthly DTE recommendations are preliminary. Optimal values require validation of days-to-magnitude metrics per pattern.
 
 ---
 
@@ -414,23 +419,25 @@ def select_expiration(pattern_tf, pattern_quality, available_expirations):
     Select optimal expiration for STRAT pattern.
     
     Args:
-        pattern_tf: 'daily', '60min', '15min'
+        pattern_tf: 'monthly', 'weekly', 'daily', '60min', '15min'
         pattern_quality: Quality score (0-15)
         available_expirations: List of available DTE values
     
     Returns:
         (selected_dte, rationale)
     """
-    # Base DTE by timeframe
-    if pattern_tf == 'daily':
-        min_dte = 7
-        optimal_dte = 21
-    elif pattern_tf == '60min':
-        min_dte = 3
-        optimal_dte = 10
-    else:  # 15min
-        min_dte = 1
-        optimal_dte = 5
+    # Base DTE by timeframe (weekly/monthly values PENDING VALIDATION)
+    tf_params = {
+        'monthly': {'min_dte': 45, 'optimal_dte': 75},   # PENDING VALIDATION
+        'weekly': {'min_dte': 21, 'optimal_dte': 35},    # PENDING VALIDATION
+        'daily': {'min_dte': 7, 'optimal_dte': 21},
+        '60min': {'min_dte': 3, 'optimal_dte': 10},
+        '15min': {'min_dte': 1, 'optimal_dte': 5}
+    }
+    
+    params = tf_params.get(pattern_tf, tf_params['daily'])
+    min_dte = params['min_dte']
+    optimal_dte = params['optimal_dte']
     
     # Adjust for quality
     if pattern_quality >= 10:  # A+
@@ -466,6 +473,17 @@ def select_expiration(pattern_tf, pattern_quality, available_expirations):
 - Daily patterns
 - Longer-term targets (5-10 days)
 - Lower conviction trades
+
+**LEAPS/Long-Dated Options (45+ DTE) - For Weekly/Monthly STRAT Patterns:**
+
+> ⚠️ **PENDING VALIDATION:** LEAPS selection for weekly/monthly patterns requires validation of days-to-magnitude metrics.
+
+Preliminary guidance:
+- Weekly pattern: Consider 30-60 DTE options
+- Monthly pattern: Consider 60-120 DTE options  
+- Use lower delta (0.40-0.60) to reduce capital requirement
+- Higher timeframe = more time for thesis to play out
+- Consider quarterly expirations for monthly patterns
 
 ---
 
@@ -797,6 +815,212 @@ Management:
 - **Profit target:** 50-100% ROI (quick exit)
 - **Time decay:** Extreme - must hit target fast
 - **Exit:** 3:45 PM latest (no overnight hold)
+
+---
+
+## 8. Hourly Timeframe Requirements (CRITICAL)
+
+### Bar Alignment Requirement
+
+**CRITICAL:** Hourly bars MUST be market-open-aligned, NOT clock-aligned.
+
+| Alignment Type | Bars | Status |
+|---------------|------|--------|
+| **Clock-aligned** | 10:00, 11:00, 12:00 | WRONG - DO NOT USE |
+| **Market-open-aligned** | 09:30, 10:30, 11:30 | CORRECT - REQUIRED |
+
+**Why This Matters:**
+
+STRAT time rules for hourly patterns:
+- **2-2 patterns:** First valid entry at 10:30 ET (need 2 bars after open)
+- **3-bar patterns (3-1-2, 3-2, 3-2-2):** First valid entry at 11:30 ET (need 3 bars after open)
+
+Clock-aligned bars (10:00, 11:00) cause pattern detection on WRONG bars = invalid signals.
+
+---
+
+### Session 83K-34 Discovery
+
+**Problem Found:**
+- Alpaca '1Hour' timeframe returns clock-aligned bars (10:00, 11:00, 12:00)
+- ALL hourly validation data using default '1Hour' was INVALID
+- Result: Hourly was LOSING money (-$46,299 over 442 trades)
+
+**Solution Applied:**
+- Fetch minute data, resample with 30-minute offset
+- Result: Bars at 09:30, 10:30, 11:30 (market-open-aligned)
+- Hourly became PROFITABLE (+$70,045 over 1,009 trades)
+
+---
+
+### Implementation Reference
+
+**Location:** `validation/strat_validator.py` method `_fetch_hourly_market_aligned()`
+
+```python
+# Fetch minute data
+data = vbt.AlpacaData.pull(
+    symbols=symbol,
+    timeframe='1Min',
+    tz='America/New_York',
+    adjustment='split'
+)
+
+# Resample with 30-minute offset for market-open alignment
+resampled = df.resample('1h', offset='30min').agg(ohlc_map)
+
+# Result: Bars at 09:30, 10:30, 11:30, etc.
+```
+
+---
+
+### Hourly Trading Rules Summary
+
+| Rule | Value | Rationale |
+|------|-------|-----------|
+| 2-2 first entry | NOT before 10:30 ET | Need 2 bars after 09:30 open |
+| 3-bar first entry | NOT before 11:30 ET | Need 3 bars after 09:30 open |
+| Position close | By 15:30 ET | No overnight holds |
+| Target delta | 0.35-0.50 (OTM) | Minimal theta on same-day trades |
+| DTE | 0-7 days | Weekly/0DTE preferred |
+
+---
+
+## 9. Production Trading Rules (Session 83K Validated)
+
+### Timeframe Hierarchy
+
+Higher timeframes = higher average P&L per trade:
+
+| Timeframe | Avg P&L | vs Daily | Recommendation |
+|-----------|---------|----------|----------------|
+| Monthly | $2,505 | 12.5x | PREFERRED (highest P&L per trade) |
+| Weekly | $1,086 | 5.4x | PREFERRED (5x daily returns) |
+| Daily | $201 | 1.0x | BASELINE |
+| Hourly | $69 | 0.3x | USE SELECTIVELY (lower returns, faster trades) |
+
+---
+
+### Pattern Selection by Timeframe
+
+**Validated Performance (Session 83K-35):**
+
+| Pattern | Daily | Weekly | Monthly | Hourly |
+|---------|-------|--------|---------|--------|
+| 3-2 | $336 avg (BEST) | $1,767 avg | $3,162 avg | $160 avg (BEST) |
+| 2-2 | $222 avg | $765 avg | $2,820 avg | -$6 avg (BREAKEVEN) |
+| 3-2-2 | $241 avg | $1,597 avg | $2,804 avg | $91 avg |
+| 3-1-2 | -$43 avg | $271 avg | $1,918 avg | $58 avg |
+| 2-1-2 | -$42 avg | $418 avg | $257 avg | -$54 avg (WEAK) |
+
+**Pattern Recommendations:**
+
+| Pattern | Hourly | Daily | Weekly | Monthly |
+|---------|--------|-------|--------|---------|
+| 3-2 | YES | YES | YES | YES |
+| 2-2 | FILTER (>1.0% mag) | YES | YES | YES |
+| 3-2-2 | YES | YES | YES | YES |
+| 3-1-2 | SPARSE | MIXED | OK | OK |
+| 2-1-2 | SKIP | SKIP | OK | OK |
+
+---
+
+### Magnitude Filters
+
+**Global Minimum:** 0.5% (implemented in options_module.py)
+
+**Magnitude Profitability (1,764 trades validated):**
+
+| Threshold | Daily P&L | Weekly P&L | Action |
+|-----------|-----------|------------|--------|
+| < 0.3% | -$175 | -$243 | SKIP |
+| 0.3-0.5% | +$40 | -$182 | SKIP |
+| 0.5-1.0% | +$177 | +$248 | TRADE |
+| 1.0-2.0% | +$241 | +$553 | TRADE |
+| > 2.0% | +$484+ | +$1,056+ | BEST |
+
+**Hourly 2-2 Special Rule:**
+- Increase minimum to 1.0% for hourly 2-2 patterns
+- Reason: 2-2 has only 0.65% avg magnitude on hourly vs 1.06% for 3-2
+- Result: 2-2 loses money on TIME_EXIT (-$331 avg) vs 3-2 gains (+$68 avg)
+
+---
+
+### Delta/Strike Rules by Timeframe
+
+| Timeframe | Hold Period | Target Delta | Delta Range | Rationale |
+|-----------|-------------|--------------|-------------|-----------|
+| Hourly | Same-day | 0.45 | 0.35-0.50 (OTM) | Minimal theta on same-day close |
+| Daily | 3-7 days | 0.65 | 0.50-0.80 (ITM) | Balance probability and theta |
+| Weekly | 5-15 days | 0.65 | 0.50-0.80 (ITM) | Theta decay is primary concern |
+| Monthly | 2-8 weeks | 0.65 | 0.50-0.75 (ITM) | More time for thesis |
+
+---
+
+### DTE Selection Rules
+
+| Timeframe | Min DTE | Optimal DTE | Max DTE |
+|-----------|---------|-------------|---------|
+| Hourly | 0 (0DTE) | 3 days | 7 days |
+| Daily | 7 days | 21 days | 45 days |
+| Weekly | 21 days | 35 days | 60 days |
+| Monthly | 45 days | 75 days | 120 days |
+
+---
+
+### Hourly-Specific Time Rules
+
+| Rule | Value | Rationale |
+|------|-------|-----------|
+| 2-2 first entry | NOT before 10:30 ET | Need 2 bars after 09:30 open |
+| 3-bar first entry | NOT before 11:30 ET | Need 3 bars after 09:30 open |
+| Last entry | By 14:30 ET | Allow time for exit |
+| Forced exit | By 15:30 ET | No overnight holds |
+
+---
+
+### Risk Management Rules
+
+**Position Sizing:**
+- Maximum 1-2% risk per trade
+- Maximum 20% total account in options
+
+**Options vs Equity:**
+- Options risk = 50% of equity risk
+- Example: 1% equity risk = 0.5% options risk
+
+**Quality Multipliers:**
+| Quality Score | Position Size |
+|---------------|---------------|
+| A+ (10-15) | 100% |
+| A (7-9) | 75% |
+| B (5-6) | 50% |
+| C (3-4) | 25% or SKIP |
+
+---
+
+### Implementation Summary
+
+**Production-Ready Configuration:**
+```python
+# options_module.py defaults (validated)
+min_magnitude_pct = 0.5        # Global minimum
+target_delta = 0.65            # Daily/Weekly/Monthly
+delta_range = (0.50, 0.80)     # ITM focus
+default_dte_hourly = 3
+default_dte_daily = 21
+default_dte_weekly = 35
+default_dte_monthly = 75
+
+# Hourly-specific (OTM focus for same-day close)
+hourly_config = {
+    'first_entry_22': '10:30',
+    'first_entry_3bar': '11:30',
+    'last_exit': '15:30',
+    'target_delta': 0.45,
+    'delta_range': (0.35, 0.50),
+}
+```
 
 ---
 

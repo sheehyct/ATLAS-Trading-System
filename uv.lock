@@ -176,6 +176,18 @@ wheels = [
 ]
 
 [[package]]
+name = "apscheduler"
+version = "3.11.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzlocal" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/81/192db4f8471de5bc1f0d098783decffb1e6e69c4f8b4bc6711094691950b/apscheduler-3.11.1.tar.gz", hash = "sha256:0db77af6400c84d1747fe98a04b8b58f0080c77d11d338c4f507a9752880f221", size = 108044, upload-time = "2025-10-31T18:55:42.819Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/9f/d3c76f76c73fcc959d28e9def45b8b1cc3d7722660c5003b19c1022fd7f4/apscheduler-3.11.1-py3-none-any.whl", hash = "sha256:6162cb5683cb09923654fa9bdd3130c4be4bfda6ad8990971c9597ecd52965d2", size = 64278, upload-time = "2025-10-31T18:55:41.186Z" },
+]
+
+[[package]]
 name = "argon2-cffi"
 version = "25.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4004,6 +4016,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "alpaca-py" },
     { name = "alpaca-trade-api" },
+    { name = "apscheduler" },
     { name = "bm25s" },
     { name = "dash" },
     { name = "dash-bootstrap-components" },
@@ -4062,6 +4075,7 @@ dev = [
 requires-dist = [
     { name = "alpaca-py", specifier = ">=0.42.0" },
     { name = "alpaca-trade-api", specifier = ">=3.2.0" },
+    { name = "apscheduler", specifier = ">=3.10.0" },
     { name = "bm25s", specifier = ">=0.2.14" },
     { name = "dash", specifier = ">=2.14.0" },
     { name = "dash-bootstrap-components", specifier = ">=1.5.0" },

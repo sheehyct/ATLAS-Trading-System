@@ -1,0 +1,167 @@
+PINE_SCRIPT_TEMPLATE = """
+// ============================================================================
+// ATLAS Regime Detection - TradingView Pine Script v6
+// ============================================================================
+// Import Instructions:
+// 1. Save this code as a new Pine Script indicator in TradingView
+// 2. Import your CSV file using Chart → Import
+// 3. The indicator will read the 'regime' column and color the background
+// ============================================================================
+
+//@version=6
+indicator("ATLAS Regime Detection", overlay=true)
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+// Color settings (matching Python visualizations)
+colorCrash = color.new(#DC3545, 85)      // Red (15% opacity)
+colorBear = color.new(#FD7E14, 88)       // Orange (12% opacity)
+colorNeutral = color.new(#6C757D, 92)    // Gray (8% opacity)
+colorBull = color.new(#28A745, 85)       // Green (15% opacity)
+
+// Marker settings
+showVixMarkers = input.bool(true, "Show VIX Spike Markers")
+vixThreshold1d = input.float(0.20, "VIX 1-Day Threshold (%)", step=0.01)
+vixThreshold3d = input.float(0.50, "VIX 3-Day Threshold (%)", step=0.01)
+
+// ============================================================================
+// DATA IMPORT
+// ============================================================================
+
+// NOTE: After importing your CSV, TradingView creates a custom ticker
+// Replace "IMPORTED_DATA" below with your actual imported data ticker
+// Example: If you imported SPY_regimes_tradingview.csv,
+// it might be named "USER:SPY_REGIMES" or similar
+
+// Get regime data from imported CSV
+// IMPORTANT: Update this line to match your imported data ticker name
+regimeData = request.security("IMPORTED_DATA", timeframe.period, close[6])  // Regime is column 6
+
+// If using TradingView's custom data import, the regime value will be in a specific column
+// Adjust the column index based on your CSV structure:
+// Column 0: time
+// Column 1: open
+// Column 2: high
+// Column 3: low
+// Column 4: close
+// Column 5: volume
+// Column 6: regime  <-- This is what we want
+
+// ============================================================================
+// VIX FLASH CRASH DETECTION (Optional - Real-time)
+// ============================================================================
+
+vixClose = request.security("VIX", timeframe.period, close)
+vixChange1d = ta.change(vixClose) / vixClose[1]
+vixChange3d = (vixClose - vixClose[3]) / vixClose[3]
+vixSpike = (vixChange1d > vixThreshold1d) or (vixChange3d > vixThreshold3d)
+
+// ============================================================================
+// REGIME BACKGROUND COLORING
+// ============================================================================
+
+regimeColor = regimeData == 0 ? colorCrash :      // CRASH
+              regimeData == 1 ? colorBear :        // BEAR
+              regimeData == 2 ? colorNeutral :     // NEUTRAL
+              colorBull                             // BULL
+
+bgcolor(regimeColor, title="Regime Background")
+
+// ============================================================================
+// VIX SPIKE MARKERS
+// ============================================================================
+
+plotshape(
+    showVixMarkers and vixSpike,
+    style=shape.xcross,
+    location=location.abovebar,
+    color=color.new(#DC3545, 0),
+    size=size.small,
+    title="VIX Flash Crash"
+)
+
+// ============================================================================
+// REGIME LEGEND
+// ============================================================================
+
+var table legend = table.new(position.top_right, 2, 5,
+                              border_width=1,
+                              border_color=color.gray)
+
+if barstate.islast
+    // Header
+    table.cell(legend, 0, 0, "ATLAS",
+               bgcolor=color.new(color.white, 0),
+               text_color=color.black,
+               text_size=size.normal)
+
+    // Regime labels
+    table.cell(legend, 0, 1, "CRASH",
+               bgcolor=color.new(#DC3545, 70),
+               text_color=color.white,
+               text_size=size.small)
+    table.cell(legend, 0, 2, "BEAR",
+               bgcolor=color.new(#FD7E14, 70),
+               text_color=color.white,
+               text_size=size.small)
+    table.cell(legend, 0, 3, "NEUTRAL",
+               bgcolor=color.new(#6C757D, 70),
+               text_color=color.white,
+               text_size=size.small)
+    table.cell(legend, 0, 4, "BULL",
+               bgcolor=color.new(#28A745, 70),
+               text_color=color.white,
+               text_size=size.small)
+
+// ============================================================================
+// NOTES
+// ============================================================================
+// 1. Update "IMPORTED_DATA" ticker name to match your CSV import
+// 2. Verify column index for regime data (default is column 6)
+// 3. Adjust VIX thresholds if needed (defaults: 20% 1-day, 50% 3-day)
+// 4. Legend shows in top-right corner
+// 5. Background colors match Python visualizations
+// ============================================================================
+"""
+
+
+if __name__ == '__main__':
+    print("="*70)
+    print("ATLAS REGIME EXPORT FOR TRADINGVIEW")
+    print("="*70)
+
+    # Export individual symbols
+    spy_data = export_regimes_for_tradingview('SPY', '2020-01-01', '2025-11-14')
+    qqq_data = export_regimes_for_tradingview('QQQ', '2020-01-01', '2025-11-14')
+
+    # Export combined comparison
+    export_combined_regimes(['SPY', 'QQQ'], '2020-01-01', '2025-11-14')
+
+    # Save Pine Script template
+    print("\n" + "="*70)
+    print("SAVING PINE SCRIPT TEMPLATE")
+    print("="*70)
+
+    with open('ATLAS_TradingView_Indicator.pine', 'w') as f:
+        f.write(PINE_SCRIPT_TEMPLATE)
+
+    print("\n   Saved: ATLAS_TradingView_Indicator.pine")
+    print("   Copy this code into TradingView Pine Editor")
+    print("   Update 'IMPORTED_DATA' ticker name to match your import")
+
+    print("\n" + "="*70)
+    print("ALL EXPORTS COMPLETE")
+    print("="*70)
+    print("\nGenerated files:")
+    print("  1. SPY_regimes_tradingview.csv")
+    print("  2. QQQ_regimes_tradingview.csv")
+    print("  3. regimes_combined_tradingview.csv")
+    print("  4. ATLAS_TradingView_Indicator.pine")
+    print("\nNext steps:")
+    print("  1. Import CSV files to TradingView (Chart → Import)")
+    print("  2. Copy Pine Script to TradingView Editor")
+    print("  3. Update ticker name in Pine Script to match your import")
+    print("  4. Apply indicator to chart")
+    print("="*70 + "\n")

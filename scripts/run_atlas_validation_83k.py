@@ -5,14 +5,17 @@ ATLAS STRAT Validation Execution Script - Session 83K
 Executes comprehensive ATLAS Production Readiness validation for STRAT strategies
 using REAL ThetaData options data.
 
-Validation Matrix (90 total runs):
-| Batch | Pattern | Timeframes | Symbols | Runs |
-|-------|---------|------------|---------|------|
-| 1     | 3-1-2   | 1D,1W,1M   | 6       | 18   |
-| 2     | 2-1-2   | 1D,1W,1M   | 6       | 18   |
-| 3     | 2-2 Up  | 1D,1W,1M   | 6       | 18   |
-| 4     | 3-2     | 1D,1W,1M   | 6       | 18   |
-| 5     | 3-2-2   | 1D,1W,1M   | 6       | 18   |
+Validation Matrix (120 total runs - Session 83K-35: Added 1H):
+| Batch | Pattern | Timeframes     | Symbols | Runs |
+|-------|---------|----------------|---------|------|
+| 1     | 3-1-2   | 1H,1D,1W,1M    | 6       | 24   |
+| 2     | 2-1-2   | 1H,1D,1W,1M    | 6       | 24   |
+| 3     | 2-2 Up  | 1H,1D,1W,1M    | 6       | 24   |
+| 4     | 3-2     | 1H,1D,1W,1M    | 6       | 24   |
+| 5     | 3-2-2   | 1H,1D,1W,1M    | 6       | 24   |
+
+NOTE: Hourly (1H) uses market-open-aligned bars (09:30, 10:30, 11:30, etc.)
+      NOT clock-aligned bars. This is CRITICAL for STRAT time rules.
 
 ThetaData Integration:
 - Historical quotes (bid/ask) - tick level
@@ -69,6 +72,8 @@ from validation.strat_validator import (
     DEFAULT_PATTERNS,
     DEFAULT_TIMEFRAMES,
     DEFAULT_SYMBOLS,
+    EXPANDED_SYMBOLS,  # Session 83K-53
+    TICKER_CATEGORIES,  # Session 83K-53
 )
 
 
@@ -200,9 +205,10 @@ def run_dry_run(validator: ATLASSTRATValidator, args: argparse.Namespace) -> Non
     print("=" * 70)
 
     # Show what would be run
+    # Session 83K-53: Use selected_symbols from args
     patterns = [p for p in DEFAULT_PATTERNS if p not in (args.skip_patterns or [])]
     timeframes = [t for t in DEFAULT_TIMEFRAMES if t not in (args.skip_timeframes or [])]
-    symbols = [s for s in DEFAULT_SYMBOLS if s not in (args.skip_symbols or [])]
+    symbols = [s for s in args.selected_symbols if s not in (args.skip_symbols or [])]
 
     if args.batch:
         patterns = [args.batch]
@@ -344,7 +350,34 @@ Examples:
         help='Include NVDA in validation (excluded by default due to pre-split strike data issues)'
     )
 
+    # Session 83K-53: Expanded ticker universe support
+    parser.add_argument(
+        '--universe',
+        type=str,
+        choices=['default', 'expanded', 'index_only', 'sector_only'],
+        default='default',
+        help='Symbol universe to validate: default (6 symbols), expanded (16 symbols), '
+             'index_only (4 ETFs), sector_only (4 sector ETFs)'
+    )
+
     args = parser.parse_args()
+
+    # Session 83K-53: Select symbol universe
+    if args.universe == 'expanded':
+        selected_symbols = EXPANDED_SYMBOLS
+        print(f"[INFO] Using EXPANDED universe: {len(selected_symbols)} symbols")
+    elif args.universe == 'index_only':
+        selected_symbols = TICKER_CATEGORIES['index_etf']
+        print(f"[INFO] Using INDEX_ONLY universe: {selected_symbols}")
+    elif args.universe == 'sector_only':
+        selected_symbols = TICKER_CATEGORIES['sector_etf']
+        print(f"[INFO] Using SECTOR_ONLY universe: {selected_symbols}")
+    else:
+        selected_symbols = DEFAULT_SYMBOLS
+        print(f"[INFO] Using DEFAULT universe: {len(selected_symbols)} symbols")
+
+    # Store selected symbols in args for use by run functions
+    args.selected_symbols = selected_symbols
 
     # Session 83K-14: Auto-exclude NVDA unless explicitly included
     # NVDA pre-split strikes (pre-July 2021) cause ThetaData 472 errors
@@ -366,10 +399,12 @@ Examples:
 
     # Initialize validator
     # Session 83K-14: Pass holdout_mode for sparse pattern strategies
+    # Session 83K-53: Pass selected symbols for expanded universe support
     validator = ATLASSTRATValidator(
         output_dir=output_dir,
         require_thetadata=not args.no_thetadata,
         holdout_mode=args.holdout,
+        symbols=args.selected_symbols,
     )
 
     if args.holdout:

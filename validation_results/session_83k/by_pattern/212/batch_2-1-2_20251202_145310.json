@@ -1,0 +1,790 @@
+{
+  "batch_id": "batch_2-1-2_20251202_145310",
+  "pattern": "2-1-2",
+  "total_runs": 5,
+  "passed_runs": 0,
+  "failed_runs": 5,
+  "error_runs": 0,
+  "insufficient_data_runs": 0,
+  "pass_rate": 0.0,
+  "avg_thetadata_coverage": 36.0,
+  "total_execution_time": 277.97626090049744,
+  "timestamp": "2025-12-02T14:57:48.849168",
+  "runs": [
+    {
+      "run_id": "2-1-2_1M_SPY",
+      "pattern": "2-1-2",
+      "timeframe": "1M",
+      "symbol": "SPY",
+      "passed": false,
+      "error": null,
+      "trade_count": 2,
+      "execution_time_seconds": 78.4136528968811,
+      "timestamp": "2025-12-02T14:54:29.276165",
+      "data_source_metrics": {
+        "total_trades": 2,
+        "thetadata_quotes": "1",
+        "thetadata_greeks": "1",
+        "blackscholes_fallback": "1",
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 50.0,
+        "greeks_coverage_pct": 50.0
+      },
+      "report": {
+        "strategy_name": "STRAT_2-1-2_1M_SPY",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": false,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Walk-Forward: OOS Sharpe 0.00 below minimum 0.30",
+            "Walk-Forward: Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "Walk-Forward: 1 folds have fewer than 5 trades",
+            "Monte Carlo: Insufficient trades (minimum 5)"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T14:54:10.265221"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": -8.788153649457561,
+          "avg_oos_sharpe": 0.0,
+          "sharpe_degradation": 1.0,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 0.0,
+          "total_folds": 1,
+          "passes_validation": false,
+          "failure_reasons": [
+            "OOS Sharpe 0.00 below minimum 0.30",
+            "Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "1 folds have fewer than 5 trades"
+          ],
+          "has_sign_reversal_warning": false,
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2021-01-01T00:00:00-05:00",
+              "train_end": "2024-06-01T00:00:00-04:00",
+              "test_start": "2024-07-01T00:00:00-04:00",
+              "test_end": "2025-12-01T00:00:00-05:00",
+              "is_sharpe": -8.788153649457561,
+              "oos_sharpe": 0.0,
+              "is_return": -0.28958170070127404,
+              "oos_return": 0.0,
+              "is_trades": 2,
+              "oos_trades": 0,
+              "sharpe_degradation": 1.0,
+              "is_profitable": false,
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 0.0,
+          "simulated_sharpe_mean": 0.0,
+          "simulated_sharpe_std": 0.0,
+          "sharpe_95_ci": [
+            0.0,
+            0.0
+          ],
+          "original_max_dd": 0.0,
+          "simulated_max_dd_95": 0.0,
+          "max_dd_95_ci": [
+            0.0,
+            0.0
+          ],
+          "return_95_ci": [
+            0.0,
+            0.0
+          ],
+          "probability_of_loss": 1.0,
+          "probability_of_ruin": 1.0,
+          "n_simulations": 0,
+          "passes_validation": false,
+          "failure_reasons": [
+            "Insufficient trades (minimum 5)"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: -0.189 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.1893908670301636,
+              "threshold": 0.5
+            },
+            {
+              "check_name": "entry_achievability",
+              "passed": true,
+              "details": "Skipped: entry_prices length (2) != data length (60)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            },
+            {
+              "check_name": "exit_achievability",
+              "passed": true,
+              "details": "Skipped: exit_prices length (2) != data length (60)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 59.402708768844604
+      }
+    },
+    {
+      "run_id": "2-1-2_1M_QQQ",
+      "pattern": "2-1-2",
+      "timeframe": "1M",
+      "symbol": "QQQ",
+      "passed": false,
+      "error": null,
+      "trade_count": 0,
+      "execution_time_seconds": 0.0039064884185791016,
+      "timestamp": "2025-12-02T14:54:29.282069",
+      "data_source_metrics": {
+        "total_trades": 0,
+        "thetadata_quotes": 0,
+        "thetadata_greeks": 0,
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 0.0,
+        "greeks_coverage_pct": 0.0
+      },
+      "report": {
+        "strategy_name": "STRAT_2-1-2_1M_QQQ",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": false,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Walk-Forward: OOS Sharpe 0.00 below minimum 0.30",
+            "Walk-Forward: Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "Walk-Forward: 1 folds have fewer than 5 trades",
+            "Monte Carlo: No trades provided"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T14:54:29.281071"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": 0.0,
+          "avg_oos_sharpe": 0.0,
+          "sharpe_degradation": 1.0,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 0.0,
+          "total_folds": 1,
+          "passes_validation": false,
+          "failure_reasons": [
+            "OOS Sharpe 0.00 below minimum 0.30",
+            "Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "1 folds have fewer than 5 trades"
+          ],
+          "has_sign_reversal_warning": false,
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2021-01-01T00:00:00-05:00",
+              "train_end": "2024-06-01T00:00:00-04:00",
+              "test_start": "2024-07-01T00:00:00-04:00",
+              "test_end": "2025-12-01T00:00:00-05:00",
+              "is_sharpe": 0.0,
+              "oos_sharpe": 0.0,
+              "is_return": 0.0,
+              "oos_return": 0.0,
+              "is_trades": 0,
+              "oos_trades": 0,
+              "sharpe_degradation": 1.0,
+              "is_profitable": false,
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 0.0,
+          "simulated_sharpe_mean": 0.0,
+          "simulated_sharpe_std": 0.0,
+          "sharpe_95_ci": [
+            0.0,
+            0.0
+          ],
+          "original_max_dd": 0.0,
+          "simulated_max_dd_95": 0.0,
+          "max_dd_95_ci": [
+            0.0,
+            0.0
+          ],
+          "return_95_ci": [
+            0.0,
+            0.0
+          ],
+          "probability_of_loss": 1.0,
+          "probability_of_ruin": 1.0,
+          "n_simulations": 0,
+          "passes_validation": false,
+          "failure_reasons": [
+            "No trades provided"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": true,
+              "details": "Same-bar correlation: 0.000 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.0,
+              "threshold": 0.5
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 0.002907991409301758
+      }
+    },
+    {
+      "run_id": "2-1-2_1M_AAPL",
+      "pattern": "2-1-2",
+      "timeframe": "1M",
+      "symbol": "AAPL",
+      "passed": false,
+      "error": null,
+      "trade_count": 0,
+      "execution_time_seconds": 0.05852007865905762,
+      "timestamp": "2025-12-02T14:54:29.341592",
+      "data_source_metrics": {
+        "total_trades": 0,
+        "thetadata_quotes": 0,
+        "thetadata_greeks": 0,
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 0.0,
+        "greeks_coverage_pct": 0.0
+      },
+      "report": {
+        "strategy_name": "STRAT_2-1-2_1M_AAPL",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": false,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Walk-Forward: OOS Sharpe 0.00 below minimum 0.30",
+            "Walk-Forward: Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "Walk-Forward: 1 folds have fewer than 5 trades",
+            "Monte Carlo: No trades provided"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T14:54:29.328592"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": 0.0,
+          "avg_oos_sharpe": 0.0,
+          "sharpe_degradation": 1.0,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 0.0,
+          "total_folds": 1,
+          "passes_validation": false,
+          "failure_reasons": [
+            "OOS Sharpe 0.00 below minimum 0.30",
+            "Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "1 folds have fewer than 5 trades"
+          ],
+          "has_sign_reversal_warning": false,
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2021-01-01T00:00:00-05:00",
+              "train_end": "2024-06-01T00:00:00-04:00",
+              "test_start": "2024-07-01T00:00:00-04:00",
+              "test_end": "2025-12-01T00:00:00-05:00",
+              "is_sharpe": 0.0,
+              "oos_sharpe": 0.0,
+              "is_return": 0.0,
+              "oos_return": 0.0,
+              "is_trades": 0,
+              "oos_trades": 0,
+              "sharpe_degradation": 1.0,
+              "is_profitable": false,
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 0.0,
+          "simulated_sharpe_mean": 0.0,
+          "simulated_sharpe_std": 0.0,
+          "sharpe_95_ci": [
+            0.0,
+            0.0
+          ],
+          "original_max_dd": 0.0,
+          "simulated_max_dd_95": 0.0,
+          "max_dd_95_ci": [
+            0.0,
+            0.0
+          ],
+          "return_95_ci": [
+            0.0,
+            0.0
+          ],
+          "probability_of_loss": 1.0,
+          "probability_of_ruin": 1.0,
+          "n_simulations": 0,
+          "passes_validation": false,
+          "failure_reasons": [
+            "No trades provided"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: -0.257 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.25686498385856754,
+              "threshold": 0.5
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 0.044513702392578125
+      }
+    },
+    {
+      "run_id": "2-1-2_1M_IWM",
+      "pattern": "2-1-2",
+      "timeframe": "1M",
+      "symbol": "IWM",
+      "passed": false,
+      "error": null,
+      "trade_count": 5,
+      "execution_time_seconds": 83.30194592475891,
+      "timestamp": "2025-12-02T14:55:52.645539",
+      "data_source_metrics": {
+        "total_trades": 5,
+        "thetadata_quotes": "4",
+        "thetadata_greeks": "5",
+        "blackscholes_fallback": 0,
+        "mixed_source": "1",
+        "thetadata_coverage_pct": 80.0,
+        "greeks_coverage_pct": 100.0
+      },
+      "report": {
+        "strategy_name": "STRAT_2-1-2_1M_IWM",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": false,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Walk-Forward: OOS Sharpe 0.00 below minimum 0.30",
+            "Walk-Forward: Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "Walk-Forward: 1 folds have fewer than 5 trades",
+            "Monte Carlo: 95% CI for Sharpe [-22.34, 32.77] includes zero",
+            "Monte Carlo: P(Loss) 69.2% exceeds maximum 30.0%"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T14:55:33.488655"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": -1.3021683543296507,
+          "avg_oos_sharpe": 0.0,
+          "sharpe_degradation": 1.0,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 0.0,
+          "total_folds": 1,
+          "passes_validation": false,
+          "failure_reasons": [
+            "OOS Sharpe 0.00 below minimum 0.30",
+            "Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "1 folds have fewer than 5 trades"
+          ],
+          "has_sign_reversal_warning": false,
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2021-01-01T00:00:00-05:00",
+              "train_end": "2024-06-01T00:00:00-04:00",
+              "test_start": "2024-07-01T00:00:00-04:00",
+              "test_end": "2025-12-01T00:00:00-05:00",
+              "is_sharpe": -1.3021683543296507,
+              "oos_sharpe": 0.0,
+              "is_return": -0.10073923552977351,
+              "oos_return": 0.0,
+              "is_trades": 5,
+              "oos_trades": 0,
+              "sharpe_degradation": 1.0,
+              "is_profitable": false,
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": -1.4122033521431674,
+          "simulated_sharpe_mean": 0.28163023923788266,
+          "simulated_sharpe_std": 21.769317428424834,
+          "sharpe_95_ci": [
+            -22.3395612007534,
+            32.77206771412475
+          ],
+          "original_max_dd": 0.22739804341625405,
+          "simulated_max_dd_95": 0.5981873986466965,
+          "max_dd_95_ci": [
+            0.0,
+            0.5981873986466965
+          ],
+          "return_95_ci": [
+            -0.55900523934477,
+            0.33967586813767325
+          ],
+          "probability_of_loss": 0.6919,
+          "probability_of_ruin": 0.0854,
+          "n_simulations": 10000,
+          "passes_validation": false,
+          "failure_reasons": [
+            "95% CI for Sharpe [-22.34, 32.77] includes zero",
+            "P(Loss) 69.2% exceeds maximum 30.0%"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: -0.057 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.056724742526856865,
+              "threshold": 0.5
+            },
+            {
+              "check_name": "entry_achievability",
+              "passed": true,
+              "details": "Skipped: entry_prices length (5) != data length (60)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            },
+            {
+              "check_name": "exit_achievability",
+              "passed": true,
+              "details": "Skipped: exit_prices length (5) != data length (60)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 64.14406371116638
+      }
+    },
+    {
+      "run_id": "2-1-2_1M_DIA",
+      "pattern": "2-1-2",
+      "timeframe": "1M",
+      "symbol": "DIA",
+      "passed": false,
+      "error": null,
+      "trade_count": 4,
+      "execution_time_seconds": 116.19823551177979,
+      "timestamp": "2025-12-02T14:57:48.845661",
+      "data_source_metrics": {
+        "total_trades": 4,
+        "thetadata_quotes": "2",
+        "thetadata_greeks": "2",
+        "blackscholes_fallback": "2",
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 50.0,
+        "greeks_coverage_pct": 50.0
+      },
+      "report": {
+        "strategy_name": "STRAT_2-1-2_1M_DIA",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": false,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Walk-Forward: OOS Sharpe 0.00 below minimum 0.30",
+            "Walk-Forward: Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "Walk-Forward: 1 folds have fewer than 5 trades",
+            "Monte Carlo: Insufficient trades (minimum 5)"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T14:57:16.856086"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": -17.593223316067146,
+          "avg_oos_sharpe": 0.0,
+          "sharpe_degradation": 1.0,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 1.0,
+          "total_folds": 1,
+          "passes_validation": false,
+          "failure_reasons": [
+            "OOS Sharpe 0.00 below minimum 0.30",
+            "Sharpe degradation 100.0% exceeds maximum 40.0%",
+            "1 folds have fewer than 5 trades"
+          ],
+          "has_sign_reversal_warning": false,
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2021-01-01T00:00:00-05:00",
+              "train_end": "2024-06-01T00:00:00-04:00",
+              "test_start": "2024-07-01T00:00:00-04:00",
+              "test_end": "2025-12-01T00:00:00-05:00",
+              "is_sharpe": -17.593223316067146,
+              "oos_sharpe": 0,
+              "is_return": -0.1763806301908966,
+              "oos_return": 0.3956766862000004,
+              "is_trades": 2,
+              "oos_trades": 1,
+              "sharpe_degradation": 1.0,
+              "is_profitable": "True",
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 0.0,
+          "simulated_sharpe_mean": 0.0,
+          "simulated_sharpe_std": 0.0,
+          "sharpe_95_ci": [
+            0.0,
+            0.0
+          ],
+          "original_max_dd": 0.0,
+          "simulated_max_dd_95": 0.0,
+          "max_dd_95_ci": [
+            0.0,
+            0.0
+          ],
+          "return_95_ci": [
+            0.0,
+            0.0
+          ],
+          "probability_of_loss": 1.0,
+          "probability_of_ruin": 1.0,
+          "n_simulations": 0,
+          "passes_validation": false,
+          "failure_reasons": [
+            "Insufficient trades (minimum 5)"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: -0.192 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.19242689400214835,
+              "threshold": 0.5
+            },
+            {
+              "check_name": "entry_achievability",
+              "passed": true,
+              "details": "Skipped: entry_prices length (4) != data length (60)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            },
+            {
+              "check_name": "exit_achievability",
+              "passed": true,
+              "details": "Skipped: exit_prices length (4) != data length (60)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 84.20866012573242
+      }
+    }
+  ]
+}

@@ -57,6 +57,19 @@ description: Implements STRAT trading methodology with bar classification (Type 
 3. **Continue** - Multiple setups in same direction
 4. **Consolidate** - Controlled pullback before continuation
 
+### Timeframe Hierarchy
+
+```
+Monthly > Weekly > Daily > 60min > 15min > 5min
+```
+
+| Timeframe | Role | Typical Hold |
+|-----------|------|--------------|
+| **Monthly** | Macro bias | Weeks to months |
+| **Weekly** | Anchor/Swing | Days to weeks |
+| **Daily** | Execution | 1-7 days |
+| **60min/15min** | Entry timing | Hours |
+
 ### Entry Priorities
 
 | Priority | Entry Type | Condition |
@@ -256,7 +269,7 @@ Output: Options trade parameters
 7. Invalid Patterns - What NOT to trade
 8. Mother Bar Identification - Multi-timeframe pivots
 
-### [TIMEFRAMES.md](TIMEFRAMES.md) (~400 lines)
+### [TIMEFRAMES.md](TIMEFRAMES.md) (~1050 lines)
 **When to read:** Implementing multi-timeframe analysis
 
 **Contains:**
@@ -265,6 +278,9 @@ Output: Options trade parameters
 3. Timeframe Relationships - How daily/60min/15min interact
 4. Continuity Scoring - Quantifying alignment
 5. Trade Quality Matrix - Position sizing based on TF alignment
+6. **Weekly/Monthly Analysis** - Extended timeframe patterns
+7. **Cascade Analysis** - Monthly→Weekly→Daily alignment
+8. **Weekly/Monthly MOAF** - Major trend reversal detection
 
 ### [EXECUTION.md](EXECUTION.md) (~500 lines)
 **When to read:** Building entry/exit logic

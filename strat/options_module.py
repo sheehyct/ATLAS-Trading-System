@@ -221,7 +221,11 @@ class OptionsExecutor:
         account: str = 'MID',
         default_dte_weekly: int = 35,
         default_dte_monthly: int = 75,
-        strike_offset: float = 0.0
+        default_dte_daily: int = 21,
+        default_dte_hourly: int = 7,  # Session 83K-64: Increased from 3 to cover 28-bar holding
+        strike_offset: float = 0.0,
+        min_magnitude_pct: float = 0.5,
+        hourly_config: dict = None
     ):
         """
         Initialize Options Executor.
@@ -230,12 +234,41 @@ class OptionsExecutor:
             account: Alpaca account ('MID', 'LARGE', 'SMALL')
             default_dte_weekly: Default DTE for weekly patterns (default: 35)
             default_dte_monthly: Default DTE for monthly patterns (default: 75)
+            default_dte_daily: Default DTE for daily patterns (default: 21)
+            default_dte_hourly: Default DTE for hourly patterns (default: 7, Session 83K-64)
             strike_offset: Offset from ATM (negative = ITM, default: 0)
+            min_magnitude_pct: Minimum pattern magnitude to trade (default: 0.5%)
+                Session 83K-31: Patterns below this threshold LOSE money due to
+                theta decay exceeding delta gains. Validated on 1,764 trades:
+                - Daily <0.5%: -$175 to +$40 avg P&L (LOSING)
+                - Weekly <0.5%: -$243 to -$182 avg P&L (LOSING)
+                - Both >=0.5%: +$177 to +$2,592 avg P&L (PROFITABLE)
+            hourly_config: Session 83K-31: Hourly-specific configuration dict:
+                - first_entry_22: First allowed entry time for 2-2 patterns (default: 10:30 ET)
+                - first_entry_3bar: First allowed entry for 3-bar patterns (default: 11:30 ET)
+                - last_exit: Forced exit time (default: 15:30 ET)
+                - target_delta: Target delta for hourly (default: 0.45)
+                - delta_range: Delta range for hourly (default: (0.35, 0.50) - OTM focus)
         """
         self.account = account
         self.default_dte_weekly = default_dte_weekly
         self.default_dte_monthly = default_dte_monthly
+        self.default_dte_daily = default_dte_daily
+        self.default_dte_hourly = default_dte_hourly
         self.strike_offset = strike_offset
+        self.min_magnitude_pct = min_magnitude_pct
+        self._skipped_low_magnitude = []  # Track skipped patterns for analysis
+        self._skipped_time_filter = []    # Track patterns skipped by time filter
+
+        # Session 83K-31: Hourly-specific configuration
+        default_hourly_config = {
+            'first_entry_22': '10:30',      # 2-2 patterns: NOT before 10:30 ET
+            'first_entry_3bar': '11:30',    # 3-bar patterns: NOT before 11:30 ET
+            'last_exit': '15:30',           # All positions closed by 15:30 ET
+            'target_delta': 0.45,           # OTM focus for same-day close
+            'delta_range': (0.35, 0.50),    # OTM range (theta impact minimal)
+        }
+        self.hourly_config = {**default_hourly_config, **(hourly_config or {})}
 
         # Get credentials
         self.creds = get_alpaca_credentials(account)
@@ -275,6 +308,23 @@ class OptionsExecutor:
             iv = self._estimate_iv_from_price_data(price_data)
 
         for signal in signals:
+            # Session 83K-31: Magnitude filter - skip low magnitude patterns
+            # These lose money due to theta decay exceeding delta gains
+            magnitude_pct = abs(signal.target_price - signal.entry_price) / signal.entry_price * 100
+            if magnitude_pct < self.min_magnitude_pct:
+                self._skipped_low_magnitude.append({
+                    'timestamp': signal.timestamp,
+                    'pattern_type': signal.pattern_type.value if hasattr(signal.pattern_type, 'value') else str(signal.pattern_type),
+                    'magnitude_pct': magnitude_pct,
+                    'reason': f'magnitude {magnitude_pct:.2f}% < min {self.min_magnitude_pct}%'
+                })
+                continue  # Skip this pattern
+
+            # Session 83K-31: Hourly time filter - skip patterns before allowed entry times
+            if signal.timeframe == Timeframe.HOURLY:
+                if not self._check_hourly_time_filter(signal):
+                    continue  # Skip - recorded in _skipped_time_filter
+
             # Determine option type based on signal direction
             if signal.direction == 1:  # Bullish
                 option_type = OptionType.CALL
@@ -333,6 +383,93 @@ class OptionsExecutor:
             trades.append(trade)
 
         return trades
+
+    def get_skipped_patterns(self) -> list:
+        """
+        Get list of patterns skipped due to low magnitude.
+
+        Session 83K-31: Useful for analysis and debugging.
+
+        Returns:
+            List of dicts with timestamp, pattern_type, magnitude_pct, reason
+        """
+        return self._skipped_low_magnitude.copy()
+
+    def clear_skipped_patterns(self) -> None:
+        """Clear the list of skipped patterns."""
+        self._skipped_low_magnitude = []
+        self._skipped_time_filter = []
+
+    def get_skipped_time_filter(self) -> list:
+        """Get list of patterns skipped due to hourly time filter."""
+        return self._skipped_time_filter.copy()
+
+    def _check_hourly_time_filter(self, signal: PatternSignal) -> bool:
+        """
+        Check if hourly pattern passes time filter.
+
+        Session 83K-31: Hourly/intraday trading rules:
+        - 2-2 patterns: NOT before 10:30 ET (avoid opening volatility)
+        - 3-bar patterns (3-1-2, 3-2, 3-2-2): NOT before 11:30 ET (more bars needed)
+        - All patterns: Must exit by 15:30 ET (no overnight risk)
+
+        Args:
+            signal: PatternSignal to check
+
+        Returns:
+            True if pattern passes time filter, False otherwise
+        """
+        # Get signal time in ET
+        signal_time = signal.timestamp
+        if hasattr(signal_time, 'hour'):
+            hour = signal_time.hour
+            minute = signal_time.minute
+        else:
+            # If timestamp doesn't have time component, allow it
+            return True
+
+        signal_time_str = f'{hour:02d}:{minute:02d}'
+        pattern_type = signal.pattern_type.value if hasattr(signal.pattern_type, 'value') else str(signal.pattern_type)
+
+        # Determine first allowed entry time based on pattern type
+        # 2-2 patterns: 2D-2U (bullish) or 2U-2D (bearish)
+        if '2D-2U' in pattern_type or '2U-2D' in pattern_type or ('2-2' in pattern_type and '3-2-2' not in pattern_type):
+            first_entry = self.hourly_config['first_entry_22']
+        else:
+            # 3-bar patterns (3-1-2, 2-1-2, 3-2, 3-2-2)
+            first_entry = self.hourly_config['first_entry_3bar']
+
+        # Parse times for comparison
+        first_hour, first_min = map(int, first_entry.split(':'))
+        first_minutes = first_hour * 60 + first_min
+        signal_minutes = hour * 60 + minute
+
+        if signal_minutes < first_minutes:
+            self._skipped_time_filter.append({
+                'timestamp': signal.timestamp,
+                'pattern_type': pattern_type,
+                'signal_time': signal_time_str,
+                'first_allowed': first_entry,
+                'reason': f'{pattern_type} at {signal_time_str} before allowed {first_entry} ET'
+            })
+            return False
+
+        # Check last exit (15:30 ET) - patterns too late can't be traded
+        last_exit = self.hourly_config['last_exit']
+        last_hour, last_min = map(int, last_exit.split(':'))
+        last_minutes = last_hour * 60 + last_min
+
+        if signal_minutes >= last_minutes:
+            self._skipped_time_filter.append({
+                'timestamp': signal.timestamp,
+                'pattern_type': pattern_type,
+                'signal_time': signal_time_str,
+                'last_allowed': last_exit,
+                'reason': f'{pattern_type} at {signal_time_str} after last exit {last_exit} ET'
+            })
+            return False
+
+        return True
 
     def _estimate_iv_from_price_data(self, price_data: pd.DataFrame) -> float:
         """
@@ -539,8 +676,8 @@ class OptionsExecutor:
         option_type: OptionType,
         iv: float,
         dte: int,
-        target_delta: float = 0.65,
-        delta_range: Tuple[float, float] = (0.50, 0.80),
+        target_delta: float = 0.55,  # Session 83K-64: Middle of 0.45-0.65 range
+        delta_range: Tuple[float, float] = (0.45, 0.65),  # Session 83K-64: User-approved middle ground
         max_theta_pct: float = 0.30  # Allow up to 30% theta cost (relaxed from 10%)
     ) -> Tuple[float, Optional[float], Optional[float]]:
         """
@@ -698,12 +835,17 @@ class OptionsExecutor:
             else:
                 base_date = reference_date
 
-        if timeframe == Timeframe.WEEKLY:
-            target_dte = self.default_dte_weekly
+        # Session 83K-31: Support all timeframes with appropriate DTE
+        if timeframe == Timeframe.HOURLY:
+            target_dte = self.default_dte_hourly  # Short-dated for intraday (0-7 days)
+        elif timeframe == Timeframe.DAILY:
+            target_dte = self.default_dte_daily   # Medium-dated (14-45 days)
+        elif timeframe == Timeframe.WEEKLY:
+            target_dte = self.default_dte_weekly  # Longer-dated (30-45 days)
         elif timeframe == Timeframe.MONTHLY:
-            target_dte = self.default_dte_monthly
+            target_dte = self.default_dte_monthly # Longest-dated (60-90 days)
         else:
-            target_dte = self.default_dte_weekly
+            target_dte = self.default_dte_weekly  # Default to weekly
 
         # Find next Friday after target DTE
         target_date = base_date + timedelta(days=target_dte)
@@ -1173,11 +1315,14 @@ class OptionsBacktester:
 
                 if not validation_result.passed:
                     # Record rejected trade with zero P/L
+                    # Session 83K-27: Calculate magnitude percentage
+                    magnitude_pct = abs(trade.target_exit - trade.entry_trigger) / trade.entry_trigger * 100
                     results.append({
                         'timestamp': trade.pattern_signal.timestamp,
                         'pattern_type': trade.pattern_signal.pattern_type.value,
                         'osi_symbol': trade.contract.osi_symbol,
                         'entry_trigger': trade.entry_trigger,
+                        'magnitude_pct': magnitude_pct,  # Session 83K-27: Pattern magnitude for DTE selection
                         'entry_price_underlying': None,
                         'entry_date': None,  # Session 83K-25: Add entry_date field
                         'exit_price': None,
@@ -1227,8 +1372,8 @@ class OptionsBacktester:
             exit_date = None
             exit_idx = None
 
-            # Scan forward from pattern
-            for i in range(pattern_idx + 1, min(pattern_idx + 30, len(price_data))):
+            # Scan forward from pattern - Session 83K-56: Start at pattern bar, not after
+            for i in range(pattern_idx, min(pattern_idx + 30, len(price_data))):
                 row = price_data.iloc[i]
                 high = row['high'] if 'high' in row.index else row['High']
                 low = row['low'] if 'low' in row.index else row['Low']
@@ -1237,6 +1382,12 @@ class OptionsBacktester:
                 # Check entry
                 # Session 78 FIX: Model realistic slippage instead of assuming exact fill
                 if not entry_hit:
+                    # Session 83K-33: For hourly, skip entries on 15:00+ bar (no time to exit same-day)
+                    if trade.pattern_signal.timeframe == Timeframe.HOURLY:
+                        bar_time = price_data.index[i]
+                        if hasattr(bar_time, 'hour') and bar_time.hour >= 15:
+                            continue  # Skip entry on last bar of day
+
                     if trade.pattern_signal.direction == 1:  # Bullish
                         if high >= trade.entry_trigger:
                             entry_hit = True
@@ -1276,7 +1427,7 @@ class OptionsBacktester:
                                 )
                                 entry_hit = False  # Reset - treat as no valid entry
                                 break  # Skip this trade
-                    continue
+                    # Session 83K-56: Removed continue - allow exit check on same bar as entry
 
                 # Check exit (after entry)
                 if trade.pattern_signal.direction == 1:  # Bullish
@@ -1302,6 +1453,25 @@ class OptionsBacktester:
                     elif high >= trade.stop_exit:
                         exit_price = trade.stop_exit
                         exit_type = 'STOP'
+                        exit_date = price_data.index[i]
+                        exit_idx = i
+                        break
+
+                # Session 83K-33: Hourly forced exit - no overnight holds
+                # For hourly timeframe, must close by 15:30 ET (15:00 bar is last tradeable)
+                # This prevents theta decay from overnight gap risk
+                if trade.pattern_signal.timeframe == Timeframe.HOURLY:
+                    bar_time = price_data.index[i]
+                    entry_time = price_data.index[entry_idx]
+
+                    # Check if we're at or past last exit time (15:00+ bar)
+                    # OR if we've crossed into the next day (overnight hold)
+                    is_end_of_day = hasattr(bar_time, 'hour') and bar_time.hour >= 15
+                    is_next_day = hasattr(bar_time, 'date') and hasattr(entry_time, 'date') and bar_time.date() > entry_time.date()
+
+                    if is_end_of_day or is_next_day:
+                        exit_price = close  # Exit at close price
+                        exit_type = 'TIME_EXIT'  # Forced exit due to time
                         exit_date = price_data.index[i]
                         exit_idx = i
                         break
@@ -1476,11 +1646,14 @@ class OptionsBacktester:
                 else:
                     data_source = 'BlackScholes'
 
+                # Session 83K-27: Calculate magnitude percentage
+                magnitude_pct = abs(trade.target_exit - trade.entry_trigger) / trade.entry_trigger * 100
                 results.append({
                     'timestamp': trade.pattern_signal.timestamp,
                     'pattern_type': trade.pattern_signal.pattern_type.value,
                     'osi_symbol': trade.contract.osi_symbol,
                     'entry_trigger': trade.entry_trigger,
+                    'magnitude_pct': magnitude_pct,  # Session 83K-27: Pattern magnitude for DTE selection
                     'entry_price_underlying': entry_price_underlying,
                     'entry_date': entry_date,  # Session 83K-25: Add actual entry date (was missing)
                     'exit_price': exit_price,

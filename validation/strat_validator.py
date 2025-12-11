@@ -63,8 +63,38 @@ logger = logging.getLogger(__name__)
 
 # Default validation matrix
 DEFAULT_PATTERNS = ['3-1-2', '2-1-2', '2-2', '3-2', '3-2-2']
-DEFAULT_TIMEFRAMES = ['1D', '1W', '1M']
+# Session 83K-35: Added 1H with market-open-aligned bars (09:30, 10:30, 11:30)
+DEFAULT_TIMEFRAMES = ['1H', '1D', '1W', '1M']
 DEFAULT_SYMBOLS = ['SPY', 'QQQ', 'AAPL', 'IWM', 'DIA', 'NVDA']
+
+# Session 83K-53: Expanded ticker universe for cross-instrument comparison
+TICKER_CATEGORIES = {
+    'index_etf': ['SPY', 'QQQ', 'IWM', 'DIA'],
+    'sector_etf': ['XLF', 'XLE', 'XLK', 'XLV'],
+    'mega_cap': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA'],
+    'high_vol': ['TSLA'],
+    'mid_cap': ['MDY'],
+}
+
+# Expanded universe (16 symbols)
+EXPANDED_SYMBOLS = [
+    # Core indexes (high liquidity, diversified)
+    'SPY', 'QQQ', 'IWM', 'DIA',
+    # Sector ETFs (test sector-specific behavior)
+    'XLF', 'XLE', 'XLK', 'XLV',
+    # Mega cap individual stocks (high liquidity)
+    'AAPL', 'MSFT', 'GOOGL', 'AMZN',
+    # High volatility + mid cap
+    'META', 'NVDA', 'TSLA', 'MDY',
+]
+
+
+def get_ticker_category(symbol: str) -> str:
+    """Return category for a symbol."""
+    for category, symbols in TICKER_CATEGORIES.items():
+        if symbol in symbols:
+            return category
+    return 'other'
 
 # ThetaData configuration
 THETADATA_HOST = "localhost"
@@ -352,14 +382,19 @@ class DataFetcher:
 
         Args:
             symbol: Trading symbol (e.g., 'SPY')
-            timeframe: Timeframe ('1D', '1W', '1M')
+            timeframe: Timeframe ('1D', '1W', '1M', '1H')
             start_date: Start date (YYYY-MM-DD), defaults to 5 years ago
             end_date: End date (YYYY-MM-DD), defaults to today
 
         Returns:
             DataFrame with OHLCV data
         """
+        # Session 83K-33: Use separate cache key for filtered hourly data
+        # This prevents stale extended-hours cache from being used
         cache_key = f"{symbol}_{timeframe}"
+        if timeframe == '1H':
+            cache_key = f"{symbol}_{timeframe}_market_hours"
+
         if cache_key in self._data_cache:
             return self._data_cache[cache_key]
 
@@ -368,6 +403,10 @@ class DataFetcher:
         if cache_file.exists():
             try:
                 df = pd.read_parquet(cache_file)
+                # Session 83K-33: Apply market hours filter even for cached hourly data
+                # This ensures stale cache with extended hours gets filtered
+                if timeframe == '1H':
+                    df = self._filter_market_hours(df)
                 self._data_cache[cache_key] = df
                 return df
             except Exception as e:
@@ -413,7 +452,8 @@ class DataFetcher:
             start = start_date or (datetime.now() - pd.DateOffset(years=5)).strftime('%Y-%m-%d')
 
             # Map timeframe to resample frequency
-            freq_map = {'1D': 'D', '1W': 'W', '1M': 'ME'}
+            # Session 83K-32: Added 1H (note: Tiingo only has daily, so 1H falls back to Alpaca)
+            freq_map = {'1H': 'h', '1D': 'D', '1W': 'W', '1M': 'ME'}
             resample_freq = freq_map.get(timeframe, 'D')
 
             # Fetch daily data using Tiingo's fetch() method
@@ -480,7 +520,15 @@ class DataFetcher:
             end = end_date or datetime.now().strftime('%Y-%m-%d')
             start = start_date or (datetime.now() - pd.DateOffset(years=5)).strftime('%Y-%m-%d')
 
-            # Alpaca timeframe mapping
+            # Session 83K-34: CRITICAL FIX for hourly bar alignment
+            # Alpaca '1Hour' returns clock-aligned bars (10:00, 11:00, 12:00)
+            # STRAT requires market-open-aligned bars (09:30, 10:30, 11:30)
+            # Solution: Fetch minute data and resample with 30min offset
+            if timeframe == '1H':
+                return self._fetch_hourly_market_aligned(symbol, start, end)
+
+            # Alpaca timeframe mapping for non-hourly
+            # Session 83K-32: Added 1H support for hourly validation
             tf_map = {'1D': '1Day', '1W': '1Week', '1M': '1Month'}
             alpaca_tf = tf_map.get(timeframe, '1Day')
 
@@ -500,6 +548,7 @@ class DataFetcher:
             if df is not None and not df.empty:
                 # Normalize column names
                 df.columns = [c.lower() for c in df.columns]
+
             return df
 
         except ImportError:
@@ -508,6 +557,80 @@ class DataFetcher:
         except Exception as e:
             logger.warning(f"Alpaca fetch failed for {symbol}: {e}")
             return None
+
+    def _fetch_hourly_market_aligned(
+        self,
+        symbol: str,
+        start: str,
+        end: str
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch market-open-aligned hourly bars for STRAT validation.
+
+        Session 83K-34: CRITICAL FIX for hourly bar alignment.
+
+        PROBLEM: Alpaca '1Hour' returns clock-aligned bars (10:00, 11:00, 12:00)
+        STRAT time rules (2-2 at 10:30, 3-bar at 11:30) assume market-open-aligned bars.
+        Pattern detection on wrong bars = invalid signals.
+        ALL HOURLY VALIDATION DATA WAS INVALID until this fix.
+
+        SOLUTION: Fetch minute data, resample with offset='30min' to get:
+        - 09:30 = first bar (09:30-10:29) - market open
+        - 10:30 = second bar (10:30-11:29)
+        - 11:30 = third bar (11:30-12:29)
+        - etc.
+
+        Args:
+            symbol: Trading symbol
+            start: Start date (YYYY-MM-DD)
+            end: End date (YYYY-MM-DD)
+
+        Returns:
+            DataFrame with market-open-aligned hourly bars
+        """
+        import vectorbtpro as vbt
+
+        logger.info(f"Fetching market-aligned hourly bars for {symbol} ({start} to {end})")
+
+        # Fetch minute data - this is the raw data we need
+        data = vbt.AlpacaData.pull(
+            symbols=symbol,
+            start=start,
+            end=end,
+            timeframe='1Min',
+            tz='America/New_York',
+            adjustment='split'
+        )
+
+        df = data.get()
+        if df is None or df.empty:
+            logger.warning(f"No minute data returned for {symbol}")
+            return None
+
+        # Normalize column names
+        df.columns = [c.lower() for c in df.columns]
+
+        # Resample to hourly with 30-minute offset for market-open alignment
+        ohlc_map = {
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+        }
+        if 'volume' in df.columns:
+            ohlc_map['volume'] = 'sum'
+
+        # offset='30min' shifts the resampling window to start at :30 instead of :00
+        # This gives us bars at 09:30, 10:30, 11:30, etc.
+        resampled = df.resample('1h', offset='30min').agg(ohlc_map).dropna()
+
+        # Filter to market hours only (09:30-15:30, last full bar before close)
+        # Market hours: 09:30-16:00 ET
+        # Last valid hourly bar: 15:30 (covers 15:30-16:29, but closes at 16:00)
+        resampled = self._filter_market_hours(resampled)
+
+        logger.info(f"Fetched {len(resampled)} market-aligned hourly bars for {symbol}")
+        return resampled
 
     def _resample_ohlcv(self, df: pd.DataFrame, freq: str) -> pd.DataFrame:
         """Resample OHLCV data to different frequency."""
@@ -526,6 +649,41 @@ class DataFetcher:
 
         resampled = df.resample(freq).agg(ohlc_map).dropna()
         return resampled
+
+    def _filter_market_hours(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Filter DataFrame to regular market hours only (09:30-16:00 ET).
+
+        Session 83K-33: STRAT hourly patterns MUST use market hours only.
+        Extended hours (pre-market, after-hours) create invalid patterns:
+        - Patterns "detected" at 08:00 or 17:00+ are impossible to trade
+        - Data bars outside 09:30-16:00 cause 71% of hourly trades to fail
+
+        Args:
+            df: DataFrame with datetime index in America/New_York timezone
+
+        Returns:
+            Filtered DataFrame with only market hours bars
+        """
+        if df.empty:
+            return df
+
+        # Extract hour and minute from index
+        hour = df.index.hour
+        minute = df.index.minute
+
+        # Regular market hours: 09:30 to 16:00 ET
+        # Include: 09:30-09:59, 10:00-15:59
+        # Exclude: 00:00-09:29, 16:00-23:59
+        market_open = (hour > 9) | ((hour == 9) & (minute >= 30))
+        market_close = hour < 16
+
+        market_hours_mask = market_open & market_close
+        filtered = df[market_hours_mask]
+
+        logger.debug(f"Market hours filter: {len(df)} -> {len(filtered)} bars "
+                     f"({len(df) - len(filtered)} extended hours bars removed)")
+        return filtered
 
 
 class ATLASSTRATValidator:
@@ -881,7 +1039,8 @@ class ATLASSTRATValidator:
                 )
 
             # Check minimum data requirements
-            min_bars = {'1D': 252, '1W': 52, '1M': 12}
+            # Session 83K-32: Added 1H minimum bars (7 hours/day x 72 days = 504 bars ~3 months)
+            min_bars = {'1H': 504, '1D': 252, '1W': 52, '1M': 12}
             required = min_bars.get(config.timeframe, 252)
             if len(data) < required:
                 return ValidationRunResult(
@@ -975,6 +1134,13 @@ class ATLASSTRATValidator:
                             data_metrics.thetadata_greeks = data_metrics.total_trades
 
                     trade_count = data_metrics.total_trades
+
+                    # Session 83K-27: Export detailed trade data to CSV for magnitude analysis
+                    trades_dir = self.output_dir / "trades"
+                    trades_dir.mkdir(parents=True, exist_ok=True)
+                    trade_csv_path = trades_dir / f"{config.run_id}_trades.csv"
+                    trades_df.to_csv(trade_csv_path, index=False)
+                    logger.debug(f"Exported {len(trades_df)} trades to {trade_csv_path}")
             except Exception as e:
                 logger.debug(f"Could not extract data source metrics: {e}")
 

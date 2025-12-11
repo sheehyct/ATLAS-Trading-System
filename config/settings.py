@@ -249,3 +249,64 @@ def get_vbt_alpaca_config(account: str = 'MID') -> Dict[str, str]:
         'api_key': creds['api_key'],
         'secret_key': creds['secret_key'],
     }
+
+
+# =============================================================================
+# Signal Automation Configuration (Session 83K-45)
+# =============================================================================
+
+def get_discord_webhook_url() -> Optional[str]:
+    """
+    Get Discord webhook URL for signal alerts.
+
+    Returns:
+        Discord webhook URL or None if not configured
+
+    Example:
+        url = get_discord_webhook_url()
+        if url:
+            # Send alert via Discord
+    """
+    load_config()
+    return os.getenv('DISCORD_WEBHOOK_URL')
+
+
+def get_signal_automation_config() -> Dict[str, any]:
+    """
+    Get signal automation configuration.
+
+    Returns:
+        Dict with signal automation settings
+
+    Environment Variables:
+        DISCORD_WEBHOOK_URL: Discord webhook for alerts
+        SIGNAL_SYMBOLS: Comma-separated list of symbols to scan
+        SIGNAL_TIMEFRAMES: Comma-separated list of timeframes
+        SIGNAL_SCAN_HOURLY: Enable hourly scans (true/false)
+        SIGNAL_SCAN_DAILY: Enable daily scans (true/false)
+        SIGNAL_SCAN_WEEKLY: Enable weekly scans (true/false)
+        SIGNAL_SCAN_MONTHLY: Enable monthly scans (true/false)
+        SIGNAL_LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR)
+        SIGNAL_STORE_PATH: Path to signal store directory
+    """
+    load_config()
+
+    # Parse symbols list
+    symbols_str = os.getenv('SIGNAL_SYMBOLS', 'SPY,QQQ,IWM,DIA,AAPL')
+    symbols = [s.strip() for s in symbols_str.split(',')]
+
+    # Parse timeframes list
+    timeframes_str = os.getenv('SIGNAL_TIMEFRAMES', '1H,1D,1W,1M')
+    timeframes = [t.strip() for t in timeframes_str.split(',')]
+
+    return {
+        'discord_webhook_url': os.getenv('DISCORD_WEBHOOK_URL'),
+        'symbols': symbols,
+        'timeframes': timeframes,
+        'scan_hourly': os.getenv('SIGNAL_SCAN_HOURLY', 'true').lower() == 'true',
+        'scan_daily': os.getenv('SIGNAL_SCAN_DAILY', 'true').lower() == 'true',
+        'scan_weekly': os.getenv('SIGNAL_SCAN_WEEKLY', 'true').lower() == 'true',
+        'scan_monthly': os.getenv('SIGNAL_SCAN_MONTHLY', 'true').lower() == 'true',
+        'log_level': os.getenv('SIGNAL_LOG_LEVEL', 'INFO'),
+        'store_path': os.getenv('SIGNAL_STORE_PATH', 'data/signals'),
+    }

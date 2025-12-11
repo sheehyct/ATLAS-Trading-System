@@ -108,7 +108,21 @@ For implementations spanning 3+ sessions:
 4. Update .session_startup_prompt.md for next session
 ```
 
-## 12. DO NOT
+## 12. STRAT Bar Classification (MANDATORY)
+
+Every directional bar MUST be classified as 2U (bullish) or 2D (bearish). Never use just "2".
+
+| Correct | Incorrect |
+|---------|-----------|
+| 2D-2U | 2-2 |
+| 3-2U, 3-2D | 3-2 |
+| 3-2U-2U, 3-2D-2D | 3-2-2 |
+| 2U-1-2U, 2D-1-2D | 2-1-2 |
+| 3-1-2U, 3-1-2D | 3-1-2 (OK - only exit bar needs direction) |
+
+Bar types: 1=inside, 2U=up, 2D=down, 3=outside
+
+## 13. DO NOT
 
 - Skip HANDOFF.md at session start
 - Skip VBT 5-step workflow
@@ -119,8 +133,9 @@ For implementations spanning 3+ sessions:
 - Claim code works without testing
 - Archive files (DELETE redundant files)
 - Create breakout strategies without 2x volume confirmation
+- Use unclassified "2" bars in STRAT patterns (must be 2U or 2D)
 
-## 13. File Tiers
+## 14. File Tiers
 
 | Tier | Files | When to Read |
 |------|-------|--------------|
@@ -128,7 +143,7 @@ For implementations spanning 3+ sessions:
 | 2 | CLAUDE_REFERENCE.md | When need detailed examples |
 | 3 | VectorBT Pro Official Documentation/ | VBT implementation |
 
-## 14. Account Constraints
+## 15. Account Constraints
 
 Schwab Level 1 Options (cash account):
 - CAN: Long stock, long calls/puts, cash-secured puts
@@ -136,6 +151,6 @@ Schwab Level 1 Options (cash account):
 
 ---
 
-**Version:** 3.0 (November 27, 2025)
+**Version:** 3.1 (December 7, 2025)
 **Status:** PRODUCTION - Token-optimized
 **Details:** See `docs/CLAUDE_REFERENCE.md` for verbose examples

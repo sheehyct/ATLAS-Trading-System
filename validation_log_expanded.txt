@@ -1,0 +1,679 @@
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+[INFO] Using EXPANDED universe: 16 symbols
+=== STRAT EQUITY VALIDATION BACKTEST ===
+Period: 2020-01-01 to 2025-01-01
+Universe: 16 stocks
+Patterns: 3-1-2 Up, 3-1-2 Down, 2-1-2 Up, 2-1-2 Down, 2-2 Up, 2-2 Down, 3-2 Up, 3-2 Down
+Filter: Full timeframe continuity OPTIONAL
+Detection: Tier1Detector (min_continuation_bars=2)
+
+Fetching VIX data from 2019-12-02 to 2025-01-08...
+VIX data cached to data_cache\vix_daily.parquet
+VIX data loaded: 1283 days (2019-12-02 to 2025-01-07)
+
+================================================================================
+DETECTION TIMEFRAME: 1H (max_holding_bars: 60)
+================================================================================
+[1/16] Processing SPY...  Using Alpaca (high-quality recent data)
+ 1840 patterns
+[2/16] Processing QQQ...  Using Alpaca (high-quality recent data)
+ 1874 patterns
+[3/16] Processing IWM...  Using Alpaca (high-quality recent data)
+ 2027 patterns
+[4/16] Processing DIA...  Using Alpaca (high-quality recent data)
+ 1940 patterns
+[5/16] Processing XLF...  Using Alpaca (high-quality recent data)
+ 1938 patterns
+[6/16] Processing XLE...  Using Alpaca (high-quality recent data)
+ 2020 patterns
+[7/16] Processing XLK...  Using Alpaca (high-quality recent data)
+ 1823 patterns
+[8/16] Processing XLV...  Using Alpaca (high-quality recent data)
+ 1578 patterns
+[9/16] Processing AAPL...  Using Alpaca (high-quality recent data)
+ 2016 patterns
+[10/16] Processing MSFT...  Using Alpaca (high-quality recent data)
+ 1991 patterns
+[11/16] Processing GOOGL...  Using Alpaca (high-quality recent data)
+ 1964 patterns
+[12/16] Processing AMZN...  Using Alpaca (high-quality recent data)
+ 2093 patterns
+[13/16] Processing META...  Using Alpaca (high-quality recent data)
+ 2075 patterns
+[14/16] Processing NVDA...  Using Alpaca (high-quality recent data)
+ 2093 patterns
+[15/16] Processing TSLA...  Using Alpaca (high-quality recent data)
+ 2195 patterns
+[16/16] Processing MDY...  Using Alpaca (high-quality recent data)
+ 1419 patterns
+
+Results saved to: scripts/strat_validation_1H.csv
+
+=== VALIDATION RESULTS (1H) ===
+
+Total Patterns: 30876
+Magnitude Hits: 21427 (69.4%)
+
+By Pattern Type:
+  3-1-2 Up: 669/914 (73.2%)
+  3-1-2 Down: 578/852 (67.8%)
+  Unknown: 11568/16654 (69.5%)
+  2-2 Up: 8612/12456 (69.1%)
+
+Bars to Magnitude (for hits):
+  Median: 0.0 bars
+  75th percentile: 1.0 bars
+  90th percentile: 3.0 bars
+
+Risk-Reward:
+  Average Win: 0.23%
+  Average Loss: -0.36%
+  Risk-Reward Ratio: 0.63:1
+
+=== GO/NO-GO DECISION ===
+DECISION: NO-GO - Debug patterns before Options Module
+
+Failed Criteria:
+  - Risk-reward 0.63:1 < 2:1 (POOR EXPECTANCY)
+
+Passed Criteria:
+  - Magnitude hit rate 69.4% >= 60%
+  - Pattern count 30876 >= 100
+
+============================================================
+
+================================================================================
+DETECTION TIMEFRAME: 1D (max_holding_bars: 30)
+================================================================================
+[1/16] Processing SPY...  Using Alpaca (high-quality recent data)
+ 221 patterns
+[2/16] Processing QQQ...  Using Alpaca (high-quality recent data)
+ 214 patterns
+[3/16] Processing IWM...  Using Alpaca (high-quality recent data)
+ 226 patterns
+[4/16] Processing DIA...  Using Alpaca (high-quality recent data)
+ 215 patterns
+[5/16] Processing XLF...  Using Alpaca (high-quality recent data)
+ 218 patterns
+[6/16] Processing XLE...  Using Alpaca (high-quality recent data)
+ 249 patterns
+[7/16] Processing XLK...  Using Alpaca (high-quality recent data)
+ 222 patterns
+[8/16] Processing XLV...  Using Alpaca (high-quality recent data)
+ 228 patterns
+[9/16] Processing AAPL...  Using Alpaca (high-quality recent data)
+ 230 patterns
+[10/16] Processing MSFT...  Using Alpaca (high-quality recent data)
+ 232 patterns
+[11/16] Processing GOOGL...  Using Alpaca (high-quality recent data)
+ 233 patterns
+[12/16] Processing AMZN...  Using Alpaca (high-quality recent data)
+ 242 patterns
+[13/16] Processing META...  Using Alpaca (high-quality recent data)
+ 237 patterns
+[14/16] Processing NVDA...  Using Alpaca (high-quality recent data)
+ 230 patterns
+[15/16] Processing TSLA...  Using Alpaca (high-quality recent data)
+ 276 patterns
+[16/16] Processing MDY...  Using Alpaca (high-quality recent data)
+ 238 patterns
+
+Results saved to: scripts/strat_validation_1D.csv
+
+=== VALIDATION RESULTS (1D) ===
+
+Total Patterns: 3697
+Magnitude Hits: 2871 (77.7%)
+
+By Pattern Type:
+  3-1-2 Up: 159/198 (80.3%)
+  3-1-2 Down: 107/141 (75.9%)
+  Unknown: 1117/1417 (78.8%)
+  2-2 Up: 1488/1941 (76.7%)
+
+Bars to Magnitude (for hits):
+  Median: 0.0 bars
+  75th percentile: 0.0 bars
+  90th percentile: 1.0 bars
+
+Risk-Reward:
+  Average Win: 0.89%
+  Average Loss: -1.98%
+  Risk-Reward Ratio: 0.45:1
+
+=== GO/NO-GO DECISION ===
+DECISION: NO-GO - Debug patterns before Options Module
+
+Failed Criteria:
+  - Risk-reward 0.45:1 < 2:1 (POOR EXPECTANCY)
+
+Passed Criteria:
+  - Magnitude hit rate 77.7% >= 60%
+  - Pattern count 3697 >= 100
+
+============================================================
+
+================================================================================
+DETECTION TIMEFRAME: 1W (max_holding_bars: 20)
+================================================================================
+[1/16] Processing SPY...  Using Alpaca (high-quality recent data)
+ 38 patterns
+[2/16] Processing QQQ...  Using Alpaca (high-quality recent data)
+ 42 patterns
+[3/16] Processing IWM...  Using Alpaca (high-quality recent data)
+ 49 patterns
+[4/16] Processing DIA...  Using Alpaca (high-quality recent data)
+ 40 patterns
+[5/16] Processing XLF...  Using Alpaca (high-quality recent data)
+ 45 patterns
+[6/16] Processing XLE...  Using Alpaca (high-quality recent data)
+ 53 patterns
+[7/16] Processing XLK...  Using Alpaca (high-quality recent data)
+ 38 patterns
+[8/16] Processing XLV...  Using Alpaca (high-quality recent data)
+ 49 patterns
+[9/16] Processing AAPL...  Using Alpaca (high-quality recent data)
+ 49 patterns
+[10/16] Processing MSFT...  Using Alpaca (high-quality recent data)
+ 49 patterns
+[11/16] Processing GOOGL...  Using Alpaca (high-quality recent data)
+ 41 patterns
+[12/16] Processing AMZN...  Using Alpaca (high-quality recent data)
+ 52 patterns
+[13/16] Processing META...  Using Alpaca (high-quality recent data)
+ 49 patterns
+[14/16] Processing NVDA...  Using Alpaca (high-quality recent data)
+ 47 patterns
+[15/16] Processing TSLA...  Using Alpaca (high-quality recent data)
+ 49 patterns
+[16/16] Processing MDY...  Using Alpaca (high-quality recent data)
+ 44 patterns
+
+Results saved to: scripts/strat_validation_1W.csv
+
+=== VALIDATION RESULTS (1W) ===
+
+Total Patterns: 717
+Magnitude Hits: 584 (81.5%)
+
+By Pattern Type:
+  3-1-2 Up: 29/37 (78.4%)
+  Unknown: 206/251 (82.1%)
+  2-2 Up: 334/410 (81.5%)
+  3-1-2 Down: 15/19 (78.9%)
+
+Bars to Magnitude (for hits):
+  Median: 0.0 bars
+  75th percentile: 0.0 bars
+  90th percentile: 1.0 bars
+
+Risk-Reward:
+  Average Win: 2.07%
+  Average Loss: -4.63%
+  Risk-Reward Ratio: 0.45:1
+
+=== GO/NO-GO DECISION ===
+DECISION: NO-GO - Debug patterns before Options Module
+
+Failed Criteria:
+  - Risk-reward 0.45:1 < 2:1 (POOR EXPECTANCY)
+
+Passed Criteria:
+  - Magnitude hit rate 81.5% >= 60%
+  - Pattern count 717 >= 100
+
+============================================================
+
+================================================================================
+DETECTION TIMEFRAME: 1M (max_holding_bars: 12)
+================================================================================
+[1/16] Processing SPY...  Using Alpaca (high-quality recent data)
+ 8 patterns
+[2/16] Processing QQQ...  Using Alpaca (high-quality recent data)
+ 8 patterns
+[3/16] Processing IWM...  Using Alpaca (high-quality recent data)
+ 13 patterns
+[4/16] Processing DIA...  Using Alpaca (high-quality recent data)
+ 9 patterns
+[5/16] Processing XLF...  Using Alpaca (high-quality recent data)
+ 12 patterns
+[6/16] Processing XLE...  Using Alpaca (high-quality recent data)
+ 13 patterns
+[7/16] Processing XLK...  Using Alpaca (high-quality recent data)C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:820: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:1111: FutureWarning:
+
+'M' is deprecated and will be removed in a future version, please use 'ME' instead.
+
+C:\Strat_Trading_Bot\vectorbt-workspace\scripts\backtest_strat_equity_validation.py:938: FutureWarning:
+
+Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+
+
+ 9 patterns
+[8/16] Processing XLV...  Using Alpaca (high-quality recent data)
+ 10 patterns
+[9/16] Processing AAPL...  Using Alpaca (high-quality recent data)
+ 12 patterns
+[10/16] Processing MSFT...  Using Alpaca (high-quality recent data)
+ 11 patterns
+[11/16] Processing GOOGL...  Using Alpaca (high-quality recent data)
+ 12 patterns
+[12/16] Processing AMZN...  Using Alpaca (high-quality recent data)
+ 9 patterns
+[13/16] Processing META...  Using Alpaca (high-quality recent data)
+ 8 patterns
+[14/16] Processing NVDA...  Using Alpaca (high-quality recent data)
+ 12 patterns
+[15/16] Processing TSLA...  Using Alpaca (high-quality recent data)
+ 11 patterns
+[16/16] Processing MDY...  Using Alpaca (high-quality recent data)
+ 14 patterns
+
+Results saved to: scripts/strat_validation_1M.csv
+
+=== VALIDATION RESULTS (1M) ===
+
+Total Patterns: 160
+Magnitude Hits: 134 (83.8%)
+
+By Pattern Type:
+  3-1-2 Up: 8/9 (88.9%)
+  Unknown: 53/68 (77.9%)
+  2-2 Up: 69/77 (89.6%)
+  3-1-2 Down: 4/6 (66.7%)
+
+Bars to Magnitude (for hits):
+  Median: 0.0 bars
+  75th percentile: 0.0 bars
+  90th percentile: 1.0 bars
+
+Risk-Reward:
+  Average Win: 4.03%
+  Average Loss: -10.88%
+  Risk-Reward Ratio: 0.37:1
+
+=== GO/NO-GO DECISION ===
+DECISION: NO-GO - Debug patterns before Options Module
+
+Failed Criteria:
+  - Risk-reward 0.37:1 < 2:1 (POOR EXPECTANCY)
+
+Passed Criteria:
+  - Magnitude hit rate 83.8% >= 60%
+  - Pattern count 160 >= 100
+
+============================================================

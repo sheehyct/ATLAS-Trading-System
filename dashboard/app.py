@@ -51,13 +51,18 @@ from dashboard.components.regime_panel import create_regime_panel
 from dashboard.components.strategy_panel import create_strategy_panel
 from dashboard.components.portfolio_panel import create_portfolio_panel
 from dashboard.components.risk_panel import create_risk_panel
-from dashboard.components.options_panel import create_options_panel
+from dashboard.components.options_panel import (
+    create_options_panel,
+    create_signals_table,
+    create_positions_table,
+)
 
 # Import data loaders
 from dashboard.data_loaders.regime_loader import RegimeDataLoader
 from dashboard.data_loaders.backtest_loader import BacktestDataLoader
 from dashboard.data_loaders.live_loader import LiveDataLoader
 from dashboard.data_loaders.orders_loader import OrdersDataLoader
+from dashboard.data_loaders.options_loader import OptionsDataLoader
 
 # Import visualizations
 from dashboard.visualizations.regime_viz import (
@@ -159,6 +164,16 @@ try:
 except Exception as e:
     logger.warning(f"OrdersDataLoader initialization failed: {e}")
     orders_loader = None
+
+try:
+    options_loader = OptionsDataLoader(account='SMALL')
+    if options_loader._connected:
+        logger.info("OptionsDataLoader initialized successfully with Alpaca connection")
+    else:
+        logger.warning(f"OptionsDataLoader initialized but not connected: {options_loader.init_error}")
+except Exception as e:
+    logger.warning(f"OptionsDataLoader initialization failed: {e}")
+    options_loader = None
 
 # ============================================
 # APP LAYOUT
@@ -1232,6 +1247,84 @@ def update_risk_management(n):
         error_fig = create_error_figure(f"Error: {str(e)}")
         error_table = html.P(f"Error: {str(e)}", className='text-danger')
         return error_fig, error_table, error_fig
+
+
+# ============================================
+# OPTIONS TRADING CALLBACKS
+# ============================================
+
+@app.callback(
+    [Output('options-signals-container', 'children'),
+     Output('options-signals-count', 'children')],
+    [Input('options-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_options_signals(n_intervals, active_tab):
+    """
+    Update pending STRAT signals table.
+
+    Only updates when options tab is active to save resources.
+    """
+    try:
+        # Skip update if not on options tab
+        if active_tab != 'options-tab':
+            from dash import no_update
+            return no_update, no_update
+
+        if options_loader is None:
+            return create_signals_table([]), dbc.Badge('0', color='secondary')
+
+        signals = options_loader.get_active_signals()
+        count = len(signals)
+
+        # Badge color based on count
+        badge_color = 'success' if count > 0 else 'secondary'
+
+        return (
+            create_signals_table(signals),
+            dbc.Badge(str(count), color=badge_color, className='ms-2')
+        )
+
+    except Exception as e:
+        logger.error(f"Error updating options signals: {e}")
+        return create_signals_table([]), dbc.Badge('!', color='danger')
+
+
+@app.callback(
+    [Output('options-positions-container', 'children'),
+     Output('options-positions-count', 'children')],
+    [Input('options-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_options_positions(n_intervals, active_tab):
+    """
+    Update live options positions table.
+
+    Only updates when options tab is active to save resources.
+    """
+    try:
+        # Skip update if not on options tab
+        if active_tab != 'options-tab':
+            from dash import no_update
+            return no_update, no_update
+
+        if options_loader is None:
+            return create_positions_table([]), dbc.Badge('0', color='secondary')
+
+        positions = options_loader.get_option_positions()
+        count = len(positions)
+
+        # Badge color based on count
+        badge_color = 'info' if count > 0 else 'secondary'
+
+        return (
+            create_positions_table(positions),
+            dbc.Badge(str(count), color=badge_color, className='ms-2')
+        )
+
+    except Exception as e:
+        logger.error(f"Error updating options positions: {e}")
+        return create_positions_table([]), dbc.Badge('!', color='danger')
 
 
 # ============================================

@@ -1,0 +1,137 @@
+{
+  "timestamp": "2025-12-03T14:33:24.815070",
+  "total_runs": 100,
+  "total_passed": 6,
+  "total_failed": 94,
+  "total_errors": 0,
+  "overall_pass_rate": 0.06,
+  "avg_thetadata_coverage": 82.31841049572864,
+  "total_execution_time_seconds": 9200.185863733292,
+  "thetadata_status": {
+    "connected": true,
+    "quotes_available": true,
+    "greeks_available": true,
+    "symbols_checked": {
+      "SPY": true,
+      "QQQ": true,
+      "AAPL": true,
+      "IWM": true,
+      "DIA": true,
+      "NVDA": true
+    },
+    "oldest_data_date": null,
+    "error_message": null
+  },
+  "by_pattern": {
+    "3-1-2": {
+      "total_runs": 20,
+      "passed": 0,
+      "failed": 20,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 76.66666666666667
+    },
+    "2-1-2": {
+      "total_runs": 20,
+      "passed": 0,
+      "failed": 20,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 81.44534632034632
+    },
+    "2-2": {
+      "total_runs": 20,
+      "passed": 4,
+      "failed": 16,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.2,
+      "avg_thetadata_coverage": 94.10804975297387
+    },
+    "3-2": {
+      "total_runs": 20,
+      "passed": 1,
+      "failed": 19,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.05,
+      "avg_thetadata_coverage": 68.73706910373578
+    },
+    "3-2-2": {
+      "total_runs": 20,
+      "passed": 1,
+      "failed": 19,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.05,
+      "avg_thetadata_coverage": 90.63492063492063
+    }
+  },
+  "by_timeframe": {
+    "1H": {
+      "passed": 0,
+      "total": 25,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "1D": {
+      "passed": 5,
+      "total": 25,
+      "pass_rate": 0.2,
+      "avg_thetadata_coverage": 97.79802531200382
+    },
+    "1W": {
+      "passed": 1,
+      "total": 25,
+      "pass_rate": 0.04,
+      "avg_thetadata_coverage": 83.54704524233935
+    },
+    "1M": {
+      "passed": 0,
+      "total": 25,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 47.92857142857143
+    }
+  },
+  "by_symbol": {
+    "SPY": {
+      "passed": 2,
+      "total": 20,
+      "pass_rate": 0.1,
+      "avg_thetadata_coverage": 81.51136363636364
+    },
+    "QQQ": {
+      "passed": 0,
+      "total": 20,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 82.69009216589862
+    },
+    "AAPL": {
+      "passed": 1,
+      "total": 20,
+      "pass_rate": 0.05,
+      "avg_thetadata_coverage": 81.77242664742666
+    },
+    "IWM": {
+      "passed": 2,
+      "total": 20,
+      "pass_rate": 0.1,
+      "avg_thetadata_coverage": 84.21628988295654
+    },
+    "DIA": {
+      "passed": 1,
+      "total": 20,
+      "pass_rate": 0.05,
+      "avg_thetadata_coverage": 81.4018801459978
+    },
+    "NVDA": {
+      "passed": 0,
+      "total": 0,
+      "pass_rate": 0,
+      "avg_thetadata_coverage": 0
+    }
+  },
+  "bugs_discovered": []
+}

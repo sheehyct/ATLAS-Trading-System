@@ -1,0 +1,46 @@
+{
+  "timestamp": "2025-09-21T09:38:15.892825",
+  "vectorbt_version": "2025.7.27",
+  "python_version": "3.12.11",
+  "total_suites": 4,
+  "passed_suites": 0,
+  "failed_suites": 4,
+  "suite_results": {
+    "pattern": {
+      "name": "Pattern Detection Accuracy",
+      "success": false,
+      "execution_time": 5.866089499992086,
+      "return_code": 1,
+      "pass_count": 0,
+      "fail_count": 0,
+      "skip_count": 0
+    },
+    "vbt": {
+      "name": "VectorBT Pro Calculations",
+      "success": false,
+      "execution_time": 5.786035600001924,
+      "return_code": 1,
+      "pass_count": 0,
+      "fail_count": 0,
+      "skip_count": 0
+    },
+    "data": {
+      "name": "Data Integrity",
+      "success": false,
+      "execution_time": 0.6719103000068571,
+      "return_code": 1,
+      "pass_count": 0,
+      "fail_count": 0,
+      "skip_count": 0
+    },
+    "integration": {
+      "name": "Integration Accuracy",
+      "success": false,
+      "execution_time": 5.790693399991142,
+      "return_code": 1,
+      "pass_count": 0,
+      "fail_count": 0,
+      "skip_count": 0
+    }
+  }
+}

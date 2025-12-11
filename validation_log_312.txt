@@ -1,0 +1,351 @@
+2025-12-02 10:52:40,636 - thetadata_client - INFO - Connected to ThetaData terminal v3 at localhost:25503
+[INFO] NVDA auto-excluded (pre-split strike data issues). Use --include-nvda to override.
+
+======================================================================
+ATLAS STRAT VALIDATION - Session 83K
+======================================================================
+Start Time: 2025-12-02 10:52:40
+
+Validation Matrix:
+  Patterns:   3-1-2, 2-1-2, 2-2, 3-2, 3-2-2
+  Timeframes: 1D, 1W, 1M
+  Symbols:    SPY, QQQ, AAPL, IWM, DIA, NVDA
+  Total Runs: 90
+
+ThetaData Standard Tier:
+  - Historical quotes (bid/ask)
+  - Greeks 1st Order (delta, theta, vega, rho)
+  - Implied volatility
+  - 8 years of data
+======================================================================
+
+[INFO] Holdout mode enabled (70/30 train/test split)
+       Recommended for sparse pattern strategies like STRAT.
+Verifying ThetaData connection...
+2025-12-02 10:52:40,636 | INFO     | thetadata_client | Connected to ThetaData terminal v3 at localhost:25503
+2025-12-02 10:52:40,637 | INFO     | validation.strat_validator | ThetaData connected on localhost:25503
+2025-12-02 10:52:41,401 | INFO     | validation.strat_validator | Quotes endpoint: AVAILABLE
+2025-12-02 10:52:41,679 | INFO     | validation.strat_validator | Greeks endpoint: AVAILABLE
+2025-12-02 10:52:42,026 - thetadata_client - INFO - Connected to ThetaData terminal v3 at localhost:25503
+2025-12-02 10:52:42,026 | INFO     | thetadata_client | Connected to ThetaData terminal v3 at localhost:25503
+
+ThetaData Status:
+  Connected:        True
+  Quotes Available: True
+  Greeks Available: True
+  Symbols OK:       SPY, QQQ, AAPL, IWM, DIA, NVDA
+
+
+Running single batch: 3-1-2
+
+2025-12-02 10:52:42,026 | INFO     | validation.strat_validator | 
+--- Batch: 3-1-2 ---
+2025-12-02 10:52:42,028 | INFO     | validation.strat_validator | Running: 3-1-2_1D_SPY
+2025-12-02 10:52:42,178 | DEBUG    | validation.strat_validator | ThetaData fetcher wired to 3-1-2_1D_SPY backtester
+2025-12-02 10:52:42,178 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 3-1-2_1D_SPY
+2025-12-02 10:52:42,178 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_3-1-2_1D_SPY
+2025-12-02 10:52:43,219 | DEBUG    | strat.options_module | Skipping trade: Entry $324.19 >= Target $323.73 (bullish setup invalid)
+2025-12-02 10:52:43,219 | DEBUG    | strat.options_module | Skipping trade: Entry $335.53 <= Target $335.56 (bearish setup invalid)
+2025-12-02 10:52:43,241 | DEBUG    | strat.options_module | Skipping trade: Entry $342.31 >= Target $342.17 (bullish setup invalid)
+2025-12-02 10:52:43,279 | DEBUG    | strat.options_module | Skipping trade: Entry $392.47 >= Target $392.28 (bullish setup invalid)
+2025-12-02 10:52:43,279 | DEBUG    | strat.options_module | Skipping trade: Entry $418.84 <= Target $419.20 (bearish setup invalid)
+2025-12-02 10:52:43,279 | DEBUG    | strat.options_module | Skipping trade: Entry $442.01 >= Target $441.28 (bullish setup invalid)
+2025-12-02 10:52:43,279 | DEBUG    | strat.options_module | Skipping trade: Entry $394.00 <= Target $394.49 (bearish setup invalid)
+2025-12-02 10:52:43,354 | DEBUG    | strat.options_module | Skipping trade: Entry $591.97 >= Target $591.04 (bullish setup invalid)
+2025-12-02 10:52:43,357 | INFO     | validation.walk_forward | Starting walk-forward validation: 1237 bars
+2025-12-02 10:52:43,357 | INFO     | validation.walk_forward | Holdout mode: 70% train (865 bars), 30% test (372 bars)
+2025-12-02 10:52:43,357 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-02 10:52:43,507 | DEBUG    | strat.options_module | Skipping trade: Entry $324.19 >= Target $323.73 (bullish setup invalid)
+2025-12-02 10:52:43,507 | DEBUG    | strat.options_module | Skipping trade: Entry $335.53 <= Target $335.56 (bearish setup invalid)
+2025-12-02 10:52:43,508 | DEBUG    | strat.options_module | Skipping trade: Entry $342.31 >= Target $342.17 (bullish setup invalid)
+2025-12-02 10:52:43,527 | DEBUG    | strat.options_module | Skipping trade: Entry $392.47 >= Target $392.28 (bullish setup invalid)
+2025-12-02 10:52:43,528 | DEBUG    | strat.options_module | Skipping trade: Entry $418.84 <= Target $419.20 (bearish setup invalid)
+2025-12-02 10:52:43,528 | DEBUG    | strat.options_module | Skipping trade: Entry $442.01 >= Target $441.28 (bullish setup invalid)
+2025-12-02 10:52:43,528 | DEBUG    | strat.options_module | Skipping trade: Entry $394.00 <= Target $394.49 (bearish setup invalid)
+2025-12-02 10:52:43,674 | DEBUG    | strat.options_module | Skipping trade: Entry $324.19 >= Target $323.73 (bullish setup invalid)
+2025-12-02 10:52:43,674 | DEBUG    | strat.options_module | Skipping trade: Entry $335.53 <= Target $335.56 (bearish setup invalid)
+2025-12-02 10:52:43,675 | DEBUG    | strat.options_module | Skipping trade: Entry $342.31 >= Target $342.17 (bullish setup invalid)
+2025-12-02 10:52:43,676 | DEBUG    | strat.options_module | Skipping trade: Entry $392.47 >= Target $392.28 (bullish setup invalid)
+2025-12-02 10:52:43,676 | DEBUG    | strat.options_module | Skipping trade: Entry $418.84 <= Target $419.20 (bearish setup invalid)
+2025-12-02 10:52:43,676 | DEBUG    | strat.options_module | Skipping trade: Entry $442.01 >= Target $441.28 (bullish setup invalid)
+2025-12-02 10:52:43,676 | DEBUG    | strat.options_module | Skipping trade: Entry $394.00 <= Target $394.49 (bearish setup invalid)
+2025-12-02 10:52:43,751 | DEBUG    | strat.options_module | Skipping trade: Entry $591.97 >= Target $591.04 (bullish setup invalid)
+2025-12-02 10:52:43,753 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=10.34, OOS Sharpe=29.03, Degradation=-180.9%
+2025-12-02 10:52:43,753 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-02 10:52:43,753 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-02 10:52:43,753 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 7 trades, 10000 iterations
+2025-12-02 10:52:43,754 | INFO     | validation.monte_carlo | Original metrics: Sharpe=10.21, MaxDD=4.4%
+2025-12-02 10:52:43,781 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-02 10:52:43,810 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-02 10:52:43,839 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-02 10:52:43,868 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-02 10:52:43,898 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-02 10:52:43,927 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-02 10:52:43,955 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-02 10:52:43,982 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-02 10:52:44,010 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-02 10:52:44,039 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-02 10:52:44,041 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-02 10:52:44,041 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-02 10:52:44,050 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-02 10:52:44,050 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-02 10:52:44,050 | INFO     | validation.validation_runner | Validation completed in 1.87s - FAILED
+2025-12-02 10:52:44,269 | DEBUG    | strat.options_module | Skipping trade: Entry $324.19 >= Target $323.73 (bullish setup invalid)
+2025-12-02 10:52:44,269 | DEBUG    | strat.options_module | Skipping trade: Entry $335.53 <= Target $335.56 (bearish setup invalid)
+2025-12-02 10:52:44,270 | DEBUG    | strat.options_module | Skipping trade: Entry $342.31 >= Target $342.17 (bullish setup invalid)
+2025-12-02 10:52:44,271 | DEBUG    | strat.options_module | Skipping trade: Entry $392.47 >= Target $392.28 (bullish setup invalid)
+2025-12-02 10:52:44,271 | DEBUG    | strat.options_module | Skipping trade: Entry $418.84 <= Target $419.20 (bearish setup invalid)
+2025-12-02 10:52:44,271 | DEBUG    | strat.options_module | Skipping trade: Entry $442.01 >= Target $441.28 (bullish setup invalid)
+2025-12-02 10:52:44,271 | DEBUG    | strat.options_module | Skipping trade: Entry $394.00 <= Target $394.49 (bearish setup invalid)
+2025-12-02 10:52:44,275 | DEBUG    | strat.options_module | Skipping trade: Entry $591.97 >= Target $591.04 (bullish setup invalid)
+2025-12-02 10:52:44,278 | INFO     | validation.strat_validator |   3-1-2_1D_SPY: FAILED (7 trades, 2.2s, ThetaData: 100%)
+2025-12-02 10:52:44,278 | INFO     | validation.strat_validator | Running: 3-1-2_1D_QQQ
+2025-12-02 10:52:44,281 | DEBUG    | validation.strat_validator | ThetaData fetcher wired to 3-1-2_1D_QQQ backtester
+2025-12-02 10:52:44,281 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 3-1-2_1D_QQQ
+2025-12-02 10:52:44,281 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_3-1-2_1D_QQQ
+2025-12-02 10:52:44,607 | DEBUG    | strat.options_module | Skipping trade: Entry $247.36 >= Target $247.00 (bullish setup invalid)
+2025-12-02 10:52:44,607 | DEBUG    | strat.options_module | Skipping trade: Entry $281.30 >= Target $281.19 (bullish setup invalid)
+2025-12-02 10:52:44,634 | DEBUG    | strat.options_module | Skipping trade: Entry $335.67 >= Target $335.46 (bullish setup invalid)
+2025-12-02 10:52:44,635 | DEBUG    | strat.options_module | Skipping trade: Entry $337.77 >= Target $337.32 (bullish setup invalid)
+2025-12-02 10:52:44,635 | DEBUG    | strat.options_module | Skipping trade: Entry $336.38 <= Target $336.90 (bearish setup invalid)
+2025-12-02 10:52:44,685 | DEBUG    | strat.options_module | Skipping trade: Entry $262.00 <= Target $262.13 (bearish setup invalid)
+2025-12-02 10:52:44,701 | DEBUG    | strat.options_module | Skipping trade: Entry $327.68 >= Target $327.17 (bullish setup invalid)
+2025-12-02 10:52:44,716 | DEBUG    | strat.options_module | Skipping trade: Entry $360.10 <= Target $360.22 (bearish setup invalid)
+2025-12-02 10:52:44,878 - thetadata_client - WARNING - API request failed (attempt 1/3), retrying in 1s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:44,878 | WARNING  | thetadata_client | API request failed (attempt 1/3), retrying in 1s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:45,982 - thetadata_client - WARNING - API request failed (attempt 2/3), retrying in 2s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:45,982 | WARNING  | thetadata_client | API request failed (attempt 2/3), retrying in 2s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:48,186 - thetadata_client - ERROR - API request failed (attempt 3/3): option/history/greeks/first_order - 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:48,186 | ERROR    | thetadata_client | API request failed (attempt 3/3): option/history/greeks/first_order - 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:48,186 - thetadata_client - WARNING - Failed to get Greeks for QQQ 410.0 C exp 2024-01-26: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:48,186 | WARNING  | thetadata_client | Failed to get Greeks for QQQ 410.0 C exp 2024-01-26: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:48,187 | WARNING  | options_backtester | ThetaData Greeks without valid price for QQQ240126C00410000 exit, falling back to Black-Scholes
+2025-12-02 10:52:48,187 | WARNING  | options_backtester | Mixed data sources for QQQ240126C00410000: entry=ThetaData, exit=BlackScholes. P/L calculation may have reduced accuracy.
+2025-12-02 10:52:48,204 | DEBUG    | strat.options_module | Skipping trade: Entry $449.89 >= Target $449.00 (bullish setup invalid)
+2025-12-02 10:52:48,237 | INFO     | validation.walk_forward | Starting walk-forward validation: 1237 bars
+2025-12-02 10:52:48,237 | INFO     | validation.walk_forward | Holdout mode: 70% train (865 bars), 30% test (372 bars)
+2025-12-02 10:52:48,237 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-02 10:52:51,241 | DEBUG    | strat.options_module | Skipping trade: Entry $247.36 >= Target $247.00 (bullish setup invalid)
+2025-12-02 10:52:51,241 | DEBUG    | strat.options_module | Skipping trade: Entry $281.30 >= Target $281.19 (bullish setup invalid)
+2025-12-02 10:52:53,624 | DEBUG    | strat.options_module | Skipping trade: Entry $335.67 >= Target $335.46 (bullish setup invalid)
+2025-12-02 10:52:53,625 | DEBUG    | strat.options_module | Skipping trade: Entry $337.77 >= Target $337.32 (bullish setup invalid)
+2025-12-02 10:52:53,625 | DEBUG    | strat.options_module | Skipping trade: Entry $336.38 <= Target $336.90 (bearish setup invalid)
+2025-12-02 10:52:53,627 | DEBUG    | strat.options_module | Skipping trade: Entry $262.00 <= Target $262.13 (bearish setup invalid)
+2025-12-02 10:52:57,930 | DEBUG    | strat.options_module | Skipping trade: Entry $327.68 >= Target $327.17 (bullish setup invalid)
+2025-12-02 10:52:58,183 | DEBUG    | strat.options_module | Skipping trade: Entry $247.36 >= Target $247.00 (bullish setup invalid)
+2025-12-02 10:52:58,183 | DEBUG    | strat.options_module | Skipping trade: Entry $281.30 >= Target $281.19 (bullish setup invalid)
+2025-12-02 10:52:58,200 | DEBUG    | strat.options_module | Skipping trade: Entry $335.67 >= Target $335.46 (bullish setup invalid)
+2025-12-02 10:52:58,201 | DEBUG    | strat.options_module | Skipping trade: Entry $337.77 >= Target $337.32 (bullish setup invalid)
+2025-12-02 10:52:58,201 | DEBUG    | strat.options_module | Skipping trade: Entry $336.38 <= Target $336.90 (bearish setup invalid)
+2025-12-02 10:52:58,203 | DEBUG    | strat.options_module | Skipping trade: Entry $262.00 <= Target $262.13 (bearish setup invalid)
+2025-12-02 10:52:58,226 | DEBUG    | strat.options_module | Skipping trade: Entry $327.68 >= Target $327.17 (bullish setup invalid)
+2025-12-02 10:52:58,310 | DEBUG    | strat.options_module | Skipping trade: Entry $360.10 <= Target $360.22 (bearish setup invalid)
+2025-12-02 10:52:58,403 - thetadata_client - WARNING - API request failed (attempt 1/3), retrying in 1s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:52:58,403 | WARNING  | thetadata_client | API request failed (attempt 1/3), retrying in 1s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:00,145 - thetadata_client - WARNING - API request failed (attempt 2/3), retrying in 2s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:00,145 | WARNING  | thetadata_client | API request failed (attempt 2/3), retrying in 2s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:02,286 - thetadata_client - ERROR - API request failed (attempt 3/3): option/history/greeks/first_order - 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:02,286 | ERROR    | thetadata_client | API request failed (attempt 3/3): option/history/greeks/first_order - 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:02,286 - thetadata_client - WARNING - Failed to get Greeks for QQQ 410.0 C exp 2024-01-26: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:02,286 | WARNING  | thetadata_client | Failed to get Greeks for QQQ 410.0 C exp 2024-01-26: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:02,286 | WARNING  | options_backtester | ThetaData Greeks without valid price for QQQ240126C00410000 exit, falling back to Black-Scholes
+2025-12-02 10:53:02,287 | WARNING  | options_backtester | Mixed data sources for QQQ240126C00410000: entry=ThetaData, exit=BlackScholes. P/L calculation may have reduced accuracy.
+2025-12-02 10:53:02,288 | DEBUG    | strat.options_module | Skipping trade: Entry $449.89 >= Target $449.00 (bullish setup invalid)
+2025-12-02 10:53:02,291 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=0.18, OOS Sharpe=17.41, Degradation=-9634.2%
+2025-12-02 10:53:02,291 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-02 10:53:02,291 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-02 10:53:02,291 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 12 trades, 10000 iterations
+2025-12-02 10:53:02,292 | INFO     | validation.monte_carlo | Original metrics: Sharpe=2.36, MaxDD=29.1%
+2025-12-02 10:53:02,325 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-02 10:53:02,358 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-02 10:53:02,389 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-02 10:53:02,418 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-02 10:53:02,450 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-02 10:53:02,479 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-02 10:53:02,511 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-02 10:53:02,542 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-02 10:53:02,572 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-02 10:53:02,603 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-02 10:53:02,605 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-02 10:53:02,606 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-02 10:53:02,617 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-02 10:53:02,617 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-02 10:53:02,617 | INFO     | validation.validation_runner | Validation completed in 18.34s - FAILED
+2025-12-02 10:53:02,934 | DEBUG    | strat.options_module | Skipping trade: Entry $247.36 >= Target $247.00 (bullish setup invalid)
+2025-12-02 10:53:02,934 | DEBUG    | strat.options_module | Skipping trade: Entry $281.30 >= Target $281.19 (bullish setup invalid)
+2025-12-02 10:53:02,935 | DEBUG    | strat.options_module | Skipping trade: Entry $335.67 >= Target $335.46 (bullish setup invalid)
+2025-12-02 10:53:02,936 | DEBUG    | strat.options_module | Skipping trade: Entry $337.77 >= Target $337.32 (bullish setup invalid)
+2025-12-02 10:53:02,936 | DEBUG    | strat.options_module | Skipping trade: Entry $336.38 <= Target $336.90 (bearish setup invalid)
+2025-12-02 10:53:02,938 | DEBUG    | strat.options_module | Skipping trade: Entry $262.00 <= Target $262.13 (bearish setup invalid)
+2025-12-02 10:53:02,939 | DEBUG    | strat.options_module | Skipping trade: Entry $327.68 >= Target $327.17 (bullish setup invalid)
+2025-12-02 10:53:02,939 | DEBUG    | strat.options_module | Skipping trade: Entry $360.10 <= Target $360.22 (bearish setup invalid)
+2025-12-02 10:53:03,032 - thetadata_client - WARNING - API request failed (attempt 1/3), retrying in 1s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:03,032 | WARNING  | thetadata_client | API request failed (attempt 1/3), retrying in 1s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:04,176 - thetadata_client - WARNING - API request failed (attempt 2/3), retrying in 2s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:04,176 | WARNING  | thetadata_client | API request failed (attempt 2/3), retrying in 2s: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:06,349 - thetadata_client - ERROR - API request failed (attempt 3/3): option/history/greeks/first_order - 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:06,349 | ERROR    | thetadata_client | API request failed (attempt 3/3): option/history/greeks/first_order - 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:06,349 - thetadata_client - WARNING - Failed to get Greeks for QQQ 410.0 C exp 2024-01-26: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:06,349 | WARNING  | thetadata_client | Failed to get Greeks for QQQ 410.0 C exp 2024-01-26: 472 Client Error: 472 for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=QQQ&expiration=20240126&strike=410.0&right=call&date=20231227&interval=1h&format=json
+2025-12-02 10:53:06,349 | WARNING  | options_backtester | ThetaData Greeks without valid price for QQQ240126C00410000 exit, falling back to Black-Scholes
+2025-12-02 10:53:06,349 | WARNING  | options_backtester | Mixed data sources for QQQ240126C00410000: entry=ThetaData, exit=BlackScholes. P/L calculation may have reduced accuracy.
+2025-12-02 10:53:06,350 | DEBUG    | strat.options_module | Skipping trade: Entry $449.89 >= Target $449.00 (bullish setup invalid)
+2025-12-02 10:53:06,354 | INFO     | validation.strat_validator |   3-1-2_1D_QQQ: FAILED (12 trades, 22.1s, ThetaData: 92%)
+2025-12-02 10:53:06,354 | INFO     | validation.strat_validator | Running: 3-1-2_1D_AAPL
+2025-12-02 10:53:06,609 | DEBUG    | tzlocal | Looking up time zone info from registry
+2025-12-02 10:53:06,797 | DEBUG    | validation.strat_validator | ThetaData fetcher wired to 3-1-2_1D_AAPL backtester
+2025-12-02 10:53:06,797 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 3-1-2_1D_AAPL
+2025-12-02 10:53:06,797 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_3-1-2_1D_AAPL
+2025-12-02 10:53:15,281 | DEBUG    | strat.options_module | Skipping trade: Entry $165.23 <= Target $165.54 (bearish setup invalid)
+2025-12-02 10:53:15,354 | DEBUG    | strat.options_module | Skipping trade: Entry $223.88 <= Target $223.90 (bearish setup invalid)
+2025-12-02 10:53:15,376 | INFO     | validation.walk_forward | Starting walk-forward validation: 1255 bars
+2025-12-02 10:53:15,376 | INFO     | validation.walk_forward | Holdout mode: 70% train (878 bars), 30% test (377 bars)
+2025-12-02 10:53:15,376 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-02 10:53:15,620 | DEBUG    | strat.options_module | Skipping trade: Entry $165.23 <= Target $165.54 (bearish setup invalid)
+2025-12-02 10:53:15,815 | DEBUG    | strat.options_module | Skipping trade: Entry $165.23 <= Target $165.54 (bearish setup invalid)
+2025-12-02 10:53:15,882 | DEBUG    | strat.options_module | Skipping trade: Entry $223.88 <= Target $223.90 (bearish setup invalid)
+2025-12-02 10:53:15,887 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=-12.66, OOS Sharpe=-6.63, Degradation=47.6%
+2025-12-02 10:53:15,887 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-02 10:53:15,887 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-02 10:53:15,887 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 14 trades, 10000 iterations
+2025-12-02 10:53:15,888 | INFO     | validation.monte_carlo | Original metrics: Sharpe=-11.69, MaxDD=52.4%
+2025-12-02 10:53:15,921 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-02 10:53:15,954 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-02 10:53:15,985 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-02 10:53:16,018 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-02 10:53:16,049 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-02 10:53:16,083 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-02 10:53:16,115 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-02 10:53:16,146 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-02 10:53:16,177 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-02 10:53:16,210 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-02 10:53:16,212 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-02 10:53:16,212 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-02 10:53:16,220 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-02 10:53:16,220 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-02 10:53:16,220 | INFO     | validation.validation_runner | Validation completed in 9.42s - FAILED
+2025-12-02 10:53:16,465 | DEBUG    | strat.options_module | Skipping trade: Entry $165.23 <= Target $165.54 (bearish setup invalid)
+2025-12-02 10:53:16,468 | DEBUG    | strat.options_module | Skipping trade: Entry $223.88 <= Target $223.90 (bearish setup invalid)
+2025-12-02 10:53:16,472 | INFO     | validation.strat_validator |   3-1-2_1D_AAPL: FAILED (14 trades, 10.1s, ThetaData: 100%)
+2025-12-02 10:53:16,472 | INFO     | validation.strat_validator | Running: 3-1-2_1D_IWM
+2025-12-02 10:53:16,474 | DEBUG    | validation.strat_validator | ThetaData fetcher wired to 3-1-2_1D_IWM backtester
+2025-12-02 10:53:16,474 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 3-1-2_1D_IWM
+2025-12-02 10:53:16,474 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_3-1-2_1D_IWM
+2025-12-02 10:53:16,745 | DEBUG    | strat.options_module | Skipping trade: Entry $165.67 >= Target $165.54 (bullish setup invalid)
+2025-12-02 10:53:16,745 | DEBUG    | strat.options_module | Skipping trade: Entry $167.01 <= Target $167.11 (bearish setup invalid)
+2025-12-02 10:53:16,745 | DEBUG    | strat.options_module | Skipping trade: Entry $160.02 <= Target $160.03 (bearish setup invalid)
+2025-12-02 10:53:16,745 | DEBUG    | strat.options_module | Skipping trade: Entry $198.01 >= Target $197.89 (bullish setup invalid)
+2025-12-02 10:53:16,763 | DEBUG    | strat.options_module | Skipping trade: Entry $224.14 >= Target $223.71 (bullish setup invalid)
+2025-12-02 10:53:16,937 | DEBUG    | strat.options_module | Skipping trade: Entry $200.52 >= Target $200.32 (bullish setup invalid)
+2025-12-02 10:53:16,969 | INFO     | validation.walk_forward | Starting walk-forward validation: 1237 bars
+2025-12-02 10:53:16,969 | INFO     | validation.walk_forward | Holdout mode: 70% train (865 bars), 30% test (372 bars)
+2025-12-02 10:53:16,969 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-02 10:53:17,144 | DEBUG    | strat.options_module | Skipping trade: Entry $165.67 >= Target $165.54 (bullish setup invalid)
+2025-12-02 10:53:17,144 | DEBUG    | strat.options_module | Skipping trade: Entry $167.01 <= Target $167.11 (bearish setup invalid)
+2025-12-02 10:53:17,144 | DEBUG    | strat.options_module | Skipping trade: Entry $160.02 <= Target $160.03 (bearish setup invalid)
+2025-12-02 10:53:17,144 | DEBUG    | strat.options_module | Skipping trade: Entry $198.01 >= Target $197.89 (bullish setup invalid)
+2025-12-02 10:53:17,145 | DEBUG    | strat.options_module | Skipping trade: Entry $224.14 >= Target $223.71 (bullish setup invalid)
+2025-12-02 10:53:17,315 | DEBUG    | strat.options_module | Skipping trade: Entry $165.67 >= Target $165.54 (bullish setup invalid)
+2025-12-02 10:53:17,315 | DEBUG    | strat.options_module | Skipping trade: Entry $167.01 <= Target $167.11 (bearish setup invalid)
+2025-12-02 10:53:17,315 | DEBUG    | strat.options_module | Skipping trade: Entry $160.02 <= Target $160.03 (bearish setup invalid)
+2025-12-02 10:53:17,315 | DEBUG    | strat.options_module | Skipping trade: Entry $198.01 >= Target $197.89 (bullish setup invalid)
+2025-12-02 10:53:17,316 | DEBUG    | strat.options_module | Skipping trade: Entry $224.14 >= Target $223.71 (bullish setup invalid)
+2025-12-02 10:53:17,420 | DEBUG    | strat.options_module | Skipping trade: Entry $200.52 >= Target $200.32 (bullish setup invalid)
+2025-12-02 10:53:17,424 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=-7.60, OOS Sharpe=-6.49, Degradation=14.6%
+2025-12-02 10:53:17,424 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-02 10:53:17,424 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-02 10:53:17,424 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 13 trades, 10000 iterations
+2025-12-02 10:53:17,424 | INFO     | validation.monte_carlo | Original metrics: Sharpe=-6.34, MaxDD=46.6%
+2025-12-02 10:53:17,456 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-02 10:53:17,499 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-02 10:53:17,531 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-02 10:53:17,562 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-02 10:53:17,593 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-02 10:53:17,628 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-02 10:53:17,666 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-02 10:53:17,703 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-02 10:53:17,733 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-02 10:53:17,764 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-02 10:53:17,765 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-02 10:53:17,765 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-02 10:53:17,774 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-02 10:53:17,774 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-02 10:53:17,774 | INFO     | validation.validation_runner | Validation completed in 1.30s - FAILED
+2025-12-02 10:53:18,038 | DEBUG    | strat.options_module | Skipping trade: Entry $165.67 >= Target $165.54 (bullish setup invalid)
+2025-12-02 10:53:18,039 | DEBUG    | strat.options_module | Skipping trade: Entry $167.01 <= Target $167.11 (bearish setup invalid)
+2025-12-02 10:53:18,039 | DEBUG    | strat.options_module | Skipping trade: Entry $160.02 <= Target $160.03 (bearish setup invalid)
+2025-12-02 10:53:18,039 | DEBUG    | strat.options_module | Skipping trade: Entry $198.01 >= Target $197.89 (bullish setup invalid)
+2025-12-02 10:53:18,040 | DEBUG    | strat.options_module | Skipping trade: Entry $224.14 >= Target $223.71 (bullish setup invalid)
+2025-12-02 10:53:18,045 | DEBUG    | strat.options_module | Skipping trade: Entry $200.52 >= Target $200.32 (bullish setup invalid)
+2025-12-02 10:53:18,050 | INFO     | validation.strat_validator |   3-1-2_1D_IWM: FAILED (13 trades, 1.6s, ThetaData: 100%)
+2025-12-02 10:53:18,050 | INFO     | validation.strat_validator | Running: 3-1-2_1D_DIA
+2025-12-02 10:53:18,052 | DEBUG    | validation.strat_validator | ThetaData fetcher wired to 3-1-2_1D_DIA backtester
+2025-12-02 10:53:18,052 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 3-1-2_1D_DIA
+2025-12-02 10:53:18,052 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_3-1-2_1D_DIA
+2025-12-02 10:53:18,349 | DEBUG    | strat.options_module | Skipping trade: Entry $214.98 >= Target $214.79 (bullish setup invalid)
+2025-12-02 10:53:18,462 | DEBUG    | strat.options_module | Skipping trade: Entry $337.95 <= Target $338.41 (bearish setup invalid)
+2025-12-02 10:53:18,480 | DEBUG    | strat.options_module | Skipping trade: Entry $337.51 <= Target $337.90 (bearish setup invalid)
+2025-12-02 10:53:18,480 | DEBUG    | strat.options_module | Skipping trade: Entry $331.20 <= Target $331.31 (bearish setup invalid)
+2025-12-02 10:53:18,512 | DEBUG    | strat.options_module | Skipping trade: Entry $347.05 <= Target $347.74 (bearish setup invalid)
+2025-12-02 10:53:18,557 | DEBUG    | strat.options_module | Skipping trade: Entry $388.27 >= Target $387.66 (bullish setup invalid)
+2025-12-02 10:53:18,557 | DEBUG    | strat.options_module | Skipping trade: Entry $383.68 >= Target $383.48 (bullish setup invalid)
+2025-12-02 10:53:18,557 | DEBUG    | strat.options_module | Skipping trade: Entry $422.96 >= Target $422.94 (bullish setup invalid)
+2025-12-02 10:53:18,560 | INFO     | validation.walk_forward | Starting walk-forward validation: 1237 bars
+2025-12-02 10:53:18,560 | INFO     | validation.walk_forward | Holdout mode: 70% train (865 bars), 30% test (372 bars)
+2025-12-02 10:53:18,560 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-02 10:53:18,751 | DEBUG    | strat.options_module | Skipping trade: Entry $214.98 >= Target $214.79 (bullish setup invalid)
+2025-12-02 10:53:18,755 | DEBUG    | strat.options_module | Skipping trade: Entry $337.95 <= Target $338.41 (bearish setup invalid)
+2025-12-02 10:53:18,755 | DEBUG    | strat.options_module | Skipping trade: Entry $337.51 <= Target $337.90 (bearish setup invalid)
+2025-12-02 10:53:18,755 | DEBUG    | strat.options_module | Skipping trade: Entry $331.20 <= Target $331.31 (bearish setup invalid)
+2025-12-02 10:53:18,936 | DEBUG    | strat.options_module | Skipping trade: Entry $214.98 >= Target $214.79 (bullish setup invalid)
+2025-12-02 10:53:18,939 | DEBUG    | strat.options_module | Skipping trade: Entry $337.95 <= Target $338.41 (bearish setup invalid)
+2025-12-02 10:53:18,940 | DEBUG    | strat.options_module | Skipping trade: Entry $337.51 <= Target $337.90 (bearish setup invalid)
+2025-12-02 10:53:18,940 | DEBUG    | strat.options_module | Skipping trade: Entry $331.20 <= Target $331.31 (bearish setup invalid)
+2025-12-02 10:53:19,057 | DEBUG    | strat.options_module | Skipping trade: Entry $347.05 <= Target $347.74 (bearish setup invalid)
+2025-12-02 10:53:19,058 | DEBUG    | strat.options_module | Skipping trade: Entry $388.27 >= Target $387.66 (bullish setup invalid)
+2025-12-02 10:53:19,058 | DEBUG    | strat.options_module | Skipping trade: Entry $383.68 >= Target $383.48 (bullish setup invalid)
+2025-12-02 10:53:19,058 | DEBUG    | strat.options_module | Skipping trade: Entry $422.96 >= Target $422.94 (bullish setup invalid)
+2025-12-02 10:53:19,063 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=-5.72, OOS Sharpe=-7.07, Degradation=-23.6%
+2025-12-02 10:53:19,063 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-02 10:53:19,063 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-02 10:53:19,063 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 13 trades, 10000 iterations
+2025-12-02 10:53:19,064 | INFO     | validation.monte_carlo | Original metrics: Sharpe=-6.30, MaxDD=40.1%
+2025-12-02 10:53:19,104 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-02 10:53:19,134 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-02 10:53:19,166 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-02 10:53:19,199 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-02 10:53:19,230 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-02 10:53:19,262 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-02 10:53:19,293 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-02 10:53:19,324 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-02 10:53:19,355 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-02 10:53:19,389 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-02 10:53:19,391 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-02 10:53:19,391 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-02 10:53:19,399 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-02 10:53:19,400 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-02 10:53:19,400 | INFO     | validation.validation_runner | Validation completed in 1.35s - FAILED
+2025-12-02 10:53:19,691 | DEBUG    | strat.options_module | Skipping trade: Entry $214.98 >= Target $214.79 (bullish setup invalid)
+2025-12-02 10:53:19,696 | DEBUG    | strat.options_module | Skipping trade: Entry $337.95 <= Target $338.41 (bearish setup invalid)
+2025-12-02 10:53:19,696 | DEBUG    | strat.options_module | Skipping trade: Entry $337.51 <= Target $337.90 (bearish setup invalid)
+2025-12-02 10:53:19,697 | DEBUG    | strat.options_module | Skipping trade: Entry $331.20 <= Target $331.31 (bearish setup invalid)
+2025-12-02 10:53:19,698 | DEBUG    | strat.options_module | Skipping trade: Entry $347.05 <= Target $347.74 (bearish setup invalid)
+2025-12-02 10:53:19,699 | DEBUG    | strat.options_module | Skipping trade: Entry $388.27 >= Target $387.66 (bullish setup invalid)
+2025-12-02 10:53:19,699 | DEBUG    | strat.options_module | Skipping trade: Entry $383.68 >= Target $383.48 (bullish setup invalid)
+2025-12-02 10:53:19,699 | DEBUG    | strat.options_module | Skipping trade: Entry $422.96 >= Target $422.94 (bullish setup invalid)
+2025-12-02 10:53:19,702 | INFO     | validation.strat_validator |   3-1-2_1D_DIA: FAILED (13 trades, 1.7s, ThetaData: 100%)
+
+Batch 3-1-2 Results:
+  Total:    5
+  Passed:   0
+  Failed:   5
+  Errors:   0
+  Pass Rate: 0.0%
+  ThetaData Coverage: 98.3%
+  Time:     37.7s
+
+Results saved to: validation_results\session_83k
+
+======================================================================
+Completed: 2025-12-02 10:53:19
+======================================================================

@@ -1,0 +1,14 @@
+{
+  "batch_id": "batch_2-1-2_20251202_164225",
+  "pattern": "2-1-2",
+  "total_runs": 0,
+  "passed_runs": 0,
+  "failed_runs": 0,
+  "error_runs": 0,
+  "insufficient_data_runs": 0,
+  "pass_rate": 0.0,
+  "avg_thetadata_coverage": 0.0,
+  "total_execution_time": 0,
+  "timestamp": "2025-12-02T16:42:25.771013",
+  "runs": []
+}

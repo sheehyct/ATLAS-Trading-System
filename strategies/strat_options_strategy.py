@@ -744,6 +744,66 @@ class STRATOptionsStrategy:
 
         return signals[0] if signals else None
 
+    def _calculate_daily_sharpe(
+        self,
+        trades_df: pd.DataFrame,
+        starting_capital: float = 10000.0,
+        periods_per_year: int = 252,
+    ) -> float:
+        """
+        Calculate Sharpe ratio from ACTUAL daily returns.
+
+        Session 83K-58: Fixes Sharpe inflation caused by treating each trade
+        as a separate period. Multiple trades on the same day are aggregated
+        into single daily P&L, then a daily equity curve is built, and
+        Sharpe is calculated from daily percentage returns.
+
+        Args:
+            trades_df: DataFrame with 'pnl' and 'entry_date' columns
+            starting_capital: Initial capital for return calculation
+            periods_per_year: Trading periods per year (252 for daily)
+
+        Returns:
+            Annualized Sharpe ratio
+        """
+        if trades_df is None or len(trades_df) < 2:
+            return 0.0
+
+        if 'pnl' not in trades_df.columns or 'entry_date' not in trades_df.columns:
+            return 0.0
+
+        # Aggregate trades by calendar date
+        daily_pnl = trades_df.groupby(trades_df['entry_date'].dt.date)['pnl'].sum()
+
+        if len(daily_pnl) < 2:
+            return 0.0
+
+        # Build daily equity curve from cumulative P&L
+        daily_equity = starting_capital + daily_pnl.cumsum()
+
+        # Prepend starting capital to calculate first day's return
+        daily_equity_with_start = pd.concat([
+            pd.Series([starting_capital], index=[daily_equity.index[0]]),
+            daily_equity
+        ])
+
+        # Calculate daily percentage returns (same as old pct_change method)
+        daily_returns = daily_equity_with_start.pct_change().dropna()
+
+        if len(daily_returns) < 2:
+            return 0.0
+
+        mean_return = daily_returns.mean()
+        std_return = daily_returns.std(ddof=1)
+
+        # Check for zero or near-zero std (floating point precision issue)
+        if std_return == 0 or np.isnan(std_return) or std_return < 1e-10:
+            return 0.0
+
+        sharpe = (mean_return / std_return) * np.sqrt(periods_per_year)
+
+        return float(sharpe) if np.isfinite(sharpe) else 0.0
+
     def _create_backtest_result(
         self,
         trades_df: pd.DataFrame,
@@ -768,12 +828,9 @@ class STRATOptionsStrategy:
             equity.append(max(0, new_equity))  # Floor at zero - account cannot go negative
         equity_series = pd.Series(equity[1:], index=trades_df['entry_date'] if 'entry_date' in trades_df else range(len(trades_df)))
 
-        # Calculate Sharpe (simplified - daily returns approximation)
-        if len(equity) > 2:
-            returns = pd.Series(equity).pct_change().dropna()
-            sharpe = returns.mean() / returns.std() * np.sqrt(252) if returns.std() > 0 else 0
-        else:
-            sharpe = 0
+        # Calculate Sharpe using ACTUAL daily returns
+        # Session 83K-58: Fixed Sharpe inflation bug - aggregate trades by date first
+        sharpe = self._calculate_daily_sharpe(trades_df)
 
         # Calculate max drawdown
         # Session 83K-10: Cap MaxDD at 100% (realistic for cash-secured options)

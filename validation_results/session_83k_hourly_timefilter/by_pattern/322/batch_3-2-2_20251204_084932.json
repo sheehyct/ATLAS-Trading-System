@@ -1,0 +1,120 @@
+{
+  "batch_id": "batch_3-2-2_20251204_084932",
+  "pattern": "3-2-2",
+  "total_runs": 5,
+  "passed_runs": 0,
+  "failed_runs": 0,
+  "error_runs": 5,
+  "insufficient_data_runs": 0,
+  "pass_rate": 0.0,
+  "avg_thetadata_coverage": 0.0,
+  "total_execution_time": 0.0005235671997070312,
+  "timestamp": "2025-12-04T08:49:32.886025",
+  "runs": [
+    {
+      "run_id": "3-2-2_1H_SPY",
+      "pattern": "3-2-2",
+      "timeframe": "1H",
+      "symbol": "SPY",
+      "passed": false,
+      "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+      "trade_count": 0,
+      "execution_time_seconds": 0.0,
+      "timestamp": "2025-12-04T08:49:32.879785",
+      "data_source_metrics": {
+        "total_trades": 0,
+        "thetadata_quotes": 0,
+        "thetadata_greeks": 0,
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 0.0,
+        "greeks_coverage_pct": 0.0
+      },
+      "report": null
+    },
+    {
+      "run_id": "3-2-2_1H_QQQ",
+      "pattern": "3-2-2",
+      "timeframe": "1H",
+      "symbol": "QQQ",
+      "passed": false,
+      "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+      "trade_count": 0,
+      "execution_time_seconds": 0.0,
+      "timestamp": "2025-12-04T08:49:32.881364",
+      "data_source_metrics": {
+        "total_trades": 0,
+        "thetadata_quotes": 0,
+        "thetadata_greeks": 0,
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 0.0,
+        "greeks_coverage_pct": 0.0
+      },
+      "report": null
+    },
+    {
+      "run_id": "3-2-2_1H_AAPL",
+      "pattern": "3-2-2",
+      "timeframe": "1H",
+      "symbol": "AAPL",
+      "passed": false,
+      "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+      "trade_count": 0,
+      "execution_time_seconds": 0.0005235671997070312,
+      "timestamp": "2025-12-04T08:49:32.882409",
+      "data_source_metrics": {
+        "total_trades": 0,
+        "thetadata_quotes": 0,
+        "thetadata_greeks": 0,
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 0.0,
+        "greeks_coverage_pct": 0.0
+      },
+      "report": null
+    },
+    {
+      "run_id": "3-2-2_1H_IWM",
+      "pattern": "3-2-2",
+      "timeframe": "1H",
+      "symbol": "IWM",
+      "passed": false,
+      "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+      "trade_count": 0,
+      "execution_time_seconds": 0.0,
+      "timestamp": "2025-12-04T08:49:32.883972",
+      "data_source_metrics": {
+        "total_trades": 0,
+        "thetadata_quotes": 0,
+        "thetadata_greeks": 0,
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 0.0,
+        "greeks_coverage_pct": 0.0
+      },
+      "report": null
+    },
+    {
+      "run_id": "3-2-2_1H_DIA",
+      "pattern": "3-2-2",
+      "timeframe": "1H",
+      "symbol": "DIA",
+      "passed": false,
+      "error": "OptionsBacktester.__init__() got an unexpected keyword argument 'hourly_config'",
+      "trade_count": 0,
+      "execution_time_seconds": 0.0,
+      "timestamp": "2025-12-04T08:49:32.884997",
+      "data_source_metrics": {
+        "total_trades": 0,
+        "thetadata_quotes": 0,
+        "thetadata_greeks": 0,
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 0.0,
+        "greeks_coverage_pct": 0.0
+      },
+      "report": null
+    }
+  ]
+}

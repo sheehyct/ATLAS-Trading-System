@@ -1,0 +1,785 @@
+{
+  "batch_id": "batch_3-2_20251202_115936",
+  "pattern": "3-2",
+  "total_runs": 5,
+  "passed_runs": 0,
+  "failed_runs": 5,
+  "error_runs": 0,
+  "insufficient_data_runs": 0,
+  "pass_rate": 0.0,
+  "avg_thetadata_coverage": 99.77272727272728,
+  "total_execution_time": 1075.8617014884949,
+  "timestamp": "2025-12-02T12:17:32.428572",
+  "runs": [
+    {
+      "run_id": "3-2_1D_SPY",
+      "pattern": "3-2",
+      "timeframe": "1D",
+      "symbol": "SPY",
+      "passed": false,
+      "error": null,
+      "trade_count": 88,
+      "execution_time_seconds": 255.82006931304932,
+      "timestamp": "2025-12-02T12:03:52.367958",
+      "data_source_metrics": {
+        "total_trades": 88,
+        "thetadata_quotes": "88",
+        "thetadata_greeks": "88",
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 100.0,
+        "greeks_coverage_pct": 100.0
+      },
+      "report": {
+        "strategy_name": "STRAT_3-2_1D_SPY",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": true,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Monte Carlo: P(Ruin) 69.7% exceeds maximum 10.0%"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T12:03:50.759007"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": 0.0,
+          "avg_oos_sharpe": 6.309974060803966,
+          "sharpe_degradation": 0.0,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 1.0,
+          "total_folds": 1,
+          "passes_validation": true,
+          "failure_reasons": [],
+          "has_sign_reversal_warning": "False",
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2020-01-02T00:00:00-05:00",
+              "train_end": "2023-06-08T00:00:00-04:00",
+              "test_start": "2023-06-09T00:00:00-04:00",
+              "test_end": "2024-11-29T00:00:00-05:00",
+              "is_sharpe": 0,
+              "oos_sharpe": 6.309974060803966,
+              "is_return": 0.17992111690000062,
+              "oos_return": 1.8216301707590064,
+              "is_trades": 60,
+              "oos_trades": 28,
+              "sharpe_degradation": 1.0,
+              "is_profitable": "True",
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 2.3334446899978567,
+          "simulated_sharpe_mean": 2.653778022045032,
+          "simulated_sharpe_std": 0.8314944865585739,
+          "sharpe_95_ci": [
+            1.4203219039192907,
+            4.518904028263378
+          ],
+          "original_max_dd": 1.0,
+          "simulated_max_dd_95": 1.0,
+          "max_dd_95_ci": [
+            0.26339975846808905,
+            1.0
+          ],
+          "return_95_ci": [
+            -0.49848822657485586,
+            6.024503750601479
+          ],
+          "probability_of_loss": 0.1047,
+          "probability_of_ruin": 0.6973,
+          "n_simulations": 10000,
+          "passes_validation": false,
+          "failure_reasons": [
+            "P(Ruin) 69.7% exceeds maximum 10.0%"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: -0.015 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.015375907059163803,
+              "threshold": 0.5
+            },
+            {
+              "check_name": "entry_achievability",
+              "passed": true,
+              "details": "Skipped: entry_prices length (88) != data length (1237)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            },
+            {
+              "check_name": "exit_achievability",
+              "passed": true,
+              "details": "Skipped: exit_prices length (88) != data length (1237)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 254.21111917495728
+      }
+    },
+    {
+      "run_id": "3-2_1D_QQQ",
+      "pattern": "3-2",
+      "timeframe": "1D",
+      "symbol": "QQQ",
+      "passed": false,
+      "error": null,
+      "trade_count": 77,
+      "execution_time_seconds": 216.22346806526184,
+      "timestamp": "2025-12-02T12:07:28.594421",
+      "data_source_metrics": {
+        "total_trades": 77,
+        "thetadata_quotes": "77",
+        "thetadata_greeks": "77",
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 100.0,
+        "greeks_coverage_pct": 100.0
+      },
+      "report": {
+        "strategy_name": "STRAT_3-2_1D_QQQ",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": true,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Monte Carlo: P(Ruin) 48.8% exceeds maximum 10.0%"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T12:07:23.878180"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": 3.6252084893891876,
+          "avg_oos_sharpe": 3.559942217566095,
+          "sharpe_degradation": 0.018003453322512075,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 1.0,
+          "total_folds": 1,
+          "passes_validation": true,
+          "failure_reasons": [],
+          "has_sign_reversal_warning": "False",
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2020-01-02T00:00:00-05:00",
+              "train_end": "2023-06-08T00:00:00-04:00",
+              "test_start": "2023-06-09T00:00:00-04:00",
+              "test_end": "2024-11-29T00:00:00-05:00",
+              "is_sharpe": 3.6252084893891876,
+              "oos_sharpe": 3.559942217566095,
+              "is_return": 3.244881731995381,
+              "oos_return": 0.6933098176309986,
+              "is_trades": 55,
+              "oos_trades": 22,
+              "sharpe_degradation": 0.018003453322512075,
+              "is_profitable": "True",
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 3.3079634220001637,
+          "simulated_sharpe_mean": 3.5124566849523102,
+          "simulated_sharpe_std": 1.1275236438618743,
+          "sharpe_95_ci": [
+            1.8090680674666482,
+            5.970679251103921
+          ],
+          "original_max_dd": 0.7497224714326258,
+          "simulated_max_dd_95": 1.0,
+          "max_dd_95_ci": [
+            0.1966594207578955,
+            1.0
+          ],
+          "return_95_ci": [
+            0.8266103041470432,
+            8.033824081623006
+          ],
+          "probability_of_loss": 0.0172,
+          "probability_of_ruin": 0.4884,
+          "n_simulations": 10000,
+          "passes_validation": false,
+          "failure_reasons": [
+            "P(Ruin) 48.8% exceeds maximum 10.0%"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: -0.031 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.03147032164312241,
+              "threshold": 0.5
+            },
+            {
+              "check_name": "entry_achievability",
+              "passed": true,
+              "details": "Skipped: entry_prices length (77) != data length (1237)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            },
+            {
+              "check_name": "exit_achievability",
+              "passed": true,
+              "details": "Skipped: exit_prices length (77) != data length (1237)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 211.50622820854187
+      }
+    },
+    {
+      "run_id": "3-2_1D_AAPL",
+      "pattern": "3-2",
+      "timeframe": "1D",
+      "symbol": "AAPL",
+      "passed": false,
+      "error": null,
+      "trade_count": 69,
+      "execution_time_seconds": 128.41984605789185,
+      "timestamp": "2025-12-02T12:09:37.018264",
+      "data_source_metrics": {
+        "total_trades": 69,
+        "thetadata_quotes": "69",
+        "thetadata_greeks": "69",
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 100.0,
+        "greeks_coverage_pct": 100.0
+      },
+      "report": {
+        "strategy_name": "STRAT_3-2_1D_AAPL",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": true,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Monte Carlo: P(Ruin) 36.4% exceeds maximum 10.0%"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T12:09:35.930498"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": 2.8425951727810492,
+          "avg_oos_sharpe": 4.3629743964310865,
+          "sharpe_degradation": -0.5348560492215908,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 1.0,
+          "total_folds": 1,
+          "passes_validation": true,
+          "failure_reasons": [],
+          "has_sign_reversal_warning": "False",
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2020-12-02T00:00:00-05:00",
+              "train_end": "2024-05-30T00:00:00-04:00",
+              "test_start": "2024-05-31T00:00:00-04:00",
+              "test_end": "2025-12-01T00:00:00-05:00",
+              "is_sharpe": 2.8425951727810492,
+              "oos_sharpe": 4.3629743964310865,
+              "is_return": 1.157692395284998,
+              "oos_return": 0.7645699297500006,
+              "is_trades": 47,
+              "oos_trades": 22,
+              "sharpe_degradation": -0.5348560492215908,
+              "is_profitable": "True",
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 2.952317199981678,
+          "simulated_sharpe_mean": 3.2337037599594,
+          "simulated_sharpe_std": 1.258127567484629,
+          "sharpe_95_ci": [
+            1.1239369357464095,
+            5.9649343399265815
+          ],
+          "original_max_dd": 0.4855813331471343,
+          "simulated_max_dd_95": 1.0,
+          "max_dd_95_ci": [
+            0.17486842688783757,
+            1.0
+          ],
+          "return_95_ci": [
+            -0.07077851576020308,
+            4.114868157230682
+          ],
+          "probability_of_loss": 0.0573,
+          "probability_of_ruin": 0.3641,
+          "n_simulations": 10000,
+          "passes_validation": false,
+          "failure_reasons": [
+            "P(Ruin) 36.4% exceeds maximum 10.0%"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: 0.014 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.01388293463220768,
+              "threshold": 0.5
+            },
+            {
+              "check_name": "entry_achievability",
+              "passed": true,
+              "details": "Skipped: entry_prices length (69) != data length (1255)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            },
+            {
+              "check_name": "exit_achievability",
+              "passed": true,
+              "details": "Skipped: exit_prices length (69) != data length (1255)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 127.33208012580872
+      }
+    },
+    {
+      "run_id": "3-2_1D_IWM",
+      "pattern": "3-2",
+      "timeframe": "1D",
+      "symbol": "IWM",
+      "passed": false,
+      "error": null,
+      "trade_count": 83,
+      "execution_time_seconds": 197.8650460243225,
+      "timestamp": "2025-12-02T12:12:54.887309",
+      "data_source_metrics": {
+        "total_trades": 83,
+        "thetadata_quotes": "83",
+        "thetadata_greeks": "83",
+        "blackscholes_fallback": 0,
+        "mixed_source": 0,
+        "thetadata_coverage_pct": 100.0,
+        "greeks_coverage_pct": 100.0
+      },
+      "report": {
+        "strategy_name": "STRAT_3-2_1D_IWM",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": true,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Monte Carlo: P(Ruin) 11.5% exceeds maximum 10.0%"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T12:12:53.226143"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": 5.200166194196165,
+          "avg_oos_sharpe": 4.0666887564840835,
+          "sharpe_degradation": 0.2179694639331221,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 1.0,
+          "total_folds": 1,
+          "passes_validation": true,
+          "failure_reasons": [],
+          "has_sign_reversal_warning": "False",
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2020-01-02T00:00:00-05:00",
+              "train_end": "2023-06-08T00:00:00-04:00",
+              "test_start": "2023-06-09T00:00:00-04:00",
+              "test_end": "2024-11-29T00:00:00-05:00",
+              "is_sharpe": 5.200166194196165,
+              "oos_sharpe": 4.0666887564840835,
+              "is_return": 2.9761113503939947,
+              "oos_return": 0.8735727414910016,
+              "is_trades": 57,
+              "oos_trades": 26,
+              "sharpe_degradation": 0.2179694639331221,
+              "is_profitable": "True",
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 4.874404388497821,
+          "simulated_sharpe_mean": 4.641613046165395,
+          "simulated_sharpe_std": 1.2671645303835934,
+          "sharpe_95_ci": [
+            2.278680361639897,
+            7.148348661984787
+          ],
+          "original_max_dd": 0.16568360382991545,
+          "simulated_max_dd_95": 0.6459683233663328,
+          "max_dd_95_ci": [
+            0.11602397783405465,
+            0.6459683233663328
+          ],
+          "return_95_ci": [
+            1.8801931380586587,
+            6.597819967239661
+          ],
+          "probability_of_loss": 0.001,
+          "probability_of_ruin": 0.1147,
+          "n_simulations": 10000,
+          "passes_validation": false,
+          "failure_reasons": [
+            "P(Ruin) 11.5% exceeds maximum 10.0%"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: -0.039 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.03948503534188809,
+              "threshold": 0.5
+            },
+            {
+              "check_name": "entry_achievability",
+              "passed": true,
+              "details": "Skipped: entry_prices length (83) != data length (1237)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            },
+            {
+              "check_name": "exit_achievability",
+              "passed": true,
+              "details": "Skipped: exit_prices length (83) != data length (1237)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 196.2038803100586
+      }
+    },
+    {
+      "run_id": "3-2_1D_DIA",
+      "pattern": "3-2",
+      "timeframe": "1D",
+      "symbol": "DIA",
+      "passed": false,
+      "error": null,
+      "trade_count": 88,
+      "execution_time_seconds": 277.53327202796936,
+      "timestamp": "2025-12-02T12:17:32.424574",
+      "data_source_metrics": {
+        "total_trades": 88,
+        "thetadata_quotes": "87",
+        "thetadata_greeks": "88",
+        "blackscholes_fallback": 0,
+        "mixed_source": "1",
+        "thetadata_coverage_pct": 98.86363636363636,
+        "greeks_coverage_pct": 100.0
+      },
+      "report": {
+        "strategy_name": "STRAT_3-2_1D_DIA",
+        "is_options": true,
+        "summary": {
+          "passes_all": false,
+          "walk_forward_passed": true,
+          "monte_carlo_passed": false,
+          "bias_detection_passed": true,
+          "pattern_metrics_generated": false,
+          "critical_issues": [
+            "Monte Carlo: P(Ruin) 73.5% exceeds maximum 10.0%"
+          ],
+          "warnings": [
+            "Pattern metrics analysis was not generated"
+          ],
+          "timestamp": "2025-12-02T12:17:05.820777"
+        },
+        "walk_forward": {
+          "avg_is_sharpe": 0.0,
+          "avg_oos_sharpe": 5.751237264335914,
+          "sharpe_degradation": 0.0,
+          "param_stability": {
+            "min_continuation_bars": 0.0
+          },
+          "profitable_folds_pct": 1.0,
+          "total_folds": 1,
+          "passes_validation": true,
+          "failure_reasons": [],
+          "has_sign_reversal_warning": "False",
+          "sign_reversal_warning": null,
+          "folds": [
+            {
+              "fold_number": 1,
+              "train_start": "2020-01-02T00:00:00-05:00",
+              "train_end": "2023-06-08T00:00:00-04:00",
+              "test_start": "2023-06-09T00:00:00-04:00",
+              "test_end": "2024-11-29T00:00:00-05:00",
+              "is_sharpe": 0,
+              "oos_sharpe": 5.751237264335914,
+              "is_return": -0.30643422142590954,
+              "oos_return": 1.0638531817267693,
+              "is_trades": 62,
+              "oos_trades": 26,
+              "sharpe_degradation": 1.0,
+              "is_profitable": "True",
+              "parameters": {
+                "min_continuation_bars": 2
+              }
+            }
+          ]
+        },
+        "monte_carlo": {
+          "original_sharpe": 2.9356916728119575,
+          "simulated_sharpe_mean": 2.3899756681875877,
+          "simulated_sharpe_std": 0.8798226886676752,
+          "sharpe_95_ci": [
+            0.8285451061562911,
+            4.350260003009599
+          ],
+          "original_max_dd": 1.0,
+          "simulated_max_dd_95": 1.0,
+          "max_dd_95_ci": [
+            0.28224467605226916,
+            1.0
+          ],
+          "return_95_ci": [
+            -0.8333083451600829,
+            3.8441756758885015
+          ],
+          "probability_of_loss": 0.227,
+          "probability_of_ruin": 0.7348,
+          "n_simulations": 10000,
+          "passes_validation": false,
+          "failure_reasons": [
+            "P(Ruin) 73.5% exceeds maximum 10.0%"
+          ]
+        },
+        "bias_detection": {
+          "passes_validation": true,
+          "bias_detected": false,
+          "checks": [
+            {
+              "check_name": "signal_timing",
+              "passed": "True",
+              "details": "Same-bar correlation: -0.024 (threshold: 0.5)",
+              "severity": "info",
+              "metric_value": 0.023940176702282587,
+              "threshold": 0.5
+            },
+            {
+              "check_name": "entry_achievability",
+              "passed": true,
+              "details": "Skipped: entry_prices length (88) != data length (1237)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            },
+            {
+              "check_name": "exit_achievability",
+              "passed": true,
+              "details": "Skipped: exit_prices length (88) != data length (1237)",
+              "severity": "info",
+              "metric_value": null,
+              "threshold": null
+            }
+          ],
+          "failure_reasons": []
+        },
+        "pattern_metrics": null,
+        "config_used": {
+          "walk_forward": {
+            "train_period": 252,
+            "test_period": 63,
+            "step_size": 63,
+            "min_trades_per_fold": 5,
+            "max_sharpe_degradation": 0.4,
+            "min_oos_sharpe": 0.3,
+            "validation_mode": "holdout",
+            "holdout_train_pct": 0.7
+          },
+          "monte_carlo": {
+            "n_simulations": 10000,
+            "confidence_level": 0.95,
+            "max_probability_of_loss": 0.3,
+            "max_probability_of_ruin": 0.1
+          },
+          "bias_detection": {
+            "check_signal_timing": true,
+            "check_entry_achievability": true,
+            "check_indicator_shift": true
+          }
+        },
+        "execution_time_seconds": 250.92947459220886
+      }
+    }
+  ]
+}

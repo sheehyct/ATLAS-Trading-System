@@ -31,89 +31,9 @@ Usage:
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from enum import Enum
 
-
-class PatternType(str, Enum):
-    """
-    STRAT pattern type enumeration.
-
-    Naming convention:
-    - U suffix = Bullish (Up)
-    - D suffix = Bearish (Down)
-    """
-    # 3-1-2 (Outside-Inside-Directional)
-    PATTERN_312U = '3-1-2U'  # Bullish
-    PATTERN_312D = '3-1-2D'  # Bearish
-
-    # 2-1-2 (Directional-Inside-Directional)
-    PATTERN_212U = '2-1-2U'  # Bullish
-    PATTERN_212D = '2-1-2D'  # Bearish
-
-    # 2-2 Reversal (Directional-Directional)
-    PATTERN_2D2U = '2D-2U'   # Bearish to Bullish reversal
-    PATTERN_2U2D = '2U-2D'   # Bullish to Bearish reversal
-
-    # 3-2 (Outside-Directional)
-    PATTERN_32U = '3-2U'     # Bullish
-    PATTERN_32D = '3-2D'     # Bearish
-
-    # 3-2-2 (Outside-Directional-Reversal)
-    PATTERN_32D2U = '3-2D-2U'  # Bearish then Bullish reversal
-    PATTERN_32U2D = '3-2U-2D'  # Bullish then Bearish reversal
-
-    # Unknown or custom
-    UNKNOWN = 'UNKNOWN'
-
-    @classmethod
-    def from_string(cls, pattern_str: str) -> 'PatternType':
-        """Convert string to PatternType enum."""
-        # Normalize string (uppercase, strip)
-        pattern_str = pattern_str.strip().upper()
-
-        # Map common variations
-        pattern_map = {
-            '3-1-2U': cls.PATTERN_312U,
-            '3-1-2D': cls.PATTERN_312D,
-            '312U': cls.PATTERN_312U,
-            '312D': cls.PATTERN_312D,
-            '2-1-2U': cls.PATTERN_212U,
-            '2-1-2D': cls.PATTERN_212D,
-            '212U': cls.PATTERN_212U,
-            '212D': cls.PATTERN_212D,
-            '2D-2U': cls.PATTERN_2D2U,
-            '2U-2D': cls.PATTERN_2U2D,
-            '2-2U': cls.PATTERN_2D2U,  # Shorthand
-            '2-2D': cls.PATTERN_2U2D,  # Shorthand
-            '3-2U': cls.PATTERN_32U,
-            '3-2D': cls.PATTERN_32D,
-            '3-2D-2U': cls.PATTERN_32D2U,
-            '3-2U-2D': cls.PATTERN_32U2D,
-        }
-
-        return pattern_map.get(pattern_str, cls.UNKNOWN)
-
-    def is_bullish(self) -> bool:
-        """Check if pattern is bullish."""
-        return self.value.endswith('U')
-
-    def is_bearish(self) -> bool:
-        """Check if pattern is bearish."""
-        return self.value.endswith('D')
-
-    def base_pattern(self) -> str:
-        """Get base pattern type without direction (e.g., '3-1-2')."""
-        if '3-1-2' in self.value:
-            return '3-1-2'
-        elif '2-1-2' in self.value:
-            return '2-1-2'
-        elif '3-2-2' in self.value or '3-2D-2U' in self.value or '3-2U-2D' in self.value:
-            return '3-2-2'
-        elif '3-2' in self.value:
-            return '3-2'
-        elif '2D-2U' in self.value or '2U-2D' in self.value:
-            return '2-2'
-        return 'UNKNOWN'
+# Session 83K-52: Import from single source of truth
+from strat.tier1_detector import PatternType
 
 
 @dataclass

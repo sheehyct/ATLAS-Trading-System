@@ -1,0 +1,112 @@
+{
+  "timestamp": "2025-12-02T18:26:24.178720",
+  "total_runs": 25,
+  "total_passed": 0,
+  "total_failed": 25,
+  "total_errors": 0,
+  "overall_pass_rate": 0.0,
+  "avg_thetadata_coverage": 100.0,
+  "total_execution_time_seconds": 6180.080515861511,
+  "thetadata_status": {
+    "connected": true,
+    "quotes_available": true,
+    "greeks_available": true,
+    "symbols_checked": {
+      "SPY": true,
+      "QQQ": true,
+      "AAPL": true,
+      "IWM": true,
+      "DIA": true
+    },
+    "oldest_data_date": null,
+    "error_message": null
+  },
+  "by_pattern": {
+    "3-1-2": {
+      "total_runs": 5,
+      "passed": 0,
+      "failed": 5,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "2-1-2": {
+      "total_runs": 5,
+      "passed": 0,
+      "failed": 5,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "2-2": {
+      "total_runs": 5,
+      "passed": 0,
+      "failed": 5,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "3-2": {
+      "total_runs": 5,
+      "passed": 0,
+      "failed": 5,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "3-2-2": {
+      "total_runs": 5,
+      "passed": 0,
+      "failed": 5,
+      "errors": 0,
+      "insufficient_data": 0,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    }
+  },
+  "by_timeframe": {
+    "1H": {
+      "passed": 0,
+      "total": 25,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    }
+  },
+  "by_symbol": {
+    "SPY": {
+      "passed": 0,
+      "total": 5,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "QQQ": {
+      "passed": 0,
+      "total": 5,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "AAPL": {
+      "passed": 0,
+      "total": 5,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "IWM": {
+      "passed": 0,
+      "total": 5,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    },
+    "DIA": {
+      "passed": 0,
+      "total": 5,
+      "pass_rate": 0.0,
+      "avg_thetadata_coverage": 100.0
+    }
+  },
+  "bugs_discovered": []
+}

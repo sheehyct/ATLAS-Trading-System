@@ -1,0 +1,71 @@
+2025-12-08 21:11:22,400 - thetadata_client - INFO - Connected to ThetaData terminal v3 at localhost:25503
+[INFO] Using DEFAULT universe: 6 symbols
+[INFO] NVDA auto-excluded (pre-split strike data issues). Use --include-nvda to override.
+
+======================================================================
+ATLAS STRAT VALIDATION - Session 83K
+======================================================================
+Start Time: 2025-12-08 21:11:22
+
+Validation Matrix:
+  Patterns:   3-1-2, 2-1-2, 2-2, 3-2, 3-2-2
+  Timeframes: 1H, 1D, 1W, 1M
+  Symbols:    SPY, QQQ, AAPL, IWM, DIA, NVDA
+  Total Runs: 120
+
+ThetaData Standard Tier:
+  - Historical quotes (bid/ask)
+  - Greeks 1st Order (delta, theta, vega, rho)
+  - Implied volatility
+  - 8 years of data
+======================================================================
+
+[INFO] Holdout mode enabled (70/30 train/test split)
+       Recommended for sparse pattern strategies like STRAT.
+Verifying ThetaData connection...
+2025-12-08 21:11:22,400 | INFO     | thetadata_client | Connected to ThetaData terminal v3 at localhost:25503
+2025-12-08 21:11:22,401 | INFO     | validation.strat_validator | ThetaData connected on localhost:25503
+2025-12-08 21:11:22,965 | INFO     | validation.strat_validator | Quotes endpoint: AVAILABLE
+2025-12-08 21:11:23,144 | INFO     | validation.strat_validator | Greeks endpoint: AVAILABLE
+2025-12-08 21:11:23,407 - thetadata_client - INFO - Connected to ThetaData terminal v3 at localhost:25503
+2025-12-08 21:11:23,407 | INFO     | thetadata_client | Connected to ThetaData terminal v3 at localhost:25503
+
+ThetaData Status:
+  Connected:        True
+  Quotes Available: True
+  Greeks Available: True
+  Symbols OK:       SPY, QQQ, AAPL, IWM, DIA, NVDA
+
+
+Running single batch: 2-2
+
+2025-12-08 21:11:23,407 | INFO     | validation.strat_validator | 
+--- Batch: 2-2 ---
+2025-12-08 21:11:23,409 | INFO     | validation.strat_validator | Running: 2-2_1D_SPY
+2025-12-08 21:11:23,541 | DEBUG    | validation.strat_validator | ThetaData fetcher wired to 2-2_1D_SPY backtester
+2025-12-08 21:11:23,541 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1D_SPY
+2025-12-08 21:11:23,541 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1D_SPY
+2025-12-08 21:11:24,866 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:11:25,260 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:11:25,274 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:11:25,515 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:12:49,031 - thetadata_client - WARNING - API request failed (attempt 1/3), retrying in 1s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220318&strike=430.0&right=call&date=20220225&interval=1h&format=json
+2025-12-08 21:12:49,031 | WARNING  | thetadata_client | API request failed (attempt 1/3), retrying in 1s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220318&strike=430.0&right=call&date=20220225&interval=1h&format=json
+2025-12-08 21:12:50,071 - thetadata_client - WARNING - API request failed (attempt 2/3), retrying in 2s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220318&strike=430.0&right=call&date=20220225&interval=1h&format=json
+2025-12-08 21:12:50,071 | WARNING  | thetadata_client | API request failed (attempt 2/3), retrying in 2s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220318&strike=430.0&right=call&date=20220225&interval=1h&format=json
+2025-12-08 21:12:52,130 - thetadata_client - ERROR - API request failed (attempt 3/3): option/history/greeks/first_order - 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220318&strike=430.0&right=call&date=20220225&interval=1h&format=json
+2025-12-08 21:12:52,130 | ERROR    | thetadata_client | API request failed (attempt 3/3): option/history/greeks/first_order - 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220318&strike=430.0&right=call&date=20220225&interval=1h&format=json
+2025-12-08 21:12:52,130 - thetadata_client - WARNING - Failed to get Greeks for SPY 430.0 C exp 2022-03-18: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220318&strike=430.0&right=call&date=20220225&interval=1h&format=json
+2025-12-08 21:12:52,130 | WARNING  | thetadata_client | Failed to get Greeks for SPY 430.0 C exp 2022-03-18: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220318&strike=430.0&right=call&date=20220225&interval=1h&format=json
+2025-12-08 21:13:12,419 - thetadata_client - WARNING - API request failed (attempt 1/3), retrying in 1s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220617&strike=400.0&right=call&date=20220525&interval=1h&format=json
+2025-12-08 21:13:12,419 | WARNING  | thetadata_client | API request failed (attempt 1/3), retrying in 1s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220617&strike=400.0&right=call&date=20220525&interval=1h&format=json
+2025-12-08 21:13:13,518 - thetadata_client - WARNING - API request failed (attempt 2/3), retrying in 2s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220617&strike=400.0&right=call&date=20220525&interval=1h&format=json
+2025-12-08 21:13:13,518 | WARNING  | thetadata_client | API request failed (attempt 2/3), retrying in 2s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220617&strike=400.0&right=call&date=20220525&interval=1h&format=json
+2025-12-08 21:13:15,629 - thetadata_client - ERROR - API request failed (attempt 3/3): option/history/greeks/first_order - 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220617&strike=400.0&right=call&date=20220525&interval=1h&format=json
+2025-12-08 21:13:15,629 | ERROR    | thetadata_client | API request failed (attempt 3/3): option/history/greeks/first_order - 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220617&strike=400.0&right=call&date=20220525&interval=1h&format=json
+2025-12-08 21:13:15,629 - thetadata_client - WARNING - Failed to get Greeks for SPY 400.0 C exp 2022-06-17: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220617&strike=400.0&right=call&date=20220525&interval=1h&format=json
+2025-12-08 21:13:15,629 | WARNING  | thetadata_client | Failed to get Greeks for SPY 400.0 C exp 2022-06-17: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220617&strike=400.0&right=call&date=20220525&interval=1h&format=json
+2025-12-08 21:13:16,535 - thetadata_client - WARNING - API request failed (attempt 1/3), retrying in 1s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220708&strike=380.0&right=call&date=20220615&interval=1h&format=json
+2025-12-08 21:13:16,535 | WARNING  | thetadata_client | API request failed (attempt 1/3), retrying in 1s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220708&strike=380.0&right=call&date=20220615&interval=1h&format=json
+2025-12-08 21:13:17,569 - thetadata_client - WARNING - API request failed (attempt 2/3), retrying in 2s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220708&strike=380.0&right=call&date=20220615&interval=1h&format=json
+2025-12-08 21:13:17,569 | WARNING  | thetadata_client | API request failed (attempt 2/3), retrying in 2s: 500 Server Error: Server Error for url: http://localhost:25503/v3/option/history/greeks/first_order?symbol=SPY&expiration=20220708&strike=380.0&right=call&date=20220615&interval=1h&format=json

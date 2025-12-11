@@ -48,6 +48,7 @@ dependencies = [
     "mplfinance>=0.12.10b0",
     "hmmlearn>=0.3.0",
     "tiingo>=0.16.1",
+    "apscheduler>=3.10.0",
 ]
 
 [dependency-groups]

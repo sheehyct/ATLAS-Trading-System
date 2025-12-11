@@ -1,0 +1,546 @@
+[INFO] Using DEFAULT universe: 6 symbols
+[INFO] NVDA auto-excluded (pre-split strike data issues). Use --include-nvda to override.
+
+======================================================================
+ATLAS STRAT VALIDATION - Session 83K
+======================================================================
+Start Time: 2025-12-08 21:09:42
+
+Validation Matrix:
+  Patterns:   3-1-2, 2-1-2, 2-2, 3-2, 3-2-2
+  Timeframes: 1H, 1D, 1W, 1M
+  Symbols:    SPY, QQQ, AAPL, IWM, DIA, NVDA
+  Total Runs: 120
+
+ThetaData Standard Tier:
+  - Historical quotes (bid/ask)
+  - Greeks 1st Order (delta, theta, vega, rho)
+  - Implied volatility
+  - 8 years of data
+======================================================================
+
+[INFO] Holdout mode enabled (70/30 train/test split)
+       Recommended for sparse pattern strategies like STRAT.
+
+Running single batch: 2-2
+
+2025-12-08 21:09:42,659 | INFO     | validation.strat_validator | 
+--- Batch: 2-2 ---
+2025-12-08 21:09:42,659 | INFO     | validation.strat_validator | Running: 2-2_1D_SPY
+2025-12-08 21:09:43,242 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1D_SPY
+2025-12-08 21:09:43,242 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1D_SPY
+2025-12-08 21:09:44,520 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:44,913 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:09:44,930 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:09:45,177 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:09:45,344 | INFO     | validation.walk_forward | Starting walk-forward validation: 1237 bars
+2025-12-08 21:09:45,344 | INFO     | validation.walk_forward | Holdout mode: 70% train (865 bars), 30% test (372 bars)
+2025-12-08 21:09:45,344 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:09:45,790 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:46,189 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:09:46,202 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:09:46,712 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:47,090 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:09:47,104 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:09:47,348 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:09:47,479 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=6.20, OOS Sharpe=10.25, Degradation=-65.4%
+2025-12-08 21:09:47,479 | INFO     | validation.walk_forward | Walk-forward complete: PASSED
+2025-12-08 21:09:47,479 | INFO     | validation.validation_runner | Walk-forward: PASSED
+2025-12-08 21:09:47,479 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 88 trades, 10000 iterations
+2025-12-08 21:09:47,481 | INFO     | validation.monte_carlo | Original metrics: Sharpe=5.52, MaxDD=5.0%
+2025-12-08 21:09:47,548 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:09:47,616 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:09:47,685 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:09:47,751 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:09:47,820 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:09:47,889 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:09:47,959 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:09:48,029 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:09:48,101 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:09:48,169 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:09:48,171 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:09:48,171 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:09:48,218 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:09:48,218 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:09:48,218 | INFO     | validation.validation_runner | Validation completed in 4.98s - PASSED
+2025-12-08 21:09:48,671 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:49,119 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:09:49,134 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:09:49,367 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:09:49,520 | DEBUG    | validation.strat_validator | Exported 88 trades to validation_results\session_83k\trades\2-2_1D_SPY_trades.csv
+2025-12-08 21:09:49,520 | INFO     | validation.strat_validator |   2-2_1D_SPY: PASSED (88 trades, 6.9s, ThetaData: 0%)
+2025-12-08 21:09:49,520 | INFO     | validation.strat_validator | Running: 2-2_1D_QQQ
+2025-12-08 21:09:49,534 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1D_QQQ
+2025-12-08 21:09:49,534 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1D_QQQ
+2025-12-08 21:09:49,592 | DEBUG    | strat.options_module | Adjusted expiration 2020-04-10 (holiday) to 2020-04-09 (prior trading day)
+2025-12-08 21:09:49,917 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:09:50,633 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:09:50,793 | INFO     | validation.walk_forward | Starting walk-forward validation: 1237 bars
+2025-12-08 21:09:50,793 | INFO     | validation.walk_forward | Holdout mode: 70% train (865 bars), 30% test (372 bars)
+2025-12-08 21:09:50,793 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:09:50,848 | DEBUG    | strat.options_module | Adjusted expiration 2020-04-10 (holiday) to 2020-04-09 (prior trading day)
+2025-12-08 21:09:51,161 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:09:51,831 | DEBUG    | strat.options_module | Adjusted expiration 2020-04-10 (holiday) to 2020-04-09 (prior trading day)
+2025-12-08 21:09:52,179 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:09:52,969 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:09:53,121 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=6.66, OOS Sharpe=5.43, Degradation=18.5%
+2025-12-08 21:09:53,121 | INFO     | validation.walk_forward | Walk-forward complete: PASSED
+2025-12-08 21:09:53,121 | INFO     | validation.validation_runner | Walk-forward: PASSED
+2025-12-08 21:09:53,121 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 95 trades, 10000 iterations
+2025-12-08 21:09:53,123 | INFO     | validation.monte_carlo | Original metrics: Sharpe=6.20, MaxDD=13.6%
+2025-12-08 21:09:53,199 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:09:53,280 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:09:53,356 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:09:53,426 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:09:53,504 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:09:53,581 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:09:53,654 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:09:53,726 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:09:53,799 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:09:53,879 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:09:53,882 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:09:53,882 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:09:53,930 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:09:53,930 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:09:53,931 | INFO     | validation.validation_runner | Validation completed in 4.40s - PASSED
+2025-12-08 21:09:53,989 | DEBUG    | strat.options_module | Adjusted expiration 2020-04-10 (holiday) to 2020-04-09 (prior trading day)
+2025-12-08 21:09:54,320 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:09:55,104 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:09:55,284 | DEBUG    | validation.strat_validator | Exported 95 trades to validation_results\session_83k\trades\2-2_1D_QQQ_trades.csv
+2025-12-08 21:09:55,284 | INFO     | validation.strat_validator |   2-2_1D_QQQ: PASSED (95 trades, 5.8s, ThetaData: 0%)
+2025-12-08 21:09:55,284 | INFO     | validation.strat_validator | Running: 2-2_1D_AAPL
+2025-12-08 21:09:55,294 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1D_AAPL
+2025-12-08 21:09:55,294 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1D_AAPL
+2025-12-08 21:09:55,313 | DEBUG    | strat.options_module | Adjusted expiration 2021-01-01 (holiday) to 2020-12-31 (prior trading day)
+2025-12-08 21:09:55,384 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:09:55,556 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:55,569 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:56,894 | INFO     | validation.walk_forward | Starting walk-forward validation: 1255 bars
+2025-12-08 21:09:56,894 | INFO     | validation.walk_forward | Holdout mode: 70% train (878 bars), 30% test (377 bars)
+2025-12-08 21:09:56,894 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:09:56,911 | DEBUG    | strat.options_module | Adjusted expiration 2021-01-01 (holiday) to 2020-12-31 (prior trading day)
+2025-12-08 21:09:56,982 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:09:57,166 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:57,180 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:58,141 | DEBUG    | strat.options_module | Adjusted expiration 2021-01-01 (holiday) to 2020-12-31 (prior trading day)
+2025-12-08 21:09:58,212 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:09:58,395 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:58,410 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:09:59,725 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=7.45, OOS Sharpe=5.94, Degradation=20.3%
+2025-12-08 21:09:59,725 | INFO     | validation.walk_forward | Walk-forward complete: PASSED
+2025-12-08 21:09:59,725 | INFO     | validation.validation_runner | Walk-forward: PASSED
+2025-12-08 21:09:59,725 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 111 trades, 10000 iterations
+2025-12-08 21:09:59,727 | INFO     | validation.monte_carlo | Original metrics: Sharpe=8.24, MaxDD=4.3%
+2025-12-08 21:09:59,808 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:09:59,894 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:09:59,979 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:00,060 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:00,141 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:00,227 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:00,312 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:00,396 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:00,480 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:00,566 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:00,568 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:10:00,568 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:10:00,624 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:00,624 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:00,624 | INFO     | validation.validation_runner | Validation completed in 5.33s - PASSED
+2025-12-08 21:10:00,642 | DEBUG    | strat.options_module | Adjusted expiration 2021-01-01 (holiday) to 2020-12-31 (prior trading day)
+2025-12-08 21:10:00,709 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:10:00,889 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:00,904 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:02,311 | DEBUG    | validation.strat_validator | Exported 111 trades to validation_results\session_83k\trades\2-2_1D_AAPL_trades.csv
+2025-12-08 21:10:02,311 | INFO     | validation.strat_validator |   2-2_1D_AAPL: PASSED (111 trades, 7.0s, ThetaData: 0%)
+2025-12-08 21:10:02,311 | INFO     | validation.strat_validator | Running: 2-2_1D_IWM
+2025-12-08 21:10:02,329 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1D_IWM
+2025-12-08 21:10:02,329 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1D_IWM
+2025-12-08 21:10:02,567 | DEBUG    | strat.options_module | Adjusted expiration 2021-01-01 (holiday) to 2020-12-31 (prior trading day)
+2025-12-08 21:10:02,637 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:10:02,872 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:02,980 | DEBUG    | strat.options_module | Adjusted expiration 2022-04-15 (holiday) to 2022-04-14 (prior trading day)
+2025-12-08 21:10:03,313 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:03,327 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:03,609 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:10:03,831 | INFO     | validation.walk_forward | Starting walk-forward validation: 1237 bars
+2025-12-08 21:10:03,831 | INFO     | validation.walk_forward | Holdout mode: 70% train (865 bars), 30% test (372 bars)
+2025-12-08 21:10:03,831 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:04,070 | DEBUG    | strat.options_module | Adjusted expiration 2021-01-01 (holiday) to 2020-12-31 (prior trading day)
+2025-12-08 21:10:04,141 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:10:04,394 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:04,506 | DEBUG    | strat.options_module | Adjusted expiration 2022-04-15 (holiday) to 2022-04-14 (prior trading day)
+2025-12-08 21:10:04,839 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:04,853 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:05,199 | DEBUG    | strat.options_module | Adjusted expiration 2021-01-01 (holiday) to 2020-12-31 (prior trading day)
+2025-12-08 21:10:05,268 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:10:05,514 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:05,626 | DEBUG    | strat.options_module | Adjusted expiration 2022-04-15 (holiday) to 2022-04-14 (prior trading day)
+2025-12-08 21:10:05,962 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:05,976 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:06,282 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:10:06,456 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=6.40, OOS Sharpe=10.00, Degradation=-56.2%
+2025-12-08 21:10:06,456 | INFO     | validation.walk_forward | Walk-forward complete: PASSED
+2025-12-08 21:10:06,456 | INFO     | validation.validation_runner | Walk-forward: PASSED
+2025-12-08 21:10:06,456 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 105 trades, 10000 iterations
+2025-12-08 21:10:06,459 | INFO     | validation.monte_carlo | Original metrics: Sharpe=6.26, MaxDD=9.0%
+2025-12-08 21:10:06,544 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:06,630 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:06,717 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:06,803 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:06,888 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:06,970 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:07,055 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:07,140 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:07,219 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:07,298 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:07,300 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:10:07,300 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:10:07,350 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:07,350 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:07,350 | INFO     | validation.validation_runner | Validation completed in 5.02s - PASSED
+2025-12-08 21:10:07,582 | DEBUG    | strat.options_module | Adjusted expiration 2021-01-01 (holiday) to 2020-12-31 (prior trading day)
+2025-12-08 21:10:07,651 | DEBUG    | strat.options_module | Adjusted expiration 2021-04-02 (holiday) to 2021-04-01 (prior trading day)
+2025-12-08 21:10:07,907 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:08,018 | DEBUG    | strat.options_module | Adjusted expiration 2022-04-15 (holiday) to 2022-04-14 (prior trading day)
+2025-12-08 21:10:08,352 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:08,367 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:08,645 | DEBUG    | strat.options_module | Adjusted expiration 2024-03-29 (holiday) to 2024-03-28 (prior trading day)
+2025-12-08 21:10:08,859 | DEBUG    | validation.strat_validator | Exported 105 trades to validation_results\session_83k\trades\2-2_1D_IWM_trades.csv
+2025-12-08 21:10:08,859 | INFO     | validation.strat_validator |   2-2_1D_IWM: PASSED (105 trades, 6.5s, ThetaData: 0%)
+2025-12-08 21:10:08,859 | INFO     | validation.strat_validator | Running: 2-2_1D_DIA
+2025-12-08 21:10:08,871 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1D_DIA
+2025-12-08 21:10:08,871 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1D_DIA
+2025-12-08 21:10:09,073 | DEBUG    | strat.options_module | Adjusted expiration 2020-12-25 (holiday) to 2020-12-24 (prior trading day)
+2025-12-08 21:10:09,088 | DEBUG    | strat.options_module | Adjusted expiration 2020-12-25 (holiday) to 2020-12-24 (prior trading day)
+2025-12-08 21:10:09,221 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:09,321 | DEBUG    | strat.options_module | Adjusted expiration 2022-04-15 (holiday) to 2022-04-14 (prior trading day)
+2025-12-08 21:10:09,584 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:09,598 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:09,826 | INFO     | validation.walk_forward | Starting walk-forward validation: 1237 bars
+2025-12-08 21:10:09,826 | INFO     | validation.walk_forward | Holdout mode: 70% train (865 bars), 30% test (372 bars)
+2025-12-08 21:10:09,826 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:10,049 | DEBUG    | strat.options_module | Adjusted expiration 2020-12-25 (holiday) to 2020-12-24 (prior trading day)
+2025-12-08 21:10:10,066 | DEBUG    | strat.options_module | Adjusted expiration 2020-12-25 (holiday) to 2020-12-24 (prior trading day)
+2025-12-08 21:10:10,209 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:10,309 | DEBUG    | strat.options_module | Adjusted expiration 2022-04-15 (holiday) to 2022-04-14 (prior trading day)
+2025-12-08 21:10:10,576 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:10,591 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:10,880 | DEBUG    | strat.options_module | Adjusted expiration 2020-12-25 (holiday) to 2020-12-24 (prior trading day)
+2025-12-08 21:10:10,896 | DEBUG    | strat.options_module | Adjusted expiration 2020-12-25 (holiday) to 2020-12-24 (prior trading day)
+2025-12-08 21:10:11,039 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:11,141 | DEBUG    | strat.options_module | Adjusted expiration 2022-04-15 (holiday) to 2022-04-14 (prior trading day)
+2025-12-08 21:10:11,409 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:11,424 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:11,652 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=5.89, OOS Sharpe=8.64, Degradation=-46.8%
+2025-12-08 21:10:11,652 | INFO     | validation.walk_forward | Walk-forward complete: PASSED
+2025-12-08 21:10:11,652 | INFO     | validation.validation_runner | Walk-forward: PASSED
+2025-12-08 21:10:11,652 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 67 trades, 10000 iterations
+2025-12-08 21:10:11,654 | INFO     | validation.monte_carlo | Original metrics: Sharpe=5.50, MaxDD=8.8%
+2025-12-08 21:10:11,716 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:11,779 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:11,841 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:11,904 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:11,967 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:12,031 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:12,093 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:12,158 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:12,222 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:12,280 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:12,282 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:10:12,282 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:10:12,326 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:12,326 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:12,326 | INFO     | validation.validation_runner | Validation completed in 3.45s - PASSED
+2025-12-08 21:10:12,517 | DEBUG    | strat.options_module | Adjusted expiration 2020-12-25 (holiday) to 2020-12-24 (prior trading day)
+2025-12-08 21:10:12,530 | DEBUG    | strat.options_module | Adjusted expiration 2020-12-25 (holiday) to 2020-12-24 (prior trading day)
+2025-12-08 21:10:12,673 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:12,772 | DEBUG    | strat.options_module | Adjusted expiration 2022-04-15 (holiday) to 2022-04-14 (prior trading day)
+2025-12-08 21:10:13,040 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:13,055 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:13,285 | DEBUG    | validation.strat_validator | Exported 67 trades to validation_results\session_83k\trades\2-2_1D_DIA_trades.csv
+2025-12-08 21:10:13,285 | INFO     | validation.strat_validator |   2-2_1D_DIA: PASSED (67 trades, 4.4s, ThetaData: 0%)
+2025-12-08 21:10:13,285 | INFO     | validation.strat_validator | Running: 2-2_1W_SPY
+2025-12-08 21:10:13,299 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1W_SPY
+2025-12-08 21:10:13,299 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1W_SPY
+2025-12-08 21:10:13,484 | INFO     | validation.walk_forward | Starting walk-forward validation: 261 bars
+2025-12-08 21:10:13,484 | INFO     | validation.walk_forward | Holdout mode: 70% train (182 bars), 30% test (79 bars)
+2025-12-08 21:10:13,484 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:13,798 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=7.48, OOS Sharpe=5.83, Degradation=22.0%
+2025-12-08 21:10:13,798 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-08 21:10:13,798 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-08 21:10:13,798 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 12 trades, 10000 iterations
+2025-12-08 21:10:13,799 | INFO     | validation.monte_carlo | Original metrics: Sharpe=6.63, MaxDD=28.2%
+2025-12-08 21:10:13,832 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:13,866 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:13,899 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:13,930 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:13,963 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:13,996 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:14,029 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:14,063 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:14,097 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:14,131 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:14,133 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-08 21:10:14,133 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-08 21:10:14,142 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:14,142 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:14,142 | INFO     | validation.validation_runner | Validation completed in 0.84s - FAILED
+2025-12-08 21:10:14,336 | DEBUG    | validation.strat_validator | Exported 12 trades to validation_results\session_83k\trades\2-2_1W_SPY_trades.csv
+2025-12-08 21:10:14,336 | INFO     | validation.strat_validator |   2-2_1W_SPY: FAILED (12 trades, 1.1s, ThetaData: 0%)
+2025-12-08 21:10:14,336 | INFO     | validation.strat_validator | Running: 2-2_1W_QQQ
+2025-12-08 21:10:14,346 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1W_QQQ
+2025-12-08 21:10:14,346 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1W_QQQ
+2025-12-08 21:10:14,645 | INFO     | validation.walk_forward | Starting walk-forward validation: 261 bars
+2025-12-08 21:10:14,645 | INFO     | validation.walk_forward | Holdout mode: 70% train (182 bars), 30% test (79 bars)
+2025-12-08 21:10:14,645 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:15,155 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=4.87, OOS Sharpe=7.15, Degradation=-46.8%
+2025-12-08 21:10:15,155 | INFO     | validation.walk_forward | Walk-forward complete: PASSED
+2025-12-08 21:10:15,155 | INFO     | validation.validation_runner | Walk-forward: PASSED
+2025-12-08 21:10:15,155 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 19 trades, 10000 iterations
+2025-12-08 21:10:15,156 | INFO     | validation.monte_carlo | Original metrics: Sharpe=4.52, MaxDD=56.2%
+2025-12-08 21:10:15,194 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:15,228 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:15,263 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:15,301 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:15,339 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:15,376 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:15,413 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:15,447 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:15,484 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:15,520 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:15,522 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-08 21:10:15,522 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-08 21:10:15,532 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:15,532 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:15,532 | INFO     | validation.validation_runner | Validation completed in 1.19s - FAILED
+2025-12-08 21:10:15,825 | DEBUG    | validation.strat_validator | Exported 19 trades to validation_results\session_83k\trades\2-2_1W_QQQ_trades.csv
+2025-12-08 21:10:15,825 | INFO     | validation.strat_validator |   2-2_1W_QQQ: FAILED (19 trades, 1.5s, ThetaData: 0%)
+2025-12-08 21:10:15,825 | INFO     | validation.strat_validator | Running: 2-2_1W_AAPL
+2025-12-08 21:10:15,838 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1W_AAPL
+2025-12-08 21:10:15,838 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1W_AAPL
+2025-12-08 21:10:15,913 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:16,153 | INFO     | validation.walk_forward | Starting walk-forward validation: 261 bars
+2025-12-08 21:10:16,153 | INFO     | validation.walk_forward | Holdout mode: 70% train (182 bars), 30% test (79 bars)
+2025-12-08 21:10:16,153 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:16,226 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:16,426 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:16,682 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=8.52, OOS Sharpe=20.44, Degradation=-139.9%
+2025-12-08 21:10:16,682 | INFO     | validation.walk_forward | Walk-forward complete: PASSED
+2025-12-08 21:10:16,682 | INFO     | validation.validation_runner | Walk-forward: PASSED
+2025-12-08 21:10:16,682 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 22 trades, 10000 iterations
+2025-12-08 21:10:16,683 | INFO     | validation.monte_carlo | Original metrics: Sharpe=10.43, MaxDD=17.9%
+2025-12-08 21:10:16,722 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:16,761 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:16,801 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:16,840 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:16,879 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:16,916 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:16,952 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:16,992 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:17,034 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:17,075 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:17,076 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:10:17,076 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:10:17,089 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:17,089 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:17,089 | INFO     | validation.validation_runner | Validation completed in 1.25s - PASSED
+2025-12-08 21:10:17,160 | DEBUG    | strat.options_module | Adjusted expiration 2021-12-24 (holiday) to 2021-12-23 (prior trading day)
+2025-12-08 21:10:17,407 | DEBUG    | validation.strat_validator | Exported 22 trades to validation_results\session_83k\trades\2-2_1W_AAPL_trades.csv
+2025-12-08 21:10:17,407 | INFO     | validation.strat_validator |   2-2_1W_AAPL: PASSED (22 trades, 1.6s, ThetaData: 0%)
+2025-12-08 21:10:17,407 | INFO     | validation.strat_validator | Running: 2-2_1W_IWM
+2025-12-08 21:10:17,421 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1W_IWM
+2025-12-08 21:10:17,421 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1W_IWM
+2025-12-08 21:10:17,556 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:17,692 | INFO     | validation.walk_forward | Starting walk-forward validation: 261 bars
+2025-12-08 21:10:17,692 | INFO     | validation.walk_forward | Holdout mode: 70% train (182 bars), 30% test (79 bars)
+2025-12-08 21:10:17,692 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:17,830 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:18,047 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:18,188 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=2.51, OOS Sharpe=4.22, Degradation=-68.5%
+2025-12-08 21:10:18,189 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-08 21:10:18,189 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-08 21:10:18,189 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 20 trades, 10000 iterations
+2025-12-08 21:10:18,190 | INFO     | validation.monte_carlo | Original metrics: Sharpe=2.17, MaxDD=41.2%
+2025-12-08 21:10:18,229 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:18,268 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:18,306 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:18,346 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:18,385 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:18,422 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:18,460 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:18,499 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:18,536 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:18,570 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:18,572 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-08 21:10:18,572 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-08 21:10:18,584 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:18,584 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:18,584 | INFO     | validation.validation_runner | Validation completed in 1.16s - FAILED
+2025-12-08 21:10:18,727 | DEBUG    | strat.options_module | Adjusted expiration 2023-04-07 (holiday) to 2023-04-06 (prior trading day)
+2025-12-08 21:10:18,879 | DEBUG    | validation.strat_validator | Exported 20 trades to validation_results\session_83k\trades\2-2_1W_IWM_trades.csv
+2025-12-08 21:10:18,879 | INFO     | validation.strat_validator |   2-2_1W_IWM: FAILED (20 trades, 1.5s, ThetaData: 0%)
+2025-12-08 21:10:18,879 | INFO     | validation.strat_validator | Running: 2-2_1W_DIA
+2025-12-08 21:10:18,891 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1W_DIA
+2025-12-08 21:10:18,891 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1W_DIA
+2025-12-08 21:10:19,168 | INFO     | validation.walk_forward | Starting walk-forward validation: 261 bars
+2025-12-08 21:10:19,168 | INFO     | validation.walk_forward | Holdout mode: 70% train (182 bars), 30% test (79 bars)
+2025-12-08 21:10:19,168 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:19,633 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=9.62, OOS Sharpe=13.43, Degradation=-39.7%
+2025-12-08 21:10:19,633 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-08 21:10:19,633 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-08 21:10:19,633 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 18 trades, 10000 iterations
+2025-12-08 21:10:19,634 | INFO     | validation.monte_carlo | Original metrics: Sharpe=10.57, MaxDD=19.5%
+2025-12-08 21:10:19,670 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:19,709 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:19,745 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:19,780 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:19,816 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:19,852 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:19,887 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:19,921 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:19,957 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:19,993 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:19,995 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:10:19,995 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:10:20,005 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:20,005 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:20,006 | INFO     | validation.validation_runner | Validation completed in 1.11s - FAILED
+2025-12-08 21:10:20,282 | DEBUG    | validation.strat_validator | Exported 18 trades to validation_results\session_83k\trades\2-2_1W_DIA_trades.csv
+2025-12-08 21:10:20,282 | INFO     | validation.strat_validator |   2-2_1W_DIA: FAILED (18 trades, 1.4s, ThetaData: 0%)
+2025-12-08 21:10:20,282 | INFO     | validation.strat_validator | Running: 2-2_1M_SPY
+2025-12-08 21:10:20,292 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1M_SPY
+2025-12-08 21:10:20,292 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1M_SPY
+2025-12-08 21:10:20,356 | INFO     | validation.walk_forward | Starting walk-forward validation: 60 bars
+2025-12-08 21:10:20,357 | INFO     | validation.walk_forward | Holdout mode: 70% train (42 bars), 30% test (18 bars)
+2025-12-08 21:10:20,357 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:20,468 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=21.32, OOS Sharpe=0.00, Degradation=100.0%
+2025-12-08 21:10:20,469 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-08 21:10:20,469 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-08 21:10:20,469 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 4 trades, 10000 iterations
+2025-12-08 21:10:20,469 | WARNING  | validation.monte_carlo | Insufficient trades (4) for Monte Carlo
+2025-12-08 21:10:20,469 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-08 21:10:20,472 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:20,472 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:20,472 | INFO     | validation.validation_runner | Validation completed in 0.18s - FAILED
+2025-12-08 21:10:20,536 | DEBUG    | validation.strat_validator | Exported 4 trades to validation_results\session_83k\trades\2-2_1M_SPY_trades.csv
+2025-12-08 21:10:20,536 | INFO     | validation.strat_validator |   2-2_1M_SPY: FAILED (4 trades, 0.3s, ThetaData: 0%)
+2025-12-08 21:10:20,536 | INFO     | validation.strat_validator | Running: 2-2_1M_QQQ
+2025-12-08 21:10:20,548 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1M_QQQ
+2025-12-08 21:10:20,548 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1M_QQQ
+2025-12-08 21:10:20,642 | INFO     | validation.walk_forward | Starting walk-forward validation: 60 bars
+2025-12-08 21:10:20,642 | INFO     | validation.walk_forward | Holdout mode: 70% train (42 bars), 30% test (18 bars)
+2025-12-08 21:10:20,642 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:20,821 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=22.12, OOS Sharpe=60.32, Degradation=-172.6%
+2025-12-08 21:10:20,821 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-08 21:10:20,821 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-08 21:10:20,821 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 7 trades, 10000 iterations
+2025-12-08 21:10:20,822 | INFO     | validation.monte_carlo | Original metrics: Sharpe=25.12, MaxDD=0.0%
+2025-12-08 21:10:20,851 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:20,880 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:20,906 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:20,937 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:20,967 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:20,996 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:21,028 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:21,059 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:21,091 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:21,121 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:21,123 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:10:21,123 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:10:21,128 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:21,129 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:21,129 | INFO     | validation.validation_runner | Validation completed in 0.58s - FAILED
+2025-12-08 21:10:21,234 | DEBUG    | validation.strat_validator | Exported 7 trades to validation_results\session_83k\trades\2-2_1M_QQQ_trades.csv
+2025-12-08 21:10:21,234 | INFO     | validation.strat_validator |   2-2_1M_QQQ: FAILED (7 trades, 0.7s, ThetaData: 0%)
+2025-12-08 21:10:21,234 | INFO     | validation.strat_validator | Running: 2-2_1M_AAPL
+2025-12-08 21:10:21,246 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1M_AAPL
+2025-12-08 21:10:21,247 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1M_AAPL
+2025-12-08 21:10:21,363 | DEBUG    | strat.options_module | Adjusted expiration 2025-04-18 (holiday) to 2025-04-17 (prior trading day)
+2025-12-08 21:10:21,368 | INFO     | validation.walk_forward | Starting walk-forward validation: 60 bars
+2025-12-08 21:10:21,369 | INFO     | validation.walk_forward | Holdout mode: 70% train (42 bars), 30% test (18 bars)
+2025-12-08 21:10:21,369 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:21,579 | DEBUG    | strat.options_module | Adjusted expiration 2025-04-18 (holiday) to 2025-04-17 (prior trading day)
+2025-12-08 21:10:21,582 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=17.99, OOS Sharpe=-7.86, Degradation=143.7%
+2025-12-08 21:10:21,582 | WARNING  | validation.walk_forward | IS/OOS Sharpe sign reversal detected (IS=17.99, OOS=-7.86). This may indicate regime change, data issues, or luck. Manual review recommended.
+2025-12-08 21:10:21,583 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-08 21:10:21,583 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-08 21:10:21,583 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 8 trades, 10000 iterations
+2025-12-08 21:10:21,583 | INFO     | validation.monte_carlo | Original metrics: Sharpe=6.25, MaxDD=31.2%
+2025-12-08 21:10:21,611 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:21,638 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:21,666 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:21,706 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:21,738 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:21,765 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:21,793 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:21,821 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:21,848 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:21,876 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:21,878 | INFO     | validation.monte_carlo | Monte Carlo complete: FAILED
+2025-12-08 21:10:21,878 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-08 21:10:21,882 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:21,882 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:21,882 | INFO     | validation.validation_runner | Validation completed in 0.64s - FAILED
+2025-12-08 21:10:21,998 | DEBUG    | strat.options_module | Adjusted expiration 2025-04-18 (holiday) to 2025-04-17 (prior trading day)
+2025-12-08 21:10:22,005 | DEBUG    | validation.strat_validator | Exported 8 trades to validation_results\session_83k\trades\2-2_1M_AAPL_trades.csv
+2025-12-08 21:10:22,005 | INFO     | validation.strat_validator |   2-2_1M_AAPL: FAILED (8 trades, 0.8s, ThetaData: 0%)
+2025-12-08 21:10:22,005 | INFO     | validation.strat_validator | Running: 2-2_1M_IWM
+2025-12-08 21:10:22,019 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1M_IWM
+2025-12-08 21:10:22,019 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1M_IWM
+2025-12-08 21:10:22,096 | INFO     | validation.walk_forward | Starting walk-forward validation: 60 bars
+2025-12-08 21:10:22,097 | INFO     | validation.walk_forward | Holdout mode: 70% train (42 bars), 30% test (18 bars)
+2025-12-08 21:10:22,097 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:22,218 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=20.73, OOS Sharpe=18.78, Degradation=9.4%
+2025-12-08 21:10:22,218 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-08 21:10:22,219 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-08 21:10:22,219 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 5 trades, 10000 iterations
+2025-12-08 21:10:22,219 | INFO     | validation.monte_carlo | Original metrics: Sharpe=21.49, MaxDD=0.0%
+2025-12-08 21:10:22,248 | DEBUG    | validation.monte_carlo | Completed 1000/10000 simulations
+2025-12-08 21:10:22,277 | DEBUG    | validation.monte_carlo | Completed 2000/10000 simulations
+2025-12-08 21:10:22,305 | DEBUG    | validation.monte_carlo | Completed 3000/10000 simulations
+2025-12-08 21:10:22,335 | DEBUG    | validation.monte_carlo | Completed 4000/10000 simulations
+2025-12-08 21:10:22,364 | DEBUG    | validation.monte_carlo | Completed 5000/10000 simulations
+2025-12-08 21:10:22,392 | DEBUG    | validation.monte_carlo | Completed 6000/10000 simulations
+2025-12-08 21:10:22,420 | DEBUG    | validation.monte_carlo | Completed 7000/10000 simulations
+2025-12-08 21:10:22,445 | DEBUG    | validation.monte_carlo | Completed 8000/10000 simulations
+2025-12-08 21:10:22,471 | DEBUG    | validation.monte_carlo | Completed 9000/10000 simulations
+2025-12-08 21:10:22,497 | DEBUG    | validation.monte_carlo | Completed 10000/10000 simulations
+2025-12-08 21:10:22,499 | INFO     | validation.monte_carlo | Monte Carlo complete: PASSED
+2025-12-08 21:10:22,499 | INFO     | validation.validation_runner | Monte Carlo: PASSED
+2025-12-08 21:10:22,504 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:22,504 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:22,504 | INFO     | validation.validation_runner | Validation completed in 0.48s - FAILED
+2025-12-08 21:10:22,583 | DEBUG    | validation.strat_validator | Exported 5 trades to validation_results\session_83k\trades\2-2_1M_IWM_trades.csv
+2025-12-08 21:10:22,583 | INFO     | validation.strat_validator |   2-2_1M_IWM: FAILED (5 trades, 0.6s, ThetaData: 0%)
+2025-12-08 21:10:22,583 | INFO     | validation.strat_validator | Running: 2-2_1M_DIA
+2025-12-08 21:10:22,597 | INFO     | validation.strat_validator | Using holdout validation (70/30 split) for 2-2_1M_DIA
+2025-12-08 21:10:22,597 | INFO     | validation.validation_runner | Starting validation for strategy: STRAT_2-2_1M_DIA
+2025-12-08 21:10:22,644 | INFO     | validation.walk_forward | Starting walk-forward validation: 60 bars
+2025-12-08 21:10:22,644 | INFO     | validation.walk_forward | Holdout mode: 70% train (42 bars), 30% test (18 bars)
+2025-12-08 21:10:22,644 | INFO     | validation.walk_forward | Generated 1 folds
+2025-12-08 21:10:22,723 | INFO     | validation.walk_forward | Fold 1: IS Sharpe=16.98, OOS Sharpe=0.00, Degradation=100.0%
+2025-12-08 21:10:22,723 | INFO     | validation.walk_forward | Walk-forward complete: FAILED
+2025-12-08 21:10:22,723 | INFO     | validation.validation_runner | Walk-forward: FAILED
+2025-12-08 21:10:22,723 | INFO     | validation.monte_carlo | Starting Monte Carlo simulation: 3 trades, 10000 iterations
+2025-12-08 21:10:22,723 | WARNING  | validation.monte_carlo | Insufficient trades (3) for Monte Carlo
+2025-12-08 21:10:22,723 | INFO     | validation.validation_runner | Monte Carlo: FAILED
+2025-12-08 21:10:22,726 | INFO     | validation.validation_runner | Bias Detection: PASSED
+2025-12-08 21:10:22,726 | DEBUG    | validation.validation_runner | Pattern metrics conversion not yet implemented
+2025-12-08 21:10:22,726 | INFO     | validation.validation_runner | Validation completed in 0.13s - FAILED
+2025-12-08 21:10:22,772 | DEBUG    | validation.strat_validator | Exported 3 trades to validation_results\session_83k\trades\2-2_1M_DIA_trades.csv
+2025-12-08 21:10:22,772 | INFO     | validation.strat_validator |   2-2_1M_DIA: FAILED (3 trades, 0.2s, ThetaData: 0%)
+
+Batch 2-2 Results:
+  Total:    15
+  Passed:   6
+  Failed:   9
+  Errors:   0
+  Pass Rate: 40.0%
+  ThetaData Coverage: 0.0%
+  Time:     40.1s
+
+Results saved to: validation_results\session_83k
+
+======================================================================
+Completed: 2025-12-08 21:10:22
+======================================================================
