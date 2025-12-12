@@ -1,9 +1,82 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 12, 2025 (Session 83K-80)
+**Last Updated:** December 12, 2025 (Session 83K-80 + Enhancement Planning)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING
-**Status:** HTF scanning architecture fix deployed
+**Status:** HTF scanning fix deployed, dashboard enhancements planned
+
+---
+
+## Session 83K-81 Priorities: Dashboard P&L and Performance Tracking
+
+**Focus:** Implement closed position P&L tracking and strategy performance restructure
+
+### Priority 1: Closed Position P&L Tracking (HIGH)
+
+**Problem:** Alpaca only shows P&L for open positions. Closed trades have no P&L visibility.
+
+**Solution:** Use Alpaca `/v2/account/activities/FILL` endpoint with FIFO matching.
+
+**Reference Script:** `C:\Users\sheeh\Downloads\TradeROI.py`
+
+**Implementation Plan:**
+1. Add `get_closed_trades()` method to `dashboard/data_loaders/options_loader.py`
+2. Fetch all FILL activities from Alpaca
+3. FIFO match buys to sells to calculate realized P&L
+4. Add "Closed Trades" section to Options panel (new tab or table)
+
+**Data Fields Available:**
+| Field | Description |
+|-------|-------------|
+| symbol | Option symbol |
+| buy_price / sell_price | Entry and exit prices |
+| cost_basis_usd | Total cost |
+| realized_pnl_usd | Actual P&L in dollars |
+| roi_percent | Return on investment |
+| buy_time / sell_time | Entry and exit timestamps |
+
+**Difficulty:** MEDIUM (2-3 hours)
+
+### Priority 2: Strategy Performance Tab Restructure (MEDIUM)
+
+**Current State:** Single dropdown with 52-week momentum + ORB (backtest stats)
+
+**Requested Structure:**
+```
+Strategy Performance Tab
+├── Dropdown or Sub-tabs:
+│   ├── Non-Options Strategies (52-week, ORB - future)
+│   ├── STRAT Options Performance (from closed trades)
+│   └── Aggregate (all strategies combined)
+```
+
+**Implementation Plan:**
+1. Add "STRAT Options" option to dropdown or new sub-tab
+2. Calculate stats from closed trades: win rate, avg P&L, Sharpe, etc.
+3. Add aggregate view combining all strategies
+
+**Depends on:** Priority 1 (needs closed P&L data)
+
+**Difficulty:** MEDIUM (3-4 hours)
+
+### Priority 3: Trade Progress to Target (LOWER)
+
+**Current State:** Placeholder with no data - never implemented
+
+**Challenge:** Need to link Alpaca positions to original STRAT signals for target prices
+
+**Implementation Plan:**
+1. Store `signal_key` -> `option_symbol` mapping when executor opens position
+2. Position monitor looks up original target from signal
+3. Progress bar shows `current_price / target_price`
+
+**Difficulty:** MEDIUM-HIGH (3-4 hours) - requires executor changes
+
+**Recommendation:** Defer until P1 and P2 complete
+
+### Plan Mode Recommendation
+
+**PLAN MODE: ON** - Dashboard enhancements require coordinated changes across multiple files.
 
 ---
 
