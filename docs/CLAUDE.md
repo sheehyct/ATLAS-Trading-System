@@ -71,7 +71,7 @@ Before claiming ANY functionality works:
 ```
 validation/     - ATLAS compliance validators (walk-forward, Monte Carlo, bias)
 strat/          - STRAT pattern detection and options module
-tests/          - Test suite (312+ tests)
+tests/          - Test suite (913 tests)
 docs/           - HANDOFF.md, CLAUDE.md, CLAUDE_REFERENCE.md
 ```
 

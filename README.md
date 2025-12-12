@@ -46,16 +46,16 @@ The system classifies market conditions into four regimes (TREND_BULL, TREND_BEA
 | Phase 2 | COMPLETE | Options Execution with Delta/DTE Targeting |
 | Phase 3 | COMPLETE | Position Monitoring with Auto-Exit Logic |
 | Phase 4 | COMPLETE | Full Orchestration + Market Data Integration |
-| Phase 5 | PLANNED | VPS Deployment for 24/7 Operation |
+| Phase 5 | DEPLOYED | VPS Deployment for 24/7 Operation (Dec 11, 2025) |
 
 ### Test Coverage
 
-**886 tests passing** across all layers:
+**913 tests passing** across all layers:
 - Regime Detection: 31 tests
 - STRAT Patterns: 56 tests
 - ThetaData Integration: 80 tests
 - Signal Automation E2E: 14 tests
-- Additional validation tests: 705+ tests
+- Additional validation tests: 732 tests
 
 ### Validated Strategies
 
@@ -278,7 +278,7 @@ atlas-trading-system/
 │   └── alpaca_trading_client.py   # Alpaca paper/live trading
 ├── scripts/                       # CLI entry points
 │   └── signal_daemon.py           # Signal automation CLI
-└── tests/                         # Test suite (886 tests)
+└── tests/                         # Test suite (913 tests)
     ├── test_regime/               # Regime detection tests
     ├── test_strat/                # STRAT pattern tests
     ├── test_integrations/         # Integration tests
@@ -327,8 +327,8 @@ Before live deployment:
 |-----------|--------|
 | Regime Detection >50% crash accuracy | PASS (77-82%) |
 | Walk-Forward <30% degradation | In Progress |
-| Paper Trading 100+ trades | Phase 5 |
-| Test Coverage 100% pass | 886 passing |
+| Paper Trading 100+ trades | In Progress |
+| Test Coverage 100% pass | 913 passing (10 known regime failures) |
 | Risk Controls 100% compliance | Implemented |
 
 ## Contributing
@@ -360,4 +360,4 @@ This software is for educational and research purposes only. Algorithmic trading
 
 **Version**: 3.0 (Phase 4 Full Orchestration)
 **Last Updated**: December 2025
-**Status**: Active Development - Phase 5 VPS Deployment Planned
+**Status**: Active Development - Phase 5 VPS Deployed (Hetzner, Dec 11, 2025)
