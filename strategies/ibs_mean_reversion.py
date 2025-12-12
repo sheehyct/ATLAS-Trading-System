@@ -1,3 +1,7 @@
+# IMPLEMENTATION STATUS: SKELETON - Roadmap for future development
+# PRIORITY: Deferred - Focus on STRAT options execution first
+# See docs/HANDOFF.md for current priorities
+#
 """
 IBS Mean Reversion Strategy for ATLAS Trading System v2.0
 
