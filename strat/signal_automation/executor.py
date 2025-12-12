@@ -14,6 +14,7 @@ Session 83K-50: Added execution persistence to disk.
 
 import json
 import logging
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -179,6 +180,7 @@ class SignalExecutor:
         # Execution tracking
         self._executions: Dict[str, ExecutionResult] = {}
         self._connected = False
+        self._execution_lock = threading.Lock()  # Thread safety (Session 83K-77)
 
         # Load existing executions from disk
         self._load()
@@ -265,14 +267,37 @@ class SignalExecutor:
         """
         signal_key = signal.signal_key
 
-        # Check if already executed
-        if signal_key in self._executions:
-            existing = self._executions[signal_key]
-            if existing.state not in [ExecutionState.FAILED, ExecutionState.SKIPPED]:
-                logger.warning(f"Signal {signal_key} already executed")
-                return existing
+        # Thread-safe check for duplicate execution (Session 83K-77)
+        with self._execution_lock:
+            # Check if already executed
+            if signal_key in self._executions:
+                existing = self._executions[signal_key]
+                if existing.state not in [ExecutionState.FAILED, ExecutionState.SKIPPED]:
+                    logger.warning(f"Signal {signal_key} already executed")
+                    return existing
 
-        # Validate connection
+            # Check if signal is HISTORICAL_TRIGGERED (Session 83K-77)
+            # Completed patterns should not be executed - entry already occurred
+            if hasattr(signal, 'status') and signal.status == 'HISTORICAL_TRIGGERED':
+                logger.warning(
+                    f"Signal {signal_key} is HISTORICAL_TRIGGERED - skipping execution"
+                )
+                result = ExecutionResult(
+                    signal_key=signal_key,
+                    state=ExecutionState.SKIPPED,
+                    error="Signal is HISTORICAL_TRIGGERED (completed pattern)"
+                )
+                self._executions[signal_key] = result
+                self._save()
+                return result
+
+            # Mark as pending to prevent concurrent execution
+            self._executions[signal_key] = ExecutionResult(
+                signal_key=signal_key,
+                state=ExecutionState.PENDING,
+            )
+
+        # Validate connection (outside lock - no state modification)
         if not self._connected:
             return self._create_failed_result(
                 signal_key, "Not connected to Alpaca"

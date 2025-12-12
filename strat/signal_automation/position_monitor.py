@@ -48,6 +48,7 @@ class MonitoringConfig:
     # Monitoring intervals (seconds)
     check_interval: int = 60             # Check positions every N seconds
     underlying_fetch_interval: int = 30  # Fetch underlying prices every N seconds
+    minimum_hold_seconds: int = 300      # 5 min before exit checks (Session 83K-77)
 
     # Exit behavior
     use_market_orders: bool = True       # Use market orders for exits
@@ -387,12 +388,22 @@ class PositionMonitor:
         Check single position for exit conditions.
 
         Exit conditions (in priority order):
+        0. Minimum hold time check (Session 83K-77 - prevent rapid exit)
         1. DTE exit (mandatory - theta decay risk)
         2. Stop hit (loss management)
         3. Max loss exceeded (risk management)
         4. Target hit (profit taking)
         5. Max profit exceeded (take profits)
         """
+        # 0. Check minimum hold time before any exit condition (Session 83K-77)
+        hold_duration = (datetime.now() - pos.entry_time).total_seconds()
+        if hold_duration < self.config.minimum_hold_seconds:
+            logger.debug(
+                f"{pos.osi_symbol}: Held {hold_duration:.0f}s < "
+                f"min {self.config.minimum_hold_seconds}s - skipping exit check"
+            )
+            return None
+
         # Update DTE
         pos.dte = self._calculate_dte(pos.expiration)
 
@@ -537,6 +548,23 @@ class PositionMonitor:
             return cached.get('price')
         return None
 
+    def _is_market_hours(self) -> bool:
+        """
+        Check if within options market hours (9:30 AM - 4:00 PM ET, Mon-Fri).
+
+        Session 83K-77: Prevent exit attempts outside market hours.
+        """
+        import pytz
+        et = pytz.timezone('America/New_York')
+        now = datetime.now(et)
+        # Weekend check
+        if now.weekday() >= 5:
+            return False
+        # Market hours: 9:30 AM - 4:00 PM ET
+        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+        return market_open <= now <= market_close
+
     def execute_exit(self, exit_signal: ExitSignal) -> Optional[Dict[str, Any]]:
         """
         Execute an exit for a position.
@@ -547,6 +575,14 @@ class PositionMonitor:
         Returns:
             Order result or None if failed
         """
+        # Session 83K-77: Skip exits outside market hours
+        if not self._is_market_hours():
+            logger.debug(
+                f"Skipping exit for {exit_signal.osi_symbol}: "
+                f"outside market hours ({exit_signal.reason.value})"
+            )
+            return None
+
         if not self.trading_client:
             logger.error("No trading client - cannot execute exit")
             return None

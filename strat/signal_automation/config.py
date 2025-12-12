@@ -213,6 +213,7 @@ class MonitoringConfig:
     Attributes:
         enabled: Master switch for monitoring
         check_interval: Seconds between position checks
+        minimum_hold_seconds: Minimum time to hold before checking exits (Session 83K-77)
         exit_dte: Close positions at or below this DTE
         max_loss_pct: Close if loss exceeds this % (0.50 = 50%)
         max_profit_pct: Close if profit exceeds this % (1.00 = 100%)
@@ -223,6 +224,7 @@ class MonitoringConfig:
 
     # Monitoring intervals
     check_interval: int = 60            # Check positions every N seconds
+    minimum_hold_seconds: int = 300     # 5 min before exit checks (Session 83K-77)
 
     # Exit thresholds
     exit_dte: int = 3                   # Close at or below this DTE
@@ -334,6 +336,8 @@ class SignalAutomationConfig:
         ).lower() == 'true'
         if check_interval := os.environ.get('SIGNAL_MONITOR_INTERVAL'):
             monitoring_config.check_interval = int(check_interval)
+        if min_hold := os.environ.get('SIGNAL_MIN_HOLD_SECONDS'):
+            monitoring_config.minimum_hold_seconds = int(min_hold)
         if exit_dte := os.environ.get('SIGNAL_EXIT_DTE'):
             monitoring_config.exit_dte = int(exit_dte)
         if max_loss := os.environ.get('SIGNAL_MAX_LOSS_PCT'):

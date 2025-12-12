@@ -628,8 +628,9 @@ class TestEndToEndFlow:
         assert exit_signal is not None
         assert exit_signal.reason == ExitReason.DTE_EXIT
 
-        # Execute exit
-        result = monitor.execute_exit(exit_signal)
+        # Execute exit (mock market hours to allow exit during test)
+        with patch.object(monitor, '_is_market_hours', return_value=True):
+            result = monitor.execute_exit(exit_signal)
 
         assert result is not None
         assert mock_client.close_option_position.called
