@@ -544,6 +544,98 @@ class DiscordAlerter(BaseAlerter):
 
         return success
 
+    def send_entry_alert(
+        self,
+        signal: StoredSignal,
+        execution_result,  # ExecutionResult from executor
+    ) -> bool:
+        """
+        Send clean entry alert for mobile notifications (Session 83K-77).
+
+        Format: Entry: SPY 3-1-2U 1D Call @ $670 | Target: $690 | Stop: $665
+
+        Args:
+            signal: The signal that was executed
+            execution_result: Execution result with order details
+
+        Returns:
+            True if sent successfully
+        """
+        # Color based on direction
+        color = COLORS.get(signal.direction, COLORS['INFO'])
+
+        # Option type
+        option_type = "Call" if signal.direction == "CALL" else "Put"
+
+        # Clean, mobile-friendly message
+        message = (
+            f"**Entry: {signal.symbol} {signal.pattern_type} {signal.timeframe} {option_type}**\n"
+            f"@ ${signal.entry_trigger:.2f} | "
+            f"Target: ${signal.target_price:.2f} | "
+            f"Stop: ${signal.stop_price:.2f}"
+        )
+
+        payload = {
+            'username': self.username,
+            'content': message,
+        }
+
+        success = self._send_webhook(payload)
+
+        if success:
+            logger.info(f"Discord entry alert sent: {signal.symbol} {signal.pattern_type}")
+
+        return success
+
+    def send_simple_exit_alert(
+        self,
+        symbol: str,
+        pattern_type: str,
+        timeframe: str,
+        direction: str,
+        exit_reason: str,
+        pnl: float,
+    ) -> bool:
+        """
+        Send clean exit alert for mobile notifications (Session 83K-77).
+
+        Format: Exit: SPY 3-1-2U 1D Call | Target Hit | P/L: +$325
+
+        Args:
+            symbol: Underlying symbol
+            pattern_type: STRAT pattern (e.g., 3-1-2U)
+            timeframe: Signal timeframe
+            direction: CALL or PUT
+            exit_reason: Reason for exit (Target Hit, Stop, DTE, etc.)
+            pnl: Profit/loss in dollars
+
+        Returns:
+            True if sent successfully
+        """
+        # Option type
+        option_type = "Call" if direction == "CALL" else "Put"
+
+        # P/L formatting
+        pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+
+        # Clean, mobile-friendly message
+        message = (
+            f"**Exit: {symbol} {pattern_type} {timeframe} {option_type}**\n"
+            f"{exit_reason} | P/L: {pnl_str}"
+        )
+
+        payload = {
+            'username': self.username,
+            'content': message,
+        }
+
+        success = self._send_webhook(payload)
+
+        if success:
+            logger.info(f"Discord exit alert sent: {symbol} {exit_reason} P/L: {pnl_str}")
+
+        return success
+
     def test_connection(self) -> bool:
         """
         Test Discord webhook connection.
@@ -553,28 +645,9 @@ class DiscordAlerter(BaseAlerter):
         Returns:
             True if connection test passed
         """
-        embed = {
-            'title': 'Connection Test',
-            'description': 'STRAT Signal Bot connection test successful!',
-            'color': COLORS['INFO'],
-            'fields': [
-                {
-                    'name': 'Status',
-                    'value': 'Connected',
-                    'inline': True
-                },
-                {
-                    'name': 'Bot Name',
-                    'value': self.username,
-                    'inline': True
-                },
-            ],
-            'timestamp': datetime.utcnow().isoformat()
-        }
-
         payload = {
             'username': self.username,
-            'embeds': [embed]
+            'content': 'ATLAS Signal Bot connected successfully!',
         }
 
         if self.avatar_url:

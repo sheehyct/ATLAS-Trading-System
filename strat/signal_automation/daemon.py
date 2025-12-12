@@ -235,11 +235,23 @@ class SignalDaemon:
         """Callback when a position is exited (Session 83K-49)."""
         self._exit_count += 1
 
-        # Send exit alert
+        # Get signal details for the alert
+        signal = self.signal_store.get_signal(exit_signal.signal_key) if exit_signal.signal_key else None
+
+        # Send exit alert (Session 83K-77: simplified Discord alerts)
         for alerter in self.alerters:
             try:
                 if isinstance(alerter, DiscordAlerter):
-                    alerter.send_exit_alert(exit_signal, order_result)
+                    # Use simplified exit alert
+                    reason_str = exit_signal.reason.value if hasattr(exit_signal.reason, 'value') else str(exit_signal.reason)
+                    alerter.send_simple_exit_alert(
+                        symbol=signal.symbol if signal else exit_signal.osi_symbol[:3],
+                        pattern_type=signal.pattern_type if signal else "Unknown",
+                        timeframe=signal.timeframe if signal else "Unknown",
+                        direction=signal.direction if signal else "CALL",
+                        exit_reason=reason_str,
+                        pnl=exit_signal.unrealized_pnl,
+                    )
                 elif isinstance(alerter, LoggingAlerter):
                     alerter.log_position_exit(exit_signal, order_result)
             except Exception as e:
@@ -315,10 +327,12 @@ class SignalDaemon:
                         f"(priority: {signal.priority})"
                     )
 
-                    # Send alert
+                    # Send alert (Session 83K-77: simplified Discord alerts)
                     for alerter in self.alerters:
                         try:
-                            if isinstance(alerter, LoggingAlerter):
+                            if isinstance(alerter, DiscordAlerter):
+                                alerter.send_entry_alert(signal, result)
+                            elif isinstance(alerter, LoggingAlerter):
                                 alerter.log_execution(result)
                         except Exception as e:
                             logger.error(f"Alert error: {e}")
@@ -531,12 +545,23 @@ class SignalDaemon:
         """
         Send alerts for new signals.
 
+        Session 83K-77: Discord only receives trade execution alerts (entry/exit),
+        not signal detection alerts. Logging alerter still logs all signals.
+
         Args:
             signals: Signals to alert
         """
         for alerter in self.alerters:
             try:
-                # Try batch alert first
+                # Session 83K-77: Skip Discord for signal detection (only trades)
+                if isinstance(alerter, DiscordAlerter):
+                    # Mark as alerted without sending Discord message
+                    for signal in signals:
+                        if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
+                            self.signal_store.mark_alerted(signal.signal_key)
+                    continue
+
+                # Logging alerter: log all signals
                 if len(signals) > 1 and hasattr(alerter, 'send_batch_alert'):
                     success = alerter.send_batch_alert(signals)
                 else:
@@ -808,15 +833,10 @@ class SignalDaemon:
         # Start scheduler
         self.scheduler.start()
 
-        # Notify startup
+        # Notify startup (Session 83K-77: Discord only sends trade alerts, not daemon status)
         for alerter in self.alerters:
             if isinstance(alerter, LoggingAlerter):
                 alerter.log_daemon_started()
-            elif isinstance(alerter, DiscordAlerter):
-                alerter.send_daemon_status(
-                    'Started',
-                    f'Monitoring {len(self.config.scan.symbols)} symbols'
-                )
 
         logger.info("Signal daemon started successfully")
 
@@ -853,18 +873,10 @@ class SignalDaemon:
         status = self._health_check()
 
         # Notify shutdown
+        # Session 83K-77: Discord only sends trade alerts, not daemon status
         for alerter in self.alerters:
             if isinstance(alerter, LoggingAlerter):
                 alerter.log_daemon_stopped('graceful_shutdown')
-            elif isinstance(alerter, DiscordAlerter):
-                try:
-                    alerter.send_daemon_status(
-                        'Stopped',
-                        f'Uptime: {status.get("uptime_seconds", 0):.0f}s, '
-                        f'Scans: {self._scan_count}, Signals: {self._signal_count}'
-                    )
-                except Exception:
-                    pass  # Don't fail shutdown on alert error
 
         self._is_running = False
         logger.info("Signal daemon shutdown complete")
