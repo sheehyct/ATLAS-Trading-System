@@ -1,9 +1,65 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 12, 2025 (Session 83K-78)
+**Last Updated:** December 12, 2025 (Session 83K-79)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING
-**Status:** Dashboard enhanced, watchlist expanded, monitoring live trades
+**Status:** Codebase audit complete, technical debt reduced
+
+---
+
+## Session 83K-79: Comprehensive Project Audit
+
+**Date:** December 12, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Documentation fixed, unused code removed
+
+### Documentation Fixes
+
+| Fix | Details |
+|-----|---------|
+| Test count | Updated from 886 to 913 (verified with pytest) |
+| Phase 5 status | Changed from PLANNED to DEPLOYED (VPS live Dec 11) |
+| CLAUDE.md | Updated test count reference |
+
+### Code Cleanup
+
+| Action | Items |
+|--------|-------|
+| Deleted stub modules | `comparison/`, `optimization/` (empty) |
+| Deleted placeholder dir | `backtesting/` (broken exports) |
+| Deleted placeholder file | `regime/regime_allocator.py` (TODO only) |
+| Archived scripts | 24 exploratory scripts to `archives/exploratory_scripts/` |
+| Marked as roadmap | `quality_momentum.py`, `ibs_mean_reversion.py` |
+
+### Commits
+
+```
+a0ab84c docs: fix README test count (913) and Phase 5 status (deployed)
+ff36219 refactor: delete empty stub modules and placeholders
+eca8492 docs: mark skeleton strategies as roadmap for future development
+c45a26d refactor: archive 24 exploratory scripts from development phase
+```
+
+### Audit Findings (For Reference)
+
+| Area | Status |
+|------|--------|
+| Layer 1 (Regime) | 95% complete |
+| Layer 2 (STRAT) | 95% complete |
+| Layer 3 (Execution) | 100% complete |
+| Layer 4 (Risk Mgmt) | 100% complete |
+| Skeleton strategies | 2 files kept as roadmap |
+| Scripts reorganization | Skipped (VPS risk) |
+
+### Session 83K-80 Priorities
+
+1. **Monitor Live Trading** - Watch Discord alerts with 11 symbols
+2. **VPS Check** - Verify daemon running after watchlist expansion
+3. **Optional: Scripts Cleanup** - Reorganize scripts/ when VPS maintenance window available
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Monitoring and minor tasks.
 
 ---
 
