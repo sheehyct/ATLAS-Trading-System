@@ -53,13 +53,44 @@ c45a26d refactor: archive 24 exploratory scripts from development phase
 
 ### Session 83K-80 Priorities
 
-1. **Monitor Live Trading** - Watch Discord alerts with 11 symbols
-2. **VPS Check** - Verify daemon running after watchlist expansion
-3. **Optional: Scripts Cleanup** - Reorganize scripts/ when VPS maintenance window available
+**CRITICAL: Higher Timeframe Scanning Architecture Fix**
+
+Current Problem:
+- Daily scans run at 5 PM, Weekly at Friday 6 PM, Monthly on 28th
+- For SETUP patterns (2-1-?, 3-1-?), entry happens LIVE when price breaks inside bar
+- By scanning monthly only on 28th, we miss 4 weeks of potential entries
+- The move is likely OVER by the time we scan
+
+Proposed Solution (User Insight):
+- Use hourly scan to check "running" higher TF bars via resampling
+- Aggregate hourly data into running Daily/Weekly/Monthly bars
+- Detect SETUPS on all timeframes during each hourly scan
+- Entry monitor already polls every minute for triggers
+
+Implementation Approach:
+```
+Hourly Scan (every :30)
+    |-- Scan 1H bars directly (current)
+    |-- Resample to "running" Daily bar (9:30 open -> current)
+    |-- Resample to "running" Weekly bar (Monday open -> current)
+    |-- Resample to "running" Monthly bar (1st trading day -> current)
+    |-- Detect SETUPS on all timeframes
+    |-- Entry monitor watches for LIVE triggers
+```
+
+**CRITICAL: Use STRAT Methodology Skill** (`~/.claude/skills/strat-methodology/`)
+- PATTERNS.md: Bar classification and pattern detection rules
+- EXECUTION.md: Entry timing - "Entry is LIVE when current bar breaks inside bar bound"
+- Must follow correct STRAT entry mechanics for implementation
+
+Secondary Priorities:
+1. Monitor Live Trading - Watch Discord alerts with 11 symbols
+2. VPS Check - Verify daemon running after watchlist expansion
+3. Optional: Scripts Cleanup - Reorganize scripts/ when VPS maintenance window available
 
 ### Plan Mode Recommendation
 
-**PLAN MODE: OFF** - Monitoring and minor tasks.
+**PLAN MODE: ON** - Higher timeframe scanning fix requires careful architectural planning.
 
 ---
 
