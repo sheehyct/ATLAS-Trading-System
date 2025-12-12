@@ -48,7 +48,9 @@ class ScanConfig:
         min_risk_reward: Minimum R:R ratio to report
     """
     symbols: List[str] = field(default_factory=lambda: [
-        'SPY', 'QQQ', 'IWM', 'DIA', 'AAPL'
+        'SPY', 'QQQ', 'IWM', 'DIA', 'AAPL',  # Core ETFs + mega-cap
+        'TSLA', 'MSFT', 'GOOGL',              # Additional mega-caps
+        'HOOD', 'QBTS', 'ACHR'                # Retail momentum / lower price
     ])
 
     timeframes: List[str] = field(default_factory=lambda: [
