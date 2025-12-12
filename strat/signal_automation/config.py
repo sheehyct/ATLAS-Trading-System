@@ -102,6 +102,27 @@ class ScheduleConfig:
     # Monthly: Run at 6 PM ET on 28th of month (APScheduler doesn't support 'L')
     monthly_cron: str = '0 18 28 * *'
 
+    # =========================================================================
+    # Session 83K-80: 15-Minute Base Resampling (HTF Scanning Architecture Fix)
+    # =========================================================================
+    # When enable_htf_resampling=True, uses a single 15-minute scan that
+    # resamples to all higher timeframes (1H, 1D, 1W, 1M).
+    # This fixes the bug where HTF scans missed entry opportunities.
+
+    # Enable unified multi-TF resampling (replaces separate HTF scan jobs)
+    enable_htf_resampling: bool = True
+
+    # Base timeframe for resampling
+    base_timeframe: str = '15min'
+
+    # 15-minute scan schedule (market hours, market-aligned)
+    # Run at :30, :45, :00, :15 (after each 15-min bar closes)
+    # This detects setups within 15 minutes of inside bar close
+    base_scan_cron: str = '30,45,0,15 9-15 * * 1-5'
+
+    # =========================================================================
+    # Legacy: Individual timeframe scans (used when enable_htf_resampling=False)
+    # =========================================================================
     # Enable/disable individual timeframe scans
     scan_hourly: bool = True
     scan_daily: bool = True

@@ -273,6 +273,113 @@ class PaperSignalScanner:
 
         return df
 
+    # =========================================================================
+    # Session 83K-80: 15-Minute Base Resampling Methods
+    # =========================================================================
+
+    def _fetch_15min_data(self, symbol: str, lookback_bars: int = 100) -> Optional[pd.DataFrame]:
+        """
+        Fetch 15-minute data from Alpaca.
+
+        Session 83K-80: Base timeframe for multi-TF resampling.
+        15-min bars are market-aligned (9:30, 9:45, 10:00, etc.)
+
+        Args:
+            symbol: Stock symbol
+            lookback_bars: Number of 15-min bars to fetch
+
+        Returns:
+            DataFrame with OHLCV columns, filtered to market hours
+        """
+        vbt = self._get_vbt()
+
+        # Calculate days needed (26 bars per day * lookback)
+        days = lookback_bars // 26 + 30  # ~26 15-min bars per day, add buffer
+
+        end = datetime.now()
+        start = end - timedelta(days=days)
+
+        try:
+            data = vbt.AlpacaData.pull(
+                symbol,
+                start=start.strftime('%Y-%m-%d'),
+                end=(end + timedelta(days=1)).strftime('%Y-%m-%d'),  # Include today
+                timeframe='15Min',
+                tz='America/New_York'
+            )
+            df = data.get()
+
+            # Filter to market hours (09:30-16:00 ET)
+            df = df.between_time('09:30', '16:00')
+
+            return df
+
+        except Exception as e:
+            warnings.warn(f"Failed to fetch 15-min data for {symbol}: {e}")
+            return None
+
+    def _resample_to_htf(self, base_df: pd.DataFrame, target_tf: str) -> Optional[pd.DataFrame]:
+        """
+        Resample 15-min OHLCV data to higher timeframe.
+
+        Session 83K-80: Core resampling method for HTF scanning architecture fix.
+
+        Args:
+            base_df: DataFrame with 15-min OHLC data (market-aligned, 9:30 start)
+            target_tf: Target timeframe ('1H', '1D', '1W', '1M')
+
+        Returns:
+            DataFrame with resampled OHLC data (last bar is "running"/incomplete)
+
+        CRITICAL: Bars are market-aligned:
+        - 15min: 9:30-9:45, 9:45-10:00, ...
+        - 1H: 9:30-10:30, 10:30-11:30, ... (aligned to market open)
+        - 1D: 9:30 to 16:00
+        - 1W: Monday-Friday
+        - 1M: Calendar month
+        """
+        if base_df is None or base_df.empty:
+            return None
+
+        # Map target TF to pandas frequency with proper offset for market alignment
+        # '1h' with offset='30min' creates bars at 9:30, 10:30, 11:30, etc.
+        freq_map = {
+            '1H': ('1h', '30min'),   # Hourly, offset by 30 min for market alignment
+            '1D': ('1D', None),       # Daily
+            '1W': ('W-FRI', None),    # Weekly (Friday close)
+            '1M': ('ME', None),       # Month end
+        }
+
+        if target_tf not in freq_map:
+            raise ValueError(f"Unknown target timeframe: {target_tf}")
+
+        freq, offset = freq_map[target_tf]
+
+        try:
+            # Use pandas resampling with offset for market alignment
+            if offset:
+                resampled = base_df.resample(freq, offset=offset).agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                }).dropna()
+            else:
+                resampled = base_df.resample(freq).agg({
+                    'Open': 'first',
+                    'High': 'max',
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                }).dropna()
+
+            return resampled
+
+        except Exception as e:
+            warnings.warn(f"Failed to resample to {target_tf}: {e}")
+            return None
+
     def _fetch_vix(self) -> float:
         """Fetch current VIX level."""
         try:
@@ -815,6 +922,130 @@ class PaperSignalScanner:
                 signals.append(signal)
 
         return signals
+
+    # =========================================================================
+    # Session 83K-80: Multi-Timeframe Scanning via 15-min Resampling
+    # =========================================================================
+
+    def scan_symbol_all_timeframes_resampled(self, symbol: str,
+                                              lookback_bars: int = 50) -> List[DetectedSignal]:
+        """
+        Scan symbol across ALL timeframes using 15-min base resampling.
+
+        Session 83K-80: HTF Scanning Architecture Fix.
+
+        This method:
+        1. Fetches 15-min data once
+        2. Resamples to 1H, 1D, 1W, 1M
+        3. Detects SETUP patterns on all timeframes
+        4. Returns unified list of signals
+
+        CRITICAL: This approach fixes the HTF scanning bug where:
+        - Daily scans at 5PM missed entry opportunities
+        - Weekly scans on Friday missed 5 days of entries
+        - Monthly scans on 28th missed 4 weeks of entries
+
+        With resampling, we detect setups within 15 minutes of inside bar close
+        and entry_monitor polls every 60s for live triggers.
+
+        Args:
+            symbol: Stock symbol
+            lookback_bars: Number of bars to look back per timeframe
+
+        Returns:
+            List of detected signals across all timeframes
+        """
+        all_signals = []
+
+        # Calculate 15-min bars needed for monthly resampling
+        # ~26 15-min bars/day * ~21 trading days/month * lookback_bars months + buffer
+        base_lookback = lookback_bars * 30 * 26
+
+        # Fetch 15-min data once
+        base_df = self._fetch_15min_data(symbol, base_lookback)
+
+        if base_df is None or base_df.empty:
+            warnings.warn(f"Failed to fetch 15-min data for {symbol}")
+            return all_signals
+
+        # Scan each timeframe via resampling
+        for tf in self.DEFAULT_TIMEFRAMES:
+            resampled_df = self._resample_to_htf(base_df, tf)
+
+            if resampled_df is None or resampled_df.empty:
+                warnings.warn(f"Failed to resample {symbol} to {tf}")
+                continue
+
+            # Get market context from resampled data
+            context = self._get_market_context(resampled_df)
+
+            # =================================================================
+            # COMPLETED patterns (entry already happened, historical)
+            # =================================================================
+            for pattern_type in self.ALL_PATTERNS:
+                patterns = self._detect_patterns(resampled_df, pattern_type)
+
+                for p in patterns:
+                    # Only include recent signals (last 5 bars)
+                    if p['index'] >= len(resampled_df) - 5:
+                        pattern_name = p.get('bar_sequence', f"{pattern_type}{'U' if p['direction'] == 'CALL' else 'D'}")
+
+                        setup_ts = p.get('setup_bar_timestamp')
+                        if hasattr(setup_ts, 'to_pydatetime'):
+                            setup_ts = setup_ts.to_pydatetime()
+
+                        signal = DetectedSignal(
+                            pattern_type=pattern_name,
+                            direction=p['direction'],
+                            symbol=symbol,
+                            timeframe=tf,
+                            detected_time=p['timestamp'].to_pydatetime() if hasattr(p['timestamp'], 'to_pydatetime') else p['timestamp'],
+                            entry_trigger=p['entry'],
+                            stop_price=p['stop'],
+                            target_price=p['target'],
+                            magnitude_pct=p['magnitude_pct'],
+                            risk_reward=p['risk_reward'],
+                            context=context,
+                            signal_type=p.get('signal_type', 'COMPLETED'),
+                            setup_bar_high=p.get('setup_bar_high', 0.0),
+                            setup_bar_low=p.get('setup_bar_low', 0.0),
+                            setup_bar_timestamp=setup_ts,
+                        )
+                        all_signals.append(signal)
+
+            # =================================================================
+            # SETUP patterns (waiting for live break)
+            # Only consider the LAST bar as a valid setup
+            # =================================================================
+            setups = self._detect_setups(resampled_df)
+
+            for p in setups:
+                # SETUP signals: Only include if at the LAST bar
+                if p['index'] == len(resampled_df) - 1:
+                    setup_ts = p.get('setup_bar_timestamp')
+                    if hasattr(setup_ts, 'to_pydatetime'):
+                        setup_ts = setup_ts.to_pydatetime()
+
+                    signal = DetectedSignal(
+                        pattern_type=p['bar_sequence'],
+                        direction=p['direction'],
+                        symbol=symbol,
+                        timeframe=tf,
+                        detected_time=p['timestamp'].to_pydatetime() if hasattr(p['timestamp'], 'to_pydatetime') else p['timestamp'],
+                        entry_trigger=p['entry'],
+                        stop_price=p['stop'],
+                        target_price=p['target'],
+                        magnitude_pct=p['magnitude_pct'],
+                        risk_reward=p['risk_reward'],
+                        context=context,
+                        signal_type='SETUP',
+                        setup_bar_high=p.get('setup_bar_high', 0.0),
+                        setup_bar_low=p.get('setup_bar_low', 0.0),
+                        setup_bar_timestamp=setup_ts,
+                    )
+                    all_signals.append(signal)
+
+        return all_signals
 
     def scan_all_timeframes(self, symbol: str) -> List[DetectedSignal]:
         """

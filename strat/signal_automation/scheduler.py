@@ -200,6 +200,65 @@ class SignalScheduler:
         logger.info(f"Added hourly job: {job.id}")
         return job.id
 
+    # =========================================================================
+    # Session 83K-80: 15-Minute Base Scan (HTF Resampling Architecture)
+    # =========================================================================
+
+    def add_base_scan_job(
+        self,
+        callback: Callable,
+        job_id: str = 'scan_base'
+    ) -> Optional[str]:
+        """
+        Add 15-minute base scan job for unified multi-TF scanning.
+
+        Session 83K-80: HTF Scanning Architecture Fix.
+
+        This job runs every 15 minutes during market hours and:
+        - Fetches 15-min data once per symbol
+        - Resamples to 1H, 1D, 1W, 1M
+        - Detects SETUP patterns on ALL timeframes
+
+        Replaces separate hourly/daily/weekly/monthly jobs when
+        enable_htf_resampling=True.
+
+        Schedule: :30, :45, :00, :15 of each hour (9:30-15:45 ET)
+
+        Args:
+            callback: Function to call on trigger
+            job_id: Unique job identifier
+
+        Returns:
+            Job ID if added, None if HTF resampling disabled
+        """
+        if not self.config.enable_htf_resampling:
+            logger.info("HTF resampling disabled - use legacy scan jobs instead")
+            return None
+
+        cron_kwargs = self._parse_cron(self.config.base_scan_cron)
+
+        job = self._scheduler.add_job(
+            callback,
+            trigger=CronTrigger(**cron_kwargs, timezone=self.timezone),
+            id=job_id,
+            name='15-Min Multi-TF Scan (Resampled)',
+            replace_existing=True,
+        )
+
+        self._jobs['base'] = job.id
+        self._job_stats[job.id] = {
+            'name': '15-Min Multi-TF Scan',
+            'run_count': 0,
+            'error_count': 0,
+            'missed_count': 0,
+            'last_run': None,
+            'last_status': 'pending',
+            'last_error': None,
+        }
+
+        logger.info(f"Added 15-min base scan job: {job.id} (HTF resampling enabled)")
+        return job.id
+
     def add_daily_job(
         self,
         callback: Callable,

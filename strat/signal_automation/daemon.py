@@ -437,6 +437,132 @@ class SignalDaemon:
 
             return []
 
+    # =========================================================================
+    # Session 83K-80: 15-Minute Base Scan (HTF Resampling Architecture)
+    # =========================================================================
+
+    def run_base_scan(self) -> List[StoredSignal]:
+        """
+        Run unified multi-TF scan using 15-min base resampling.
+
+        Session 83K-80: HTF Scanning Architecture Fix.
+
+        This method:
+        1. Runs every 15 minutes during market hours
+        2. Fetches 15-min data once per symbol
+        3. Resamples to 1H, 1D, 1W, 1M
+        4. Detects SETUP patterns on ALL timeframes
+
+        Replaces separate run_scan() calls for each timeframe.
+
+        Returns:
+            List of new (non-duplicate) signals found across all timeframes
+        """
+        start_time = time.time()
+        self._scan_count += 1
+
+        # Notify scan started
+        for alerter in self.alerters:
+            if isinstance(alerter, LoggingAlerter):
+                alerter.log_scan_started('ALL (15min resampled)', self.config.scan.symbols)
+
+        try:
+            new_signals: List[StoredSignal] = []
+
+            # Scan each symbol using resampling
+            for symbol in self.config.scan.symbols:
+                try:
+                    detected = self._scan_symbol_resampled(symbol)
+                    new_signals.extend(detected)
+                except Exception as e:
+                    logger.error(f"Error scanning {symbol} (resampled): {e}")
+                    self._error_count += 1
+
+            # Send alerts for new signals
+            if new_signals:
+                self._send_alerts(new_signals)
+
+                # Execute signals if execution enabled
+                if self.executor is not None:
+                    exec_results = self._execute_signals(new_signals)
+                    executed_count = sum(
+                        1 for r in exec_results
+                        if r.state == ExecutionState.ORDER_SUBMITTED
+                    )
+                    logger.info(
+                        f"Executed {executed_count}/{len(new_signals)} signals"
+                    )
+
+            # Scan completion
+            duration = time.time() - start_time
+            for alerter in self.alerters:
+                if isinstance(alerter, LoggingAlerter):
+                    alerter.log_scan_completed(
+                        'ALL (15min resampled)',
+                        len(new_signals),
+                        duration
+                    )
+
+            logger.info(
+                f"Base scan complete: ALL TFs - {len(new_signals)} signals "
+                f"in {duration:.2f}s"
+            )
+
+            return new_signals
+
+        except Exception as e:
+            logger.error(f"Base scan error: {e}")
+            self._error_count += 1
+
+            for alerter in self.alerters:
+                if isinstance(alerter, LoggingAlerter):
+                    alerter.log_scan_error('ALL (15min resampled)', str(e))
+
+            return []
+
+    def _scan_symbol_resampled(self, symbol: str) -> List[StoredSignal]:
+        """
+        Scan a single symbol across all timeframes using 15-min resampling.
+
+        Session 83K-80: Uses scan_symbol_all_timeframes_resampled().
+
+        Args:
+            symbol: Symbol to scan
+
+        Returns:
+            List of new signals (non-duplicates) across all timeframes
+        """
+        new_signals: List[StoredSignal] = []
+
+        # Use the new resampling method
+        detected_signals = self.scanner.scan_symbol_all_timeframes_resampled(symbol)
+
+        for signal in detected_signals:
+            # Apply quality filters
+            if not self._passes_filters(signal):
+                continue
+
+            # Check for duplicates
+            if self.signal_store.is_duplicate(signal):
+                continue
+
+            # Store new signal
+            stored = self.signal_store.add_signal(signal)
+
+            # Session 83K-68: Mark COMPLETED signals as HISTORICAL_TRIGGERED
+            if stored.signal_type == SignalType.COMPLETED.value:
+                self.signal_store.mark_historical_triggered(stored.signal_key)
+                stored.status = SignalStatus.HISTORICAL_TRIGGERED.value
+                logger.info(
+                    f"HISTORICAL: {stored.symbol} {stored.pattern_type} {stored.direction} "
+                    f"{stored.timeframe} (entry @ ${stored.entry_trigger:.2f} already occurred)"
+                )
+
+            new_signals.append(stored)
+            self._signal_count += 1
+
+        return new_signals
+
     def _scan_symbol(
         self,
         symbol: str,
@@ -791,18 +917,29 @@ class SignalDaemon:
         self._setup_signal_handlers()
 
         # Register scheduled jobs
-        self.scheduler.add_hourly_job(
-            self._create_scan_callback('1H')
-        )
-        self.scheduler.add_daily_job(
-            self._create_scan_callback('1D')
-        )
-        self.scheduler.add_weekly_job(
-            self._create_scan_callback('1W')
-        )
-        self.scheduler.add_monthly_job(
-            self._create_scan_callback('1M')
-        )
+        # Session 83K-80: Use either new 15-min resampling or legacy separate jobs
+        if self.config.schedule.enable_htf_resampling:
+            # NEW: Single 15-min job handles all timeframes via resampling
+            self.scheduler.add_base_scan_job(self.run_base_scan)
+            logger.info(
+                "Using 15-min base resampling for ALL timeframes "
+                "(HTF scanning architecture fix)"
+            )
+        else:
+            # LEGACY: Separate jobs per timeframe
+            self.scheduler.add_hourly_job(
+                self._create_scan_callback('1H')
+            )
+            self.scheduler.add_daily_job(
+                self._create_scan_callback('1D')
+            )
+            self.scheduler.add_weekly_job(
+                self._create_scan_callback('1W')
+            )
+            self.scheduler.add_monthly_job(
+                self._create_scan_callback('1M')
+            )
+            logger.info("Using legacy separate scan jobs per timeframe")
 
         # Health check job
         self.scheduler.add_health_check_job(
