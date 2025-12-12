@@ -65,24 +65,29 @@
 715ac40 fix: add safeguards to prevent rapid entry/exit bug
 ```
 
+### Discord Alerts Simplified (Also Deployed)
+
+Discord now only sends clean, mobile-friendly trade alerts:
+
+**Entry:** `Entry: SPY 3-1-2U 1D Call @ $670 | Target: $690 | Stop: $665`
+**Exit:** `Exit: SPY 3-1-2U 1D Call | Target Hit | P/L: +$325`
+
+Removed: daemon status, scan summaries, signal detection alerts.
+
 ### Session 83K-78 Priorities
 
-1. **Deploy to VPS** - Pull changes and restart daemon
-2. **Monitor next trade** - Verify minimum hold time working
-3. **Verify STRAT pattern accuracy** - Check signal patterns match market
+1. **Dashboard Enhancement** - Add pattern trigger time to Options Trade Section
+2. **Verify Pattern Accuracy** - Review skipped trades (low magnitude) for accuracy
+3. **Monitor Live Trading** - Watch for Discord alerts, verify 5-min hold time
 
-### VPS Deployment Commands
+### Future Sessions (Post-Monitoring)
 
-```bash
-ssh atlas@178.156.223.251
-cd ~/vectorbt-workspace && git pull
-sudo systemctl restart atlas-daemon
-sudo journalctl -u atlas-daemon -f
-```
+1. **Comprehensive Project Audit** - Architecture docs, README updates, strategy analysis
+2. **Potential Crypto Strategy** - Leveraged derivatives (no theta, arbitrage opportunities)
 
 ### Plan Mode Recommendation
 
-**PLAN MODE: OFF** - Bug fix complete, monitoring phase.
+**PLAN MODE: OFF** - Monitoring phase, minor enhancements.
 
 ---
 
