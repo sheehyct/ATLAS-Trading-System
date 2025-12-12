@@ -1,9 +1,88 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 11, 2025 (Session 83K-76)
+**Last Updated:** December 12, 2025 (Session 83K-77)
 **Current Branch:** `main`
 **Phase:** Paper Trading - VPS DEPLOYED
-**Status:** VPS Signal API deployed, dashboard connected, CRITICAL BUG discovered
+**Status:** CRITICAL BUG FIXED - Rapid entry/exit safeguards implemented
+
+---
+
+## Session 83K-77: Critical Bug Fix - Rapid Entry/Exit Safeguards
+
+**Date:** December 12, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Four safeguards implemented and tested
+
+### Root Cause Identified
+
+**Bug:** Trades entered and exited within 12 seconds (AAPL -$5, QQQ -$10)
+
+**Timeline from Alpaca order history:**
+- 11:30:06 AM: BUY 5 positions (SPY, QQQ, IWM x2, AAPL)
+- 11:30:18 AM: SELL AAPL and QQQ (12 seconds later)
+
+**Root Cause:** Position monitor had no minimum hold time. Daemon started at 11:00:13 AM, position monitor runs every 60 seconds. Positions entered at 11:30:06 AM (7 seconds before scheduled check at 11:30:13 AM) were immediately checked for exit conditions.
+
+### Fixes Implemented
+
+| Fix | File | Description |
+|-----|------|-------------|
+| 1. Minimum Hold Time | position_monitor.py, config.py | 5-minute hold before exit checks |
+| 2. HISTORICAL_TRIGGERED Check | executor.py | Skip completed patterns |
+| 3. Thread-Safe Lock | executor.py | Prevent concurrent duplicate execution |
+| 4. Market Hours Check | position_monitor.py | Skip exits outside 9:30-4:00 ET |
+
+### Files Modified
+
+- `strat/signal_automation/position_monitor.py` (+36 lines)
+  - Added `minimum_hold_seconds` to MonitoringConfig
+  - Added hold time check in `_check_position()`
+  - Added `_is_market_hours()` method
+  - Added market hours check in `execute_exit()`
+
+- `strat/signal_automation/executor.py` (+39 lines)
+  - Added `threading` import
+  - Added `_execution_lock` for thread safety
+  - Added HISTORICAL_TRIGGERED status check
+  - Wrapped duplicate check with lock
+
+- `strat/signal_automation/config.py` (+4 lines)
+  - Added `minimum_hold_seconds` field (default: 300)
+  - Added `SIGNAL_MIN_HOLD_SECONDS` env var support
+
+- `tests/test_signal_automation/test_e2e_signal_flow.py` (+5 lines)
+  - Updated test to mock market hours
+
+### New Environment Variable
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SIGNAL_MIN_HOLD_SECONDS` | 300 | Minimum seconds before position monitor checks exits |
+
+### Commit
+
+```
+715ac40 fix: add safeguards to prevent rapid entry/exit bug
+```
+
+### Session 83K-78 Priorities
+
+1. **Deploy to VPS** - Pull changes and restart daemon
+2. **Monitor next trade** - Verify minimum hold time working
+3. **Verify STRAT pattern accuracy** - Check signal patterns match market
+
+### VPS Deployment Commands
+
+```bash
+ssh atlas@178.156.223.251
+cd ~/vectorbt-workspace && git pull
+sudo systemctl restart atlas-daemon
+sudo journalctl -u atlas-daemon -f
+```
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Bug fix complete, monitoring phase.
 
 ---
 
