@@ -1,9 +1,70 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 11, 2025 (Session 83K-75)
+**Last Updated:** December 11, 2025 (Session 83K-76)
 **Current Branch:** `main`
 **Phase:** Paper Trading - VPS DEPLOYED
-**Status:** Signal daemon running on Hetzner VPS, dashboard options integration complete
+**Status:** VPS Signal API deployed, dashboard connected, CRITICAL BUG discovered
+
+---
+
+## Session 83K-76: VPS Signal API + Dashboard Data Fixes
+
+**Date:** December 11, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - But CRITICAL BUG discovered requiring immediate attention
+
+### VPS Signal API - COMPLETE
+
+| Component | Details |
+|-----------|---------|
+| Service | atlas-signal-api (systemd) |
+| Port | 5000 |
+| Endpoint | http://178.156.223.251:5000/signals |
+
+**Files Created:**
+- `scripts/signal_api.py` - Flask API to serve signals from VPS
+- `deploy/atlas-signal-api.service` - systemd service file
+
+**Files Modified:**
+- `dashboard/data_loaders/options_loader.py` - VPS API support + field mapping fix
+- `dashboard/components/options_panel.py` - Removed mock data, added live P&L
+- `dashboard/app.py` - Added P&L summary and trade progress callbacks
+- `strat/signal_automation/signal_store.py` - Added public load_signals() method
+- `pyproject.toml` - Added flask>=3.0.0
+
+### Dashboard Fixes - COMPLETE
+
+1. **Signal Pattern Column** - Now shows actual STRAT patterns (2U-2D, 3-2D) not PUT/CALL
+2. **Target/Stop Display** - Fixed field mapping (target_price->target, stop_price->stop)
+3. **P&L Summary** - Replaced mock $665 with live Alpaca position data
+4. **Trade Progress Chart** - Shows placeholder instead of fake SPY/QQQ/AAPL
+5. **Active Signal Display** - Removed hardcoded $598.50 SPY mock
+
+### CRITICAL BUG DISCOVERED - Session 83K-77 Priority
+
+**Issue:** Daemon entering and exiting trades within seconds (12 seconds apart)
+- AAPL251219C00275000: Buy $4.10 -> Sell $4.05 in 12 seconds (-$5)
+- QQQ251218P00620000: Buy $6.08 -> Sell $5.98 in 12 seconds (-$10)
+
+**Potential Causes:**
+1. Position monitor exit conditions triggering immediately on entry
+2. Duplicate signal processing
+3. HISTORICAL_TRIGGERED signals being executed when they shouldn't
+
+**Evidence:** Alpaca order history shows buy/sell pairs at 11:30:06 AM and 11:30:18 AM
+
+### Session 83K-77 Priorities
+
+1. **CRITICAL: Investigate rapid entry/exit bug**
+   - Check daemon logs on VPS: `sudo journalctl -u atlas-daemon -f`
+   - Review position_monitor.py exit condition logic
+   - Review executor.py for duplicate execution prevention
+
+2. **Verify STRAT pattern accuracy** - User will verify signal patterns
+
+### Plan Mode Recommendation
+
+**PLAN MODE: ON** - Critical bug investigation requires careful analysis.
 
 ---
 
