@@ -1,9 +1,88 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 12, 2025 (Session 83K-79)
+**Last Updated:** December 12, 2025 (Session 83K-80)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING
-**Status:** Codebase audit complete, technical debt reduced
+**Status:** HTF scanning architecture fix deployed
+
+---
+
+## Session 83K-80: HTF Scanning Architecture Fix (CRITICAL)
+
+**Date:** December 12, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Deployed to VPS
+
+### Problem Solved
+
+**Critical Bug:** For SETUP patterns (2-1-?, 3-1-?), entry is LIVE when price breaks inside bar. Previous schedule:
+- Daily: 5 PM (move already over)
+- Weekly: Friday 6 PM (5 days of entries missed)
+- Monthly: 28th (up to 4 weeks of entries missed)
+
+### Solution: 15-Minute Base Resampling
+
+Instead of separate HTF scans at fixed times, use 15-min bars as base and resample to all higher timeframes:
+
+```
+15-Minute Scan (every 15 min during market hours)
+    |-- Resample 15min -> 1H bars (market-aligned to 9:30)
+    |-- Resample 15min -> "running" Daily bar
+    |-- Resample 15min -> "running" Weekly bar
+    |-- Resample 15min -> "running" Monthly bar
+    |-- Detect SETUPS on ALL timeframes
+    |-- Entry monitor polls every 60s for LIVE triggers
+```
+
+**Key Discovery:** Alpaca hourly bars are clock-aligned (10:00, 11:00), not market-aligned (9:30, 10:30). Resampling from 15-min data produces correct market-aligned bars for STRAT methodology.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/paper_signal_scanner.py` | Added `_fetch_15min_data()`, `_resample_to_htf()`, `scan_symbol_all_timeframes_resampled()` |
+| `strat/signal_automation/config.py` | Added `enable_htf_resampling`, `base_timeframe`, `base_scan_cron` |
+| `strat/signal_automation/scheduler.py` | Added `add_base_scan_job()` |
+| `strat/signal_automation/daemon.py` | Added `run_base_scan()`, `_scan_symbol_resampled()`, modified `start()` |
+| `scripts/validate_resampling.py` | NEW - validation script |
+
+### Configuration (config.py)
+
+```python
+# Session 83K-80: 15-Minute Base Resampling
+enable_htf_resampling: bool = True
+base_timeframe: str = '15min'
+base_scan_cron: str = '30,45,0,15 9-15 * * 1-5'  # Market-aligned
+```
+
+### Commits
+
+```
+04d8933 feat: implement 15-min base resampling for HTF scanning fix
+```
+
+### VPS Deployment
+
+```bash
+ssh atlas@178.156.223.251
+cd ~/vectorbt-workspace && git pull
+sudo systemctl restart atlas-daemon
+# Logs confirm: "Using 15-min base resampling for ALL timeframes"
+```
+
+### Rollback
+
+Set `enable_htf_resampling: bool = False` in config.py to use legacy separate-job scans.
+
+### Session 83K-81 Priorities
+
+1. **Monitor Live Trading** - Watch for SETUP triggers on all timeframes
+2. **Verify 15-min Scans** - Check VPS logs during market hours
+3. **Optional: Add Tests** - Resampling and market-alignment unit tests
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Implementation complete, monitoring phase.
 
 ---
 
