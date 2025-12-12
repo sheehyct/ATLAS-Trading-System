@@ -1,132 +1,96 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 12, 2025 (Session 83K-80 + Enhancement Planning)
+**Last Updated:** December 12, 2025 (Session 83K-81)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING
-**Status:** HTF scanning fix deployed, dashboard enhancements planned
+**Status:** Dashboard P&L and Strategy Performance COMPLETE
 
 ---
 
-## Session 83K-81 Priorities: Dashboard P&L and Performance Tracking
-
-**Focus:** Implement closed position P&L tracking and strategy performance restructure
-
-### Priority 1: Closed Position P&L Tracking (HIGH)
-
-**Problem:** Alpaca only shows P&L for open positions. Closed trades have no P&L visibility.
-
-**Solution:** Use Alpaca `/v2/account/activities/FILL` endpoint with FIFO matching.
-
-**Reference Script:** `C:\Users\sheeh\Downloads\TradeROI.py`
-
-**Implementation Plan:**
-1. Add `get_closed_trades()` method to `dashboard/data_loaders/options_loader.py`
-2. Fetch all FILL activities from Alpaca
-3. FIFO match buys to sells to calculate realized P&L
-4. Add "Closed Trades" section to Options panel (new tab or table)
-
-**Data Fields Available:**
-| Field | Description |
-|-------|-------------|
-| symbol | Option symbol |
-| buy_price / sell_price | Entry and exit prices |
-| cost_basis_usd | Total cost |
-| realized_pnl_usd | Actual P&L in dollars |
-| roi_percent | Return on investment |
-| buy_time / sell_time | Entry and exit timestamps |
-
-**Difficulty:** MEDIUM (2-3 hours)
-
-### Priority 2: Strategy Performance Tab Restructure (MEDIUM)
-
-**Current State:** Single dropdown with 52-week momentum + ORB (backtest stats)
-
-**Requested Structure:**
-```
-Strategy Performance Tab
-├── Dropdown or Sub-tabs:
-│   ├── Non-Options Strategies (52-week, ORB - future)
-│   ├── STRAT Options Performance (from closed trades)
-│   └── Aggregate (all strategies combined)
-```
-
-**Implementation Plan:**
-1. Add "STRAT Options" option to dropdown or new sub-tab
-2. Calculate stats from closed trades: win rate, avg P&L, Sharpe, etc.
-3. Add aggregate view combining all strategies
-
-**Depends on:** Priority 1 (needs closed P&L data)
-
-**Difficulty:** MEDIUM (3-4 hours)
-
-### Priority 3: Trade Progress to Target (LOWER)
-
-**Current State:** Placeholder with no data - never implemented
-
-**Challenge:** Need to link Alpaca positions to original STRAT signals for target prices
-
-**Implementation Plan:**
-1. Store `signal_key` -> `option_symbol` mapping when executor opens position
-2. Position monitor looks up original target from signal
-3. Progress bar shows `current_price / target_price`
-
-**Difficulty:** MEDIUM-HIGH (3-4 hours) - requires executor changes
-
-**Recommendation:** Defer until P1 and P2 complete
-
-### Plan Mode Recommendation
-
-**PLAN MODE: ON** - Dashboard enhancements require coordinated changes across multiple files.
-
----
-
-## Session 83K-80: HTF Scanning Architecture Fix (CRITICAL)
+## Session 83K-81: Dashboard P&L and Performance Tracking (COMPLETE)
 
 **Date:** December 12, 2025
 **Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Ready for Railway deployment
+
+### What Was Implemented
+
+#### Priority 1: Closed Position P&L Tracking (COMPLETE)
+
+**Solution:** FIFO matching algorithm using Alpaca `/v2/account/activities/FILL` endpoint
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `integrations/alpaca_trading_client.py` | Added `get_fill_activities()`, `get_closed_trades()` with FIFO matching |
+| `dashboard/data_loaders/options_loader.py` | Added `get_closed_trades()`, `get_closed_trades_summary()` |
+| `dashboard/components/options_panel.py` | Added 4th tab "Closed Trades", `create_closed_trades_table()` |
+| `dashboard/app.py` | Updated `update_options_signals()` callback for closed trades |
+
+**Features:**
+- 4th tab "Closed Trades" in Options panel
+- FIFO matching for realized P&L calculation
+- Summary row: Total P&L, Win Rate, W/L count
+- Table columns: Contract, Qty, Entry, Exit, Realized P&L, Duration, Closed Date
+- 30-day default lookback
+
+#### Priority 2: Strategy Performance Tab Restructure (COMPLETE)
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `dashboard/config.py` | Added 'strat_options' and 'aggregate' to AVAILABLE_STRATEGIES |
+| `dashboard/components/strategy_panel.py` | Changed default to 'strat_options' |
+| `dashboard/app.py` | Updated 3 callbacks to handle STRAT Options strategy |
+
+**Strategy Dropdown Options:**
+- **STRAT Options (Live)** - Default, shows closed trades performance
+- **Aggregate (All Strategies)** - Combined view
+- **Opening Range Breakout** - Existing backtest
+- **52-Week High Momentum** - Existing backtest
+
+**STRAT Options Displays:**
+- Equity Curve: Total P&L, Win Rate, Trade counts, Avg P&L
+- Rolling Metrics: Bar chart of last 10 closed trades P&L
+- Trade Distribution: Pie chart of wins vs losses
+
+### VPS Deployment
+
+```bash
+ssh atlas@178.156.223.251
+cd ~/vectorbt-workspace && git pull
+# Dashboard auto-deploys via Railway
+```
+
+### Session 83K-82 Priorities
+
+1. **Monitor Dashboard** - Verify closed trades display correctly on Railway
+2. **Test FIFO Matching** - Verify with actual closed trades in paper account
+3. **P3: Trade Progress to Target** (DEFER) - Signal-to-position linkage
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Features complete, monitoring phase.
+
+---
+
+## Session 83K-80: HTF Scanning Architecture Fix (COMPLETE)
+
+**Date:** December 12, 2025
 **Status:** COMPLETE - Deployed to VPS
-
-### Problem Solved
-
-**Critical Bug:** For SETUP patterns (2-1-?, 3-1-?), entry is LIVE when price breaks inside bar. Previous schedule:
-- Daily: 5 PM (move already over)
-- Weekly: Friday 6 PM (5 days of entries missed)
-- Monthly: 28th (up to 4 weeks of entries missed)
 
 ### Solution: 15-Minute Base Resampling
 
-Instead of separate HTF scans at fixed times, use 15-min bars as base and resample to all higher timeframes:
-
-```
-15-Minute Scan (every 15 min during market hours)
-    |-- Resample 15min -> 1H bars (market-aligned to 9:30)
-    |-- Resample 15min -> "running" Daily bar
-    |-- Resample 15min -> "running" Weekly bar
-    |-- Resample 15min -> "running" Monthly bar
-    |-- Detect SETUPS on ALL timeframes
-    |-- Entry monitor polls every 60s for LIVE triggers
-```
-
-**Key Discovery:** Alpaca hourly bars are clock-aligned (10:00, 11:00), not market-aligned (9:30, 10:30). Resampling from 15-min data produces correct market-aligned bars for STRAT methodology.
+For SETUP patterns (2-1-?, 3-1-?), entry is LIVE when price breaks inside bar. Previous fixed schedules missed entries. Now uses 15-min bars as base and resamples to all higher timeframes every 15 minutes.
 
 ### Files Modified
 
 | File | Changes |
 |------|---------|
-| `strat/paper_signal_scanner.py` | Added `_fetch_15min_data()`, `_resample_to_htf()`, `scan_symbol_all_timeframes_resampled()` |
-| `strat/signal_automation/config.py` | Added `enable_htf_resampling`, `base_timeframe`, `base_scan_cron` |
+| `strat/paper_signal_scanner.py` | Added resampling methods |
+| `strat/signal_automation/config.py` | Added `enable_htf_resampling` |
 | `strat/signal_automation/scheduler.py` | Added `add_base_scan_job()` |
-| `strat/signal_automation/daemon.py` | Added `run_base_scan()`, `_scan_symbol_resampled()`, modified `start()` |
-| `scripts/validate_resampling.py` | NEW - validation script |
-
-### Configuration (config.py)
-
-```python
-# Session 83K-80: 15-Minute Base Resampling
-enable_htf_resampling: bool = True
-base_timeframe: str = '15min'
-base_scan_cron: str = '30,45,0,15 9-15 * * 1-5'  # Market-aligned
-```
+| `strat/signal_automation/daemon.py` | Added `run_base_scan()` |
 
 ### Commits
 
@@ -134,550 +98,35 @@ base_scan_cron: str = '30,45,0,15 9-15 * * 1-5'  # Market-aligned
 04d8933 feat: implement 15-min base resampling for HTF scanning fix
 ```
 
-### VPS Deployment
-
-```bash
-ssh atlas@178.156.223.251
-cd ~/vectorbt-workspace && git pull
-sudo systemctl restart atlas-daemon
-# Logs confirm: "Using 15-min base resampling for ALL timeframes"
-```
-
-### Rollback
-
-Set `enable_htf_resampling: bool = False` in config.py to use legacy separate-job scans.
-
-### Session 83K-81 Priorities
-
-1. **Monitor Live Trading** - Watch for SETUP triggers on all timeframes
-2. **Verify 15-min Scans** - Check VPS logs during market hours
-3. **Optional: Add Tests** - Resampling and market-alignment unit tests
-
-### Plan Mode Recommendation
-
-**PLAN MODE: OFF** - Implementation complete, monitoring phase.
-
 ---
 
-## Session 83K-79: Comprehensive Project Audit
+## Session 83K-79: Comprehensive Project Audit (COMPLETE)
 
 **Date:** December 12, 2025
-**Environment:** Claude Code Desktop (Opus 4.5)
 **Status:** COMPLETE - Documentation fixed, unused code removed
 
-### Documentation Fixes
-
-| Fix | Details |
-|-----|---------|
-| Test count | Updated from 886 to 913 (verified with pytest) |
-| Phase 5 status | Changed from PLANNED to DEPLOYED (VPS live Dec 11) |
-| CLAUDE.md | Updated test count reference |
-
-### Code Cleanup
-
-| Action | Items |
-|--------|-------|
-| Deleted stub modules | `comparison/`, `optimization/` (empty) |
-| Deleted placeholder dir | `backtesting/` (broken exports) |
-| Deleted placeholder file | `regime/regime_allocator.py` (TODO only) |
-| Archived scripts | 24 exploratory scripts to `archives/exploratory_scripts/` |
-| Marked as roadmap | `quality_momentum.py`, `ibs_mean_reversion.py` |
-
-### Commits
-
-```
-a0ab84c docs: fix README test count (913) and Phase 5 status (deployed)
-ff36219 refactor: delete empty stub modules and placeholders
-eca8492 docs: mark skeleton strategies as roadmap for future development
-c45a26d refactor: archive 24 exploratory scripts from development phase
-```
-
-### Audit Findings (For Reference)
-
-| Area | Status |
-|------|--------|
-| Layer 1 (Regime) | 95% complete |
-| Layer 2 (STRAT) | 95% complete |
-| Layer 3 (Execution) | 100% complete |
-| Layer 4 (Risk Mgmt) | 100% complete |
-| Skeleton strategies | 2 files kept as roadmap |
-| Scripts reorganization | Skipped (VPS risk) |
-
-### Session 83K-80 Priorities
-
-**CRITICAL: Higher Timeframe Scanning Architecture Fix**
-
-Current Problem:
-- Daily scans run at 5 PM, Weekly at Friday 6 PM, Monthly on 28th
-- For SETUP patterns (2-1-?, 3-1-?), entry happens LIVE when price breaks inside bar
-- By scanning monthly only on 28th, we miss 4 weeks of potential entries
-- The move is likely OVER by the time we scan
-
-Proposed Solution (User Insight):
-- Use hourly scan to check "running" higher TF bars via resampling
-- Aggregate hourly data into running Daily/Weekly/Monthly bars
-- Detect SETUPS on all timeframes during each hourly scan
-- Entry monitor already polls every minute for triggers
-
-Implementation Approach:
-```
-Hourly Scan (every :30)
-    |-- Scan 1H bars directly (current)
-    |-- Resample to "running" Daily bar (9:30 open -> current)
-    |-- Resample to "running" Weekly bar (Monday open -> current)
-    |-- Resample to "running" Monthly bar (1st trading day -> current)
-    |-- Detect SETUPS on all timeframes
-    |-- Entry monitor watches for LIVE triggers
-```
-
-**CRITICAL: Use STRAT Methodology Skill** (`~/.claude/skills/strat-methodology/`)
-- PATTERNS.md: Bar classification and pattern detection rules
-- EXECUTION.md: Entry timing - "Entry is LIVE when current bar breaks inside bar bound"
-- Must follow correct STRAT entry mechanics for implementation
-
-Secondary Priorities:
-1. Monitor Live Trading - Watch Discord alerts with 11 symbols
-2. VPS Check - Verify daemon running after watchlist expansion
-3. Optional: Scripts Cleanup - Reorganize scripts/ when VPS maintenance window available
-
-### Plan Mode Recommendation
-
-**PLAN MODE: ON** - Higher timeframe scanning fix requires careful architectural planning.
+- Fixed test count (913) and Phase 5 status (deployed)
+- Deleted empty stub modules
+- Archived 24 exploratory scripts
 
 ---
 
-## Session 83K-78: Dashboard Enhancement + Watchlist Expansion
+## Session 83K-78: Dashboard Enhancement + Watchlist Expansion (COMPLETE)
 
 **Date:** December 12, 2025
-**Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Now in monitoring phase
-
-### Dashboard Redesign
-
-| Change | Description |
-|--------|-------------|
-| Manual entry removed | All trades via Alpaca automation |
-| P&L + Positions at top | More visible at first glance |
-| Tabbed signals | Active Setups / Triggered / Low Magnitude |
-| Trigger time column | Shows when pattern triggered |
-| Low magnitude highlighting | Red text for < 0.5% magnitude |
-
-### Watchlist Expanded (5 -> 11 symbols)
-
-| Category | Symbols |
-|----------|---------|
-| Core ETFs | SPY, QQQ, IWM, DIA |
-| Mega-caps | AAPL, TSLA, MSFT, GOOGL |
-| Retail momentum | HOOD, QBTS, ACHR |
-
-### Commits
-
-```
-301f2a9 feat: redesign options dashboard with tabbed signals and trigger times
-a979e02 feat: expand scanner watchlist to 11 symbols
-```
-
-### Files Modified
-
-- `dashboard/components/options_panel.py` - Layout redesign, tabs, removed manual entry
-- `dashboard/app.py` - Updated callbacks for tabbed signals
-- `dashboard/data_loaders/options_loader.py` - Added signal filtering methods
-- `strat/signal_automation/config.py` - Expanded symbol list
-
-### VPS Update Required
-
-```bash
-ssh atlas@178.156.223.251
-cd ~/vectorbt-workspace && git pull
-sudo systemctl restart atlas-daemon
-```
-
-### Session 83K-79 Priorities
-
-1. **Monitor Live Trading** - Watch Discord alerts with new symbols
-2. **Comprehensive Project Audit** - Architecture docs, README updates
-3. **Strategy Analysis** - Review current vs planned strategies
-4. **Technical Debt Cleanup** - Remove unused code, consolidate docs
-
-### Future Sessions
-
-1. **Crypto Strategy Research** - Leveraged derivatives (no theta decay)
-2. **Scanner Architecture** - Sector rotation, dynamic stock selection (deferred)
-
-### Plan Mode Recommendation
-
-**PLAN MODE: ON** - Comprehensive audit requires planning.
+**Status:** COMPLETE - Dashboard redesigned, watchlist expanded to 11 symbols
 
 ---
 
-## Session 83K-77: Critical Bug Fix - Rapid Entry/Exit Safeguards
+## Session 83K-77: Critical Bug Fix - Rapid Entry/Exit Safeguards (COMPLETE)
 
 **Date:** December 12, 2025
-**Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Four safeguards implemented and tested
-
-### Root Cause Identified
-
-**Bug:** Trades entered and exited within 12 seconds (AAPL -$5, QQQ -$10)
-
-**Timeline from Alpaca order history:**
-- 11:30:06 AM: BUY 5 positions (SPY, QQQ, IWM x2, AAPL)
-- 11:30:18 AM: SELL AAPL and QQQ (12 seconds later)
-
-**Root Cause:** Position monitor had no minimum hold time. Daemon started at 11:00:13 AM, position monitor runs every 60 seconds. Positions entered at 11:30:06 AM (7 seconds before scheduled check at 11:30:13 AM) were immediately checked for exit conditions.
-
-### Fixes Implemented
-
-| Fix | File | Description |
-|-----|------|-------------|
-| 1. Minimum Hold Time | position_monitor.py, config.py | 5-minute hold before exit checks |
-| 2. HISTORICAL_TRIGGERED Check | executor.py | Skip completed patterns |
-| 3. Thread-Safe Lock | executor.py | Prevent concurrent duplicate execution |
-| 4. Market Hours Check | position_monitor.py | Skip exits outside 9:30-4:00 ET |
-
-### Files Modified
-
-- `strat/signal_automation/position_monitor.py` (+36 lines)
-  - Added `minimum_hold_seconds` to MonitoringConfig
-  - Added hold time check in `_check_position()`
-  - Added `_is_market_hours()` method
-  - Added market hours check in `execute_exit()`
-
-- `strat/signal_automation/executor.py` (+39 lines)
-  - Added `threading` import
-  - Added `_execution_lock` for thread safety
-  - Added HISTORICAL_TRIGGERED status check
-  - Wrapped duplicate check with lock
-
-- `strat/signal_automation/config.py` (+4 lines)
-  - Added `minimum_hold_seconds` field (default: 300)
-  - Added `SIGNAL_MIN_HOLD_SECONDS` env var support
-
-- `tests/test_signal_automation/test_e2e_signal_flow.py` (+5 lines)
-  - Updated test to mock market hours
-
-### New Environment Variable
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SIGNAL_MIN_HOLD_SECONDS` | 300 | Minimum seconds before position monitor checks exits |
-
-### Commit
-
-```
-715ac40 fix: add safeguards to prevent rapid entry/exit bug
-```
-
-### Discord Alerts Simplified (Also Deployed)
-
-Discord now only sends clean, mobile-friendly trade alerts:
-
-**Entry:** `Entry: SPY 3-1-2U 1D Call @ $670 | Target: $690 | Stop: $665`
-**Exit:** `Exit: SPY 3-1-2U 1D Call | Target Hit | P/L: +$325`
-
-Removed: daemon status, scan summaries, signal detection alerts.
-
-### Session 83K-78 Priorities
-
-1. **Dashboard Enhancement** - Add pattern trigger time to Options Trade Section
-2. **Verify Pattern Accuracy** - Review skipped trades (low magnitude) for accuracy
-3. **Monitor Live Trading** - Watch for Discord alerts, verify 5-min hold time
-
-### Future Sessions (Post-Monitoring)
-
-1. **Comprehensive Project Audit** - Architecture docs, README updates, strategy analysis
-2. **Potential Crypto Strategy** - Leveraged derivatives (no theta, arbitrage opportunities)
-
-### Plan Mode Recommendation
-
-**PLAN MODE: OFF** - Monitoring phase, minor enhancements.
-
----
-
-## Session 83K-76: VPS Signal API + Dashboard Data Fixes
-
-**Date:** December 11, 2025
-**Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - But CRITICAL BUG discovered requiring immediate attention
-
-### VPS Signal API - COMPLETE
-
-| Component | Details |
-|-----------|---------|
-| Service | atlas-signal-api (systemd) |
-| Port | 5000 |
-| Endpoint | http://178.156.223.251:5000/signals |
-
-**Files Created:**
-- `scripts/signal_api.py` - Flask API to serve signals from VPS
-- `deploy/atlas-signal-api.service` - systemd service file
-
-**Files Modified:**
-- `dashboard/data_loaders/options_loader.py` - VPS API support + field mapping fix
-- `dashboard/components/options_panel.py` - Removed mock data, added live P&L
-- `dashboard/app.py` - Added P&L summary and trade progress callbacks
-- `strat/signal_automation/signal_store.py` - Added public load_signals() method
-- `pyproject.toml` - Added flask>=3.0.0
-
-### Dashboard Fixes - COMPLETE
-
-1. **Signal Pattern Column** - Now shows actual STRAT patterns (2U-2D, 3-2D) not PUT/CALL
-2. **Target/Stop Display** - Fixed field mapping (target_price->target, stop_price->stop)
-3. **P&L Summary** - Replaced mock $665 with live Alpaca position data
-4. **Trade Progress Chart** - Shows placeholder instead of fake SPY/QQQ/AAPL
-5. **Active Signal Display** - Removed hardcoded $598.50 SPY mock
-
-### CRITICAL BUG DISCOVERED - Session 83K-77 Priority
-
-**Issue:** Daemon entering and exiting trades within seconds (12 seconds apart)
-- AAPL251219C00275000: Buy $4.10 -> Sell $4.05 in 12 seconds (-$5)
-- QQQ251218P00620000: Buy $6.08 -> Sell $5.98 in 12 seconds (-$10)
-
-**Potential Causes:**
-1. Position monitor exit conditions triggering immediately on entry
-2. Duplicate signal processing
-3. HISTORICAL_TRIGGERED signals being executed when they shouldn't
-
-**Evidence:** Alpaca order history shows buy/sell pairs at 11:30:06 AM and 11:30:18 AM
-
-### Session 83K-77 Priorities
-
-1. **CRITICAL: Investigate rapid entry/exit bug**
-   - Check daemon logs on VPS: `sudo journalctl -u atlas-daemon -f`
-   - Review position_monitor.py exit condition logic
-   - Review executor.py for duplicate execution prevention
-
-2. **Verify STRAT pattern accuracy** - User will verify signal patterns
-
-### Plan Mode Recommendation
-
-**PLAN MODE: ON** - Critical bug investigation requires careful analysis.
-
----
-
-## Session 83K-75: VPS Deployment + Dashboard Options Integration
-
-**Date:** December 11, 2025
-**Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - VPS deployed, daemon running, dashboard integrated
-
-### VPS Deployment - COMPLETE
-
-| Component | Details |
-|-----------|---------|
-| Provider | Hetzner Cloud |
-| Plan | CPX21 (3 vCPU AMD, 4GB RAM, 80GB NVMe) |
-| Cost | $8.99/mo |
-| Location | Ashburn, VA (5-10ms to NYSE) |
-| IP | 178.156.223.251 |
-| OS | Ubuntu 24.04 |
-| Service | systemd (auto-restart, survives reboot) |
-
-**Deployment Steps Completed:**
-1. SSH key generation (ed25519)
-2. Hetzner server provisioning
-3. User setup (atlas) with sudo
-4. Python 3.12 + uv installation
-5. GitHub deploy key for private repo
-6. VectorBT Pro installation (via GitHub token)
-7. systemd service configuration
-8. Daemon running and scanning
-
-**VPS Commands:**
-```bash
-ssh atlas@178.156.223.251
-sudo systemctl status atlas-daemon
-sudo journalctl -u atlas-daemon -f
-```
-
-### Dashboard Options Integration - COMPLETE
-
-**Files Created:**
-- `dashboard/data_loaders/options_loader.py` - OptionsDataLoader class
-
-**Files Modified:**
-- `dashboard/data_loaders/__init__.py` - Added OptionsDataLoader export
-- `dashboard/components/options_panel.py` - Added callback targets, live data tables
-- `dashboard/app.py` - Added OptionsDataLoader init + callbacks
-
-**Features:**
-- Live signal display from signal_store
-- Live option positions from Alpaca API
-- Auto-refresh every 30 seconds
-- Count badges on panel headers
-
-### Session 83K-76 Priorities
-
-1. **Connect Dashboard to VPS Signals (CRITICAL)**
-   - Dashboard options panel currently shows NO live data
-   - Need to create API endpoint on VPS to serve signals
-   - Update OptionsDataLoader to fetch from VPS instead of local files
-   - Architecture: VPS (178.156.223.251:5000) -> Railway Dashboard
-
-2. **Add Discord Webhook to VPS** - Enable alert notifications
-
-3. **Monitor First Live Signals** - Watch for SETUP triggers during market hours
-
-### Plan Mode Recommendation
-
-**PLAN MODE: OFF** - Monitoring and minor integration work.
-
----
-
-## Session 83K-74: Contract Selection Bug Fix + Railway Fix
-
-**Date:** December 10, 2025
-**Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Two bugs fixed, VPS research reviewed
-
-### Bugs Fixed
-
-1. **Options Contract Selection (CRITICAL)**
-   - **Bug:** Alpaca API returned contracts expiring in 1-2 days, DTE filter (7-21) rejected all
-   - **Root Cause:** Missing `expiration_date_gte/lte` params in API call
-   - **Fix:** Added date range params to `get_option_contracts()` and executor
-   - **Files:** `alpaca_trading_client.py`, `executor.py`
-
-2. **Railway Regime Panel (sklearn missing)**
-   - **Bug:** Regime panel not updating since Dec 1
-   - **Root Cause:** `scikit-learn` missing from `requirements-railway.txt`
-   - **Fix:** Added `scikit-learn>=1.3.0` to dependencies
-   - **File:** `requirements-railway.txt`
-
-### FOMC Monitoring Results
-
-- Market rallied on dovish Fed statement
-- 7 signals triggered, 6 execution attempts
-- All SKIPPED (low magnitude) or FAILED (contract bug - now fixed)
-- Closest: AAPL 1W CALL @ $280.03, price hit $279.14 (0.32% short)
-
-### Commits
-
-```
-2e9d267 feat: add signal automation daemon and fix Railway sklearn dep
-1ab717a fix: add expiration date range filter to options contract search
-```
-
-### Session 83K-75 Priorities
-
-1. **VPS Deployment** - Walk through setup (user unfamiliar with VPS)
-   - DigitalOcean/Vultr NYC region recommended
-   - 2 vCPU, 4GB RAM, Ubuntu 22.04
-   - systemd service for daemon
-
-2. **Dashboard Options Integration** - Connect live data to options panel
-   - Replace mock data with signal_store + Alpaca positions
-   - Add Dash callbacks for real-time updates
-
-### VPS Research Summary (Claude Desktop)
-
-| Provider | Specs | Price | Notes |
-|----------|-------|-------|-------|
-| DigitalOcean | 2 vCPU, 4GB | $24/mo | NYC region, 99.99% SLA |
-| Vultr | 2 vCPU, 4GB | $24/mo | NJ region |
-| Hetzner | 4 vCPU, 8GB | $9/mo | EU or Ashburn VA |
-
-**Key insight:** Live daemon doesn't need ThetaData (uses Alpaca). Keep backtesting local.
-
-### Plan Mode Recommendation
-
-**PLAN MODE: ON** - VPS deployment walkthrough and dashboard integration are multi-step tasks requiring guidance.
-
----
-
-## Session 83K-73: DetectedSignal signal_key Bug Fix
-
-**Date:** December 10, 2025
-**Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Entry trigger to execution pipeline now working
-
-### Bug Fixed
-
-**Root Cause:** In `daemon.py:_on_entry_triggered()`, the code was converting `StoredSignal` to `DetectedSignal` before passing to executor. But `executor.execute_signal()` expects `StoredSignal` and accesses `signal.signal_key` attribute which only exists on `StoredSignal`.
-
-**Fix Applied:** `daemon.py:306-309` - Pass StoredSignal directly to executor instead of converting.
-
-### Verification
-
-- AAPL PUT triggered at $278.56 (trigger: $278.57)
-- Entry monitor detected trigger successfully
-- Executor received signal without `signal_key` error
-- Signal was SKIPPED (expected - magnitude 0.118% < 0.5% threshold)
-- **Bug is FIXED** - execution pipeline works end-to-end
-
----
-
-## Session 83K-72: Critical Bug Fixes - Signal Key, Hourly Data, Cron
-
-**Date:** December 10, 2025
-**Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - 3 critical bugs fixed, daemon running with entry monitoring
-
-### Bugs Fixed
-
-1. **Signal Key Bug:** Added direction to key to prevent CALL/PUT collision
-2. **Hourly Data Bug:** Added +1 day to end date for intraday data
-3. **Cron Expression Bug:** Changed monthly cron from `L` to `28`
-
-### Signal Scan Results
-
-| Timeframe | Signals | SETUP | COMPLETED |
-|-----------|---------|-------|-----------|
-| 1H | 8 | 4 | 4 |
-| 1D | 2 | 2 | 0 |
-| 1W | 6 | 5 | 1 |
-| 1M | 6 | 4 | 2 |
-| **Total** | **22** | **15** | **7** |
-
----
-
-## Session 83K-71: SETUP Pattern Detection Implementation
-
-**Date:** December 10, 2025
-**Status:** COMPLETE - SETUP signals now detected and stored for live monitoring
-
-- Implemented `_detect_setups()` method for patterns ending in inside bar
-- Added relaxed filters for SETUP signals (0.1% magnitude, 0.3 R:R)
-- Entry_monitor correctly handles SETUP vs COMPLETED signals
-
----
-
-## Session 83K-70: Hourly Scan Auth Bug Fix
-
-**Date:** December 10, 2025
-**Status:** COMPLETE - Added load_dotenv() to paper_signal_scanner.py
-
----
-
-## Session 83K-69: HISTORICAL_TRIGGERED Status Bug Fix
-
-**Date:** December 10, 2025
-**Status:** COMPLETE - Fixed status overwrite bug in daemon.py
-
----
-
-## Session 83K-68: Pattern Detection Timing Bug FIX
-
-**Date:** December 10, 2025
-**Status:** COMPLETE - Entry now uses setup bar (high[i-1]) not completed bar (high[i])
-
-### Key Changes
-
-- Signal Store: Added HISTORICAL_TRIGGERED status, SignalType enum, setup fields
-- Pattern Detector: Added 4 setup detection functions
-- Paper Signal Scanner: CRITICAL FIX line 455 (`high[i]` -> `high[i-1]`)
-- Entry Monitor: Setup-aware trigger checking
-
----
-
-## Session 83K-67: CRITICAL BUG - Pattern Detection Timing
-
-**Date:** December 9, 2025
-**Status:** BUG DISCOVERED - Led to Session 83K-68 fix
-
-**The Problem:** Scanner detected COMPLETED patterns (ending in 2U/2D) instead of SETUPS (ending in inside bar). Entries were days/weeks late.
-
-**The Fix:** Implemented in 83K-68 with setup-based detection.
+**Status:** COMPLETE - Four safeguards implemented
+
+- Minimum hold time (5 minutes)
+- HISTORICAL_TRIGGERED check
+- Thread-safe lock
+- Market hours check
 
 ---
 

@@ -394,18 +394,35 @@ AVAILABLE_STRATEGIES = {
         'file': 'strategies/orb.py',
         'class': 'ORBStrategy',
         'description': 'Trades breakouts from opening range with regime filtering',
+        'type': 'backtest',
     },
     '52w_high': {
         'name': '52-Week High Momentum',
         'file': 'strategies/high_momentum_52w.py',
         'class': 'HighMomentum52W',
         'description': 'Long-only momentum strategy on 52-week highs',
+        'type': 'backtest',
+    },
+    'strat_options': {
+        'name': 'STRAT Options (Live)',
+        'file': None,
+        'class': None,
+        'description': 'Live STRAT options trading performance from closed trades',
+        'type': 'live',
+    },
+    'aggregate': {
+        'name': 'Aggregate (All Strategies)',
+        'file': None,
+        'class': None,
+        'description': 'Combined performance across all strategies',
+        'type': 'aggregate',
     },
     'portfolio': {
         'name': 'Multi-Strategy Portfolio',
         'file': None,
         'class': None,
         'description': 'Combined portfolio of all strategies',
+        'type': 'backtest',
     }
 }
 

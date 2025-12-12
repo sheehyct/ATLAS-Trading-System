@@ -57,6 +57,7 @@ from dashboard.components.options_panel import (
     create_positions_table,
     create_pnl_summary,
     create_trade_progress_chart,
+    create_closed_trades_table,
 )
 
 # Import data loaders
@@ -606,13 +607,87 @@ def update_regime_statistics(start_date, end_date):
 )
 def update_equity_curve(strategy_name, start_date, end_date, n):
     """
-    Update strategy equity curve visualization with live paper trading data.
+    Update strategy equity curve visualization.
 
-    Shows current portfolio P&L and positions summary from Alpaca paper account.
+    For STRAT Options: Shows realized P&L summary from closed trades.
+    For other strategies: Shows current portfolio P&L from Alpaca.
     """
     import plotly.graph_objects as go
 
     try:
+        # Handle STRAT Options strategy - show closed trades performance
+        if strategy_name == 'strat_options':
+            if options_loader is None:
+                return create_info_figure("Options Loader Not Available", "Cannot fetch closed trades")
+
+            summary = options_loader.get_closed_trades_summary(days=30)
+
+            fig = go.Figure()
+
+            # Title
+            fig.add_annotation(
+                text=f"<b>STRAT Options Performance (30 Days)</b>",
+                xref='paper', yref='paper',
+                x=0.5, y=0.95,
+                showarrow=False,
+                font=dict(size=20, color=COLORS['text_primary'])
+            )
+
+            # Total Realized P&L
+            total_pnl = summary.get('total_pnl', 0)
+            pnl_color = COLORS['bull_primary'] if total_pnl >= 0 else COLORS['danger']
+            fig.add_annotation(
+                text=f"<span style='font-size:36px;color:{pnl_color}'>${total_pnl:+,.2f}</span>",
+                xref='paper', yref='paper',
+                x=0.5, y=0.75,
+                showarrow=False,
+                font=dict(size=24, color=COLORS['text_primary'])
+            )
+
+            # Win Rate
+            win_rate = summary.get('win_rate', 0)
+            win_color = COLORS['bull_primary'] if win_rate >= 50 else COLORS['danger']
+            fig.add_annotation(
+                text=f"Win Rate: <span style='color:{win_color}'>{win_rate:.1f}%</span>",
+                xref='paper', yref='paper',
+                x=0.5, y=0.55,
+                showarrow=False,
+                font=dict(size=16, color=COLORS['text_secondary'])
+            )
+
+            # Trade counts
+            fig.add_annotation(
+                text=f"Trades: {summary.get('total_trades', 0)} | Wins: {summary.get('win_count', 0)} | Losses: {summary.get('loss_count', 0)}",
+                xref='paper', yref='paper',
+                x=0.5, y=0.40,
+                showarrow=False,
+                font=dict(size=14, color=COLORS['text_secondary'])
+            )
+
+            # Average P&L
+            avg_pnl = summary.get('avg_pnl', 0)
+            avg_color = COLORS['bull_primary'] if avg_pnl >= 0 else COLORS['danger']
+            fig.add_annotation(
+                text=f"Avg P&L: <span style='color:{avg_color}'>${avg_pnl:+,.2f}</span>",
+                xref='paper', yref='paper',
+                x=0.5, y=0.25,
+                showarrow=False,
+                font=dict(size=14, color=COLORS['text_secondary'])
+            )
+
+            fig.update_layout(
+                template='plotly_dark',
+                paper_bgcolor=COLORS['background_dark'],
+                plot_bgcolor=COLORS['background_dark'],
+                xaxis={'visible': False},
+                yaxis={'visible': False},
+                height=350,
+                margin=dict(l=20, r=20, t=20, b=20)
+            )
+
+            return fig
+
+        # Default: Show portfolio status for other strategies
         if live_loader is None or live_loader.client is None:
             return create_info_figure(
                 "Live Data Not Available",
@@ -708,10 +783,67 @@ def update_equity_curve(strategy_name, start_date, end_date, n):
      Input('interval-component', 'n_intervals')]
 )
 def update_rolling_metrics(strategy_name, n):
-    """Show current positions P&L breakdown."""
+    """Show P&L breakdown - closed trades for STRAT Options, positions for others."""
     import plotly.graph_objects as go
 
     try:
+        # Handle STRAT Options - show closed trades P&L breakdown
+        if strategy_name == 'strat_options':
+            if options_loader is None:
+                return create_info_figure("Options Loader Not Available", "Cannot fetch closed trades")
+
+            closed_trades = options_loader.get_closed_trades(days=30)
+
+            if not closed_trades:
+                return create_info_figure("No Closed Trades", "No trades in the last 30 days")
+
+            # Create bar chart of trade P&L (limit to last 10)
+            trades_to_show = closed_trades[:10]
+            contracts = [t.get('display_contract', t.get('symbol', '')[:10]) for t in trades_to_show]
+            pnls = [t.get('realized_pnl', 0) for t in trades_to_show]
+            rois = [t.get('roi_percent', 0) for t in trades_to_show]
+
+            colors = [COLORS['bull_primary'] if pl >= 0 else COLORS['danger'] for pl in pnls]
+
+            fig = go.Figure(data=[
+                go.Bar(
+                    x=contracts,
+                    y=pnls,
+                    marker_color=colors,
+                    text=[f"${pl:+,.0f}" for pl in pnls],
+                    textposition='inside',
+                    insidetextanchor='middle',
+                    textfont=dict(color='white', size=10),
+                    hovertemplate='<b>%{x}</b><br>P&L: $%{y:+,.2f}<br>ROI: %{customdata:+.1f}%<extra></extra>',
+                    customdata=rois
+                )
+            ])
+
+            # Calculate y-axis range with padding
+            max_val = max(pnls) if pnls else 0
+            min_val = min(pnls) if pnls else 0
+            y_padding = max(abs(max_val), abs(min_val), 10) * 0.2
+
+            fig.update_layout(
+                title={'text': 'Closed Trades P&L (Last 10)', 'font': {'color': COLORS['text_primary']}},
+                template='plotly_dark',
+                paper_bgcolor=COLORS['background_dark'],
+                plot_bgcolor=COLORS['background_dark'],
+                font={'color': COLORS['text_primary']},
+                xaxis={'title': 'Contract', 'gridcolor': COLORS['grid'], 'tickangle': -45},
+                yaxis={
+                    'title': 'Realized P&L ($)',
+                    'gridcolor': COLORS['grid'],
+                    'range': [min_val - y_padding, max_val + y_padding]
+                },
+                height=350,
+                margin=dict(t=50, b=100, l=60, r=20),
+                showlegend=False
+            )
+
+            return fig
+
+        # Default: Show current positions P&L
         if live_loader is None or live_loader.client is None:
             return create_info_figure("Live Data Not Available", "Alpaca connection not established")
 
@@ -877,10 +1009,76 @@ def update_regime_comparison(strategy_name, n, start_date, end_date):
      Input('interval-component', 'n_intervals')]
 )
 def update_trade_distribution(strategy_name, n):
-    """Show positions detail table as a horizontal bar chart."""
+    """Show trade distribution - wins/losses for STRAT Options, positions for others."""
     import plotly.graph_objects as go
 
     try:
+        # Handle STRAT Options - show win/loss distribution
+        if strategy_name == 'strat_options':
+            if options_loader is None:
+                return create_info_figure("Options Loader Not Available", "Cannot fetch closed trades")
+
+            summary = options_loader.get_closed_trades_summary(days=30)
+
+            if summary.get('total_trades', 0) == 0:
+                return create_info_figure("No Closed Trades", "No trades in the last 30 days")
+
+            wins = summary.get('win_count', 0)
+            losses = summary.get('loss_count', 0)
+            avg_win = summary.get('avg_win', 0)
+            avg_loss = abs(summary.get('avg_loss', 0))
+
+            # Create pie chart for wins vs losses
+            fig = go.Figure(data=[
+                go.Pie(
+                    labels=['Wins', 'Losses'],
+                    values=[wins, losses],
+                    marker_colors=[COLORS['bull_primary'], COLORS['danger']],
+                    textinfo='label+percent',
+                    textfont=dict(size=14, color='white'),
+                    hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percent: %{percent}<extra></extra>',
+                    hole=0.4
+                )
+            ])
+
+            # Add center text
+            fig.add_annotation(
+                text=f"<b>{summary.get('total_trades', 0)}</b><br>Trades",
+                x=0.5, y=0.5,
+                showarrow=False,
+                font=dict(size=18, color=COLORS['text_primary'])
+            )
+
+            # Add subtitle with average win/loss
+            fig.add_annotation(
+                text=f"Avg Win: ${avg_win:,.2f} | Avg Loss: ${avg_loss:,.2f}",
+                x=0.5, y=-0.1,
+                xref='paper', yref='paper',
+                showarrow=False,
+                font=dict(size=12, color=COLORS['text_secondary'])
+            )
+
+            fig.update_layout(
+                title={'text': 'Win/Loss Distribution', 'font': {'color': COLORS['text_primary']}},
+                template='plotly_dark',
+                paper_bgcolor=COLORS['background_dark'],
+                plot_bgcolor=COLORS['background_dark'],
+                font={'color': COLORS['text_primary']},
+                height=350,
+                margin=dict(l=30, r=30, t=50, b=50),
+                showlegend=True,
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=-0.2,
+                    xanchor='center',
+                    x=0.5
+                )
+            )
+
+            return fig
+
+        # Default: Show current positions
         if live_loader is None or live_loader.client is None:
             return create_info_figure("Live Data Not Available", "Alpaca connection not established")
 
@@ -1260,7 +1458,8 @@ def update_risk_management(n):
      Output('options-signals-count', 'children'),
      Output('signals-setups-container', 'children'),
      Output('signals-triggered-container', 'children'),
-     Output('signals-lowmag-container', 'children')],
+     Output('signals-lowmag-container', 'children'),
+     Output('signals-closed-container', 'children')],
     [Input('options-refresh-interval', 'n_intervals'),
      Input('tabs', 'active_tab')]
 )
@@ -1269,22 +1468,24 @@ def update_options_signals(n_intervals, active_tab):
     Update STRAT signals across all tabs.
 
     Only updates when options tab is active to save resources.
-    Populates three tabs: Active Setups, Triggered, Low Magnitude.
+    Populates four tabs: Active Setups, Triggered, Low Magnitude, Closed Trades.
     """
     try:
         # Skip update if not on options tab
         if active_tab != 'options-tab':
             from dash import no_update
-            return no_update, no_update, no_update, no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update, no_update
 
         if options_loader is None:
             empty_table = create_signals_table([])
+            empty_closed = create_closed_trades_table([])
             return (
                 empty_table,
                 dbc.Badge('0', color='secondary'),
                 empty_table,
                 empty_table,
-                empty_table
+                empty_table,
+                empty_closed
             )
 
         # Get signals by category
@@ -1292,6 +1493,9 @@ def update_options_signals(n_intervals, active_tab):
         setups = categories.get('setups', [])
         triggered = categories.get('triggered', [])
         low_mag = categories.get('low_magnitude', [])
+
+        # Get closed trades (30-day default)
+        closed_trades = options_loader.get_closed_trades(days=30)
 
         # Total count for badge
         total_count = len(setups) + len(triggered)
@@ -1304,6 +1508,8 @@ def update_options_signals(n_intervals, active_tab):
         triggered_table = create_signals_table(triggered, show_triggered_time=True)
         # Low magnitude: show detected time
         lowmag_table = create_signals_table(low_mag, show_triggered_time=False)
+        # Closed trades: show realized P&L
+        closed_table = create_closed_trades_table(closed_trades)
 
         # Hidden container for backward compatibility
         all_signals = options_loader.get_active_signals()
@@ -1314,18 +1520,21 @@ def update_options_signals(n_intervals, active_tab):
             dbc.Badge(str(total_count), color=badge_color, className='ms-2'),
             setups_table,
             triggered_table,
-            lowmag_table
+            lowmag_table,
+            closed_table
         )
 
     except Exception as e:
         logger.error(f"Error updating options signals: {e}")
         empty_table = create_signals_table([])
+        empty_closed = create_closed_trades_table([])
         return (
             empty_table,
             dbc.Badge('!', color='danger'),
             empty_table,
             empty_table,
-            empty_table
+            empty_table,
+            empty_closed
         )
 
 

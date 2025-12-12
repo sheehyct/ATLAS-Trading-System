@@ -40,7 +40,7 @@ def create_strategy_panel():
                         dcc.Dropdown(
                             id='strategy-selector',
                             options=strategy_options,
-                            value='orb',
+                            value='strat_options',
                             clearable=False,
                             style={
                                 'backgroundColor': COLORS['background_dark'],

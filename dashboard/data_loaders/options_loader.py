@@ -329,6 +329,114 @@ class OptionsDataLoader:
             logger.error(f"Error getting account summary: {e}")
             return {'error': str(e)}
 
+    def get_closed_trades(self, days: int = 30) -> List[Dict]:
+        """
+        Get closed option trades with realized P&L using FIFO matching.
+
+        Fetches fill activities from Alpaca and matches sells to buys
+        to calculate realized P&L for closed positions.
+
+        Args:
+            days: Number of days to look back (default: 30)
+
+        Returns:
+            List of closed trade dictionaries with realized P&L
+        """
+        if not self._connected:
+            self.connect()
+        if not self._connected:
+            logger.warning("Cannot get closed trades: not connected to Alpaca")
+            return []
+
+        try:
+            from datetime import timedelta
+            after = datetime.now() - timedelta(days=days)
+
+            # Get closed trades from Alpaca client
+            closed_trades = self.client.get_closed_trades(
+                after=after,
+                options_only=True
+            )
+
+            # Enhance with display-friendly fields
+            for trade in closed_trades:
+                # Parse OCC symbol for display
+                trade['display_contract'] = self._parse_occ_symbol(
+                    trade.get('symbol', '')
+                )
+
+                # Format timestamps for display
+                if trade.get('buy_time_dt'):
+                    trade['buy_time_display'] = trade['buy_time_dt'].strftime(
+                        '%m/%d %H:%M'
+                    )
+                else:
+                    trade['buy_time_display'] = ''
+
+                if trade.get('sell_time_dt'):
+                    trade['sell_time_display'] = trade['sell_time_dt'].strftime(
+                        '%m/%d %H:%M'
+                    )
+                else:
+                    trade['sell_time_display'] = ''
+
+            return closed_trades
+
+        except Exception as e:
+            logger.error(f"Error getting closed trades: {e}")
+            return []
+
+    def get_closed_trades_summary(self, days: int = 30) -> Dict:
+        """
+        Get summary statistics for closed trades.
+
+        Args:
+            days: Number of days to look back (default: 30)
+
+        Returns:
+            Dictionary with summary stats (total P&L, win rate, etc.)
+        """
+        trades = self.get_closed_trades(days=days)
+
+        if not trades:
+            return {
+                'total_trades': 0,
+                'total_pnl': 0.0,
+                'win_count': 0,
+                'loss_count': 0,
+                'win_rate': 0.0,
+                'avg_pnl': 0.0,
+                'avg_win': 0.0,
+                'avg_loss': 0.0,
+                'largest_win': 0.0,
+                'largest_loss': 0.0,
+            }
+
+        total_pnl = sum(t['realized_pnl'] for t in trades)
+        winners = [t for t in trades if t['realized_pnl'] > 0]
+        losers = [t for t in trades if t['realized_pnl'] <= 0]
+
+        return {
+            'total_trades': len(trades),
+            'total_pnl': round(total_pnl, 2),
+            'win_count': len(winners),
+            'loss_count': len(losers),
+            'win_rate': round(len(winners) / len(trades) * 100, 1) if trades else 0.0,
+            'avg_pnl': round(total_pnl / len(trades), 2) if trades else 0.0,
+            'avg_win': round(
+                sum(t['realized_pnl'] for t in winners) / len(winners), 2
+            ) if winners else 0.0,
+            'avg_loss': round(
+                sum(t['realized_pnl'] for t in losers) / len(losers), 2
+            ) if losers else 0.0,
+            'largest_win': round(
+                max(t['realized_pnl'] for t in winners), 2
+            ) if winners else 0.0,
+            'largest_loss': round(
+                min(t['realized_pnl'] for t in losers), 2
+            ) if losers else 0.0,
+        }
+
     def _signal_to_dict(self, signal: StoredSignal) -> Dict:
         """
         Convert StoredSignal to dashboard-friendly dictionary.

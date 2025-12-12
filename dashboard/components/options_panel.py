@@ -191,6 +191,22 @@ def create_options_panel():
                                     )
                                 ]
                             ),
+                            dbc.Tab(
+                                label='Closed Trades',
+                                tab_id='tab-closed',
+                                label_style={'color': DARK_THEME['text_secondary']},
+                                active_label_style={
+                                    'color': DARK_THEME['text_muted'],
+                                    'fontWeight': 'bold'
+                                },
+                                children=[
+                                    html.Div(
+                                        id='signals-closed-container',
+                                        children=[_create_no_closed_trades_placeholder()],
+                                        style={'marginTop': '1rem'}
+                                    )
+                                ]
+                            ),
                         ], id='signals-tabs', active_tab='tab-setups', style={
                             'borderBottom': f'1px solid {DARK_THEME["border"]}'
                         }),
@@ -279,6 +295,24 @@ def _create_no_signals_placeholder():
             'marginBottom': '0.25rem'
         }),
         html.Small('Run signal_daemon.py scan-all to detect patterns',
+                   style={'color': DARK_THEME['text_muted']})
+    ], style={
+        'textAlign': 'center',
+        'padding': '2rem',
+        'backgroundColor': DARK_THEME['card_bg']
+    })
+
+
+def _create_no_closed_trades_placeholder():
+    """Create placeholder when no closed trades are available."""
+    return html.Div([
+        html.I(className='fas fa-history fa-2x mb-3',
+               style={'color': DARK_THEME['text_muted']}),
+        html.P('No closed trades', style={
+            'color': DARK_THEME['text_muted'],
+            'marginBottom': '0.25rem'
+        }),
+        html.Small('Completed trades with realized P&L will appear here',
                    style={'color': DARK_THEME['text_muted']})
     ], style={
         'textAlign': 'center',
@@ -439,6 +473,167 @@ def create_signals_table(signals: List[Dict], show_triggered_time: bool = False)
         'borderCollapse': 'collapse',
         'backgroundColor': DARK_THEME['card_bg']
     })
+
+
+def create_closed_trades_table(trades: List[Dict]) -> html.Div:
+    """
+    Create table displaying closed trades with realized P&L.
+
+    Args:
+        trades: List of closed trade dictionaries from OptionsDataLoader
+
+    Returns:
+        HTML Div containing summary and table
+    """
+    if not trades:
+        return _create_no_closed_trades_placeholder()
+
+    # Calculate summary stats
+    total_pnl = sum(t.get('realized_pnl', 0) for t in trades)
+    winners = [t for t in trades if t.get('realized_pnl', 0) > 0]
+    losers = [t for t in trades if t.get('realized_pnl', 0) <= 0]
+    win_rate = len(winners) / len(trades) * 100 if trades else 0
+
+    # Summary row
+    summary = html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.Div([
+                    html.Span('Total P&L: ', style={'color': DARK_THEME['text_secondary']}),
+                    html.Span(
+                        f"${total_pnl:,.2f}",
+                        style={
+                            'color': DARK_THEME['accent_green'] if total_pnl >= 0 else DARK_THEME['accent_red'],
+                            'fontWeight': 'bold',
+                            'fontSize': '1.1rem'
+                        }
+                    ),
+                ])
+            ], width='auto'),
+            dbc.Col([
+                html.Div([
+                    html.Span('Trades: ', style={'color': DARK_THEME['text_secondary']}),
+                    html.Span(str(len(trades)), style={'color': DARK_THEME['text_primary']}),
+                ])
+            ], width='auto'),
+            dbc.Col([
+                html.Div([
+                    html.Span('Win Rate: ', style={'color': DARK_THEME['text_secondary']}),
+                    html.Span(
+                        f"{win_rate:.1f}%",
+                        style={
+                            'color': DARK_THEME['accent_green'] if win_rate >= 50 else DARK_THEME['accent_red']
+                        }
+                    ),
+                ])
+            ], width='auto'),
+            dbc.Col([
+                html.Div([
+                    html.Span(f"W: {len(winners)} ", style={'color': DARK_THEME['accent_green']}),
+                    html.Span(' / ', style={'color': DARK_THEME['text_muted']}),
+                    html.Span(f" L: {len(losers)}", style={'color': DARK_THEME['accent_red']}),
+                ])
+            ], width='auto'),
+        ], className='mb-3', justify='start', style={
+            'backgroundColor': DARK_THEME['card_header'],
+            'padding': '0.75rem',
+            'borderRadius': '4px'
+        })
+    ])
+
+    # Build table rows
+    rows = []
+    for trade in trades:
+        pnl = trade.get('realized_pnl', 0)
+        roi = trade.get('roi_percent', 0)
+        pnl_color = DARK_THEME['accent_green'] if pnl >= 0 else DARK_THEME['accent_red']
+
+        rows.append(
+            html.Tr([
+                # Contract
+                html.Td([
+                    html.Div(trade.get('display_contract', trade.get('symbol', '')), style={
+                        'fontWeight': 'bold',
+                        'color': DARK_THEME['text_primary']
+                    })
+                ], style={'padding': '0.75rem'}),
+
+                # Qty
+                html.Td([
+                    str(trade.get('qty', 0))
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['text_primary']
+                }),
+
+                # Entry Price
+                html.Td([
+                    f"${trade.get('buy_price', 0):.2f}"
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['text_secondary']
+                }),
+
+                # Exit Price
+                html.Td([
+                    f"${trade.get('sell_price', 0):.2f}"
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['text_secondary']
+                }),
+
+                # Realized P&L
+                html.Td([
+                    html.Div([
+                        html.Span(f"${pnl:+,.2f}", style={
+                            'fontWeight': 'bold',
+                            'color': pnl_color
+                        }),
+                        html.Small(f" ({roi:+.1f}%)", style={
+                            'color': pnl_color,
+                            'marginLeft': '0.25rem'
+                        })
+                    ])
+                ], style={'padding': '0.75rem'}),
+
+                # Duration
+                html.Td([
+                    trade.get('duration', '-')
+                ], style={
+                    'padding': '0.75rem',
+                    'color': DARK_THEME['text_secondary']
+                }),
+
+                # Closed Date
+                html.Td([
+                    html.Small(trade.get('sell_time_display', '-'), style={
+                        'color': DARK_THEME['text_secondary']
+                    })
+                ], style={'padding': '0.75rem'}),
+
+            ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
+        )
+
+    table = html.Table([
+        html.Thead([
+            html.Tr([
+                html.Th('Contract', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Qty', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Entry', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Exit', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Realized P&L', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Duration', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Closed', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+            ], style={'backgroundColor': DARK_THEME['card_header']})
+        ]),
+        html.Tbody(rows)
+    ], style={
+        'width': '100%',
+        'borderCollapse': 'collapse',
+        'backgroundColor': DARK_THEME['card_bg']
+    })
+
+    return html.Div([summary, table])
 
 
 def create_positions_table(positions: List[Dict]) -> html.Table:

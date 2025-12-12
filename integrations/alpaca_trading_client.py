@@ -799,6 +799,202 @@ class AlpacaTradingClient:
 
         return option_positions
 
+    # =========================================================================
+    # CLOSED TRADES / REALIZED P&L (Session 83K-81)
+    # =========================================================================
+
+    def get_fill_activities(
+        self,
+        after: Optional[datetime] = None,
+        page_size: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch all FILL activities from Alpaca for realized P&L calculation.
+
+        Uses /v2/account/activities/FILL endpoint with pagination.
+
+        Args:
+            after: Only get fills after this datetime (default: 30 days ago)
+            page_size: Number of fills per page (max 100)
+
+        Returns:
+            List of normalized fill dicts sorted by time ascending
+        """
+        self._ensure_connected()
+
+        # Default to 30 days ago if not specified
+        if after is None:
+            from datetime import timedelta
+            after = datetime.now() - timedelta(days=30)
+
+        fills = []
+        page_token = None
+
+        while True:
+            try:
+                # Use the trading client's get_activities method
+                activities = self._retry_api_call(
+                    self.client.get_activities,
+                    activity_types='FILL',
+                    after=after.isoformat() if after else None,
+                    page_size=page_size,
+                    page_token=page_token
+                )
+
+                if not activities:
+                    break
+
+                for activity in activities:
+                    # Normalize the activity data
+                    symbol = getattr(activity, 'symbol', None)
+                    side = getattr(activity, 'side', None)
+                    price = getattr(activity, 'price', None)
+                    qty = getattr(activity, 'qty', None)
+                    transaction_time = getattr(activity, 'transaction_time', None)
+                    activity_id = getattr(activity, 'id', None)
+
+                    if not all([symbol, side, price, qty]):
+                        continue
+
+                    fills.append({
+                        'id': str(activity_id) if activity_id else '',
+                        'symbol': symbol,
+                        'side': str(side).lower(),
+                        'price': float(price),
+                        'qty': float(qty),
+                        'time': transaction_time.isoformat() if transaction_time else '',
+                        'time_dt': transaction_time if transaction_time else None
+                    })
+
+                # Check for next page
+                # Alpaca uses the last activity ID as page token
+                if len(activities) < page_size:
+                    break
+
+                page_token = str(activities[-1].id) if activities else None
+                if not page_token:
+                    break
+
+                time.sleep(0.1)  # Rate limit protection
+
+            except Exception as e:
+                self.logger.error(f"Error fetching fill activities: {e}")
+                break
+
+        # Sort by time ascending
+        fills.sort(key=lambda x: (x['time_dt'] or datetime.min, x['id']))
+        return fills
+
+    def get_closed_trades(
+        self,
+        after: Optional[datetime] = None,
+        options_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Get realized trades using FIFO matching of fills.
+
+        Matches sell orders to earlier buy orders on a first-in-first-out basis
+        to calculate realized P&L for closed positions.
+
+        Args:
+            after: Only get trades closed after this datetime
+            options_only: If True, only return option trades (default: True)
+
+        Returns:
+            List of closed trade dicts with realized P&L
+        """
+        fills = self.get_fill_activities(after=after)
+
+        if not fills:
+            return []
+
+        # Filter for options if requested
+        if options_only:
+            fills = [
+                f for f in fills
+                if len(f['symbol']) > 10 and ('C' in f['symbol'][-9:] or 'P' in f['symbol'][-9:])
+            ]
+
+        # Group fills by symbol
+        by_symbol = {}
+        for f in fills:
+            by_symbol.setdefault(f['symbol'], []).append(f)
+
+        closed_trades = []
+
+        for symbol, symbol_fills in by_symbol.items():
+            buy_queue = []
+
+            for fill in symbol_fills:
+                side = fill['side']
+                qty = float(fill['qty'])
+                price = float(fill['price'])
+
+                if side == 'buy':
+                    buy_queue.append({
+                        'qty_rem': qty,
+                        'price': price,
+                        'time': fill['time'],
+                        'time_dt': fill['time_dt'],
+                        'id': fill['id']
+                    })
+                elif side == 'sell':
+                    qty_to_match = qty
+
+                    while qty_to_match > 0 and buy_queue:
+                        lot = buy_queue[0]
+                        take = min(lot['qty_rem'], qty_to_match)
+
+                        # For options, multiply by 100 for contract value
+                        multiplier = 100 if len(symbol) > 10 else 1
+                        cost_basis = take * lot['price'] * multiplier
+                        proceeds = take * price * multiplier
+                        pnl = proceeds - cost_basis
+                        roi = (pnl / cost_basis * 100) if cost_basis != 0 else 0
+
+                        # Calculate duration
+                        duration_str = ''
+                        if lot['time_dt'] and fill['time_dt']:
+                            duration = fill['time_dt'] - lot['time_dt']
+                            days = duration.days
+                            hours, rem = divmod(duration.seconds, 3600)
+                            minutes = rem // 60
+                            if days > 0:
+                                duration_str = f"{days}d {hours}h {minutes}m"
+                            elif hours > 0:
+                                duration_str = f"{hours}h {minutes}m"
+                            else:
+                                duration_str = f"{minutes}m"
+
+                        closed_trades.append({
+                            'symbol': symbol,
+                            'qty': int(take),
+                            'buy_price': round(lot['price'], 2),
+                            'sell_price': round(price, 2),
+                            'cost_basis': round(cost_basis, 2),
+                            'proceeds': round(proceeds, 2),
+                            'realized_pnl': round(pnl, 2),
+                            'roi_percent': round(roi, 2),
+                            'buy_time': lot['time'],
+                            'sell_time': fill['time'],
+                            'buy_time_dt': lot['time_dt'],
+                            'sell_time_dt': fill['time_dt'],
+                            'duration': duration_str,
+                            'buy_fill_id': lot['id'],
+                            'sell_fill_id': fill['id'],
+                        })
+
+                        lot['qty_rem'] -= take
+                        qty_to_match -= take
+
+                        if lot['qty_rem'] <= 0:
+                            buy_queue.pop(0)
+
+        # Sort by sell time descending (newest first)
+        closed_trades.sort(key=lambda x: x['sell_time_dt'] or datetime.min, reverse=True)
+
+        return closed_trades
+
     def close_option_position(
         self,
         symbol: str,
