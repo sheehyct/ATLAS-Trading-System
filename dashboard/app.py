@@ -1257,39 +1257,76 @@ def update_risk_management(n):
 
 @app.callback(
     [Output('options-signals-container', 'children'),
-     Output('options-signals-count', 'children')],
+     Output('options-signals-count', 'children'),
+     Output('signals-setups-container', 'children'),
+     Output('signals-triggered-container', 'children'),
+     Output('signals-lowmag-container', 'children')],
     [Input('options-refresh-interval', 'n_intervals'),
      Input('tabs', 'active_tab')]
 )
 def update_options_signals(n_intervals, active_tab):
     """
-    Update pending STRAT signals table.
+    Update STRAT signals across all tabs.
 
     Only updates when options tab is active to save resources.
+    Populates three tabs: Active Setups, Triggered, Low Magnitude.
     """
     try:
         # Skip update if not on options tab
         if active_tab != 'options-tab':
             from dash import no_update
-            return no_update, no_update
+            return no_update, no_update, no_update, no_update, no_update
 
         if options_loader is None:
-            return create_signals_table([]), dbc.Badge('0', color='secondary')
+            empty_table = create_signals_table([])
+            return (
+                empty_table,
+                dbc.Badge('0', color='secondary'),
+                empty_table,
+                empty_table,
+                empty_table
+            )
 
-        signals = options_loader.get_active_signals()
-        count = len(signals)
+        # Get signals by category
+        categories = options_loader.get_signals_by_category()
+        setups = categories.get('setups', [])
+        triggered = categories.get('triggered', [])
+        low_mag = categories.get('low_magnitude', [])
 
-        # Badge color based on count
-        badge_color = 'success' if count > 0 else 'secondary'
+        # Total count for badge
+        total_count = len(setups) + len(triggered)
+        badge_color = 'success' if total_count > 0 else 'secondary'
+
+        # Create tables for each tab
+        # Setups: show detected time
+        setups_table = create_signals_table(setups, show_triggered_time=False)
+        # Triggered: show triggered time
+        triggered_table = create_signals_table(triggered, show_triggered_time=True)
+        # Low magnitude: show detected time
+        lowmag_table = create_signals_table(low_mag, show_triggered_time=False)
+
+        # Hidden container for backward compatibility
+        all_signals = options_loader.get_active_signals()
+        hidden_table = create_signals_table(all_signals)
 
         return (
-            create_signals_table(signals),
-            dbc.Badge(str(count), color=badge_color, className='ms-2')
+            hidden_table,
+            dbc.Badge(str(total_count), color=badge_color, className='ms-2'),
+            setups_table,
+            triggered_table,
+            lowmag_table
         )
 
     except Exception as e:
         logger.error(f"Error updating options signals: {e}")
-        return create_signals_table([]), dbc.Badge('!', color='danger')
+        empty_table = create_signals_table([])
+        return (
+            empty_table,
+            dbc.Badge('!', color='danger'),
+            empty_table,
+            empty_table,
+            empty_table
+        )
 
 
 @app.callback(

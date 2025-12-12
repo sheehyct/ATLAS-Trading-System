@@ -59,10 +59,10 @@ def create_options_panel():
     """
     Create full options trading panel with dark professional theme.
 
-    Layout:
-    - Row 1: Trade Entry Form | Current Regime Signal
-    - Row 2: Active Options Trades Table with Progress Bars
-    - Row 3: Trade Progress Visualization | P&L Summary
+    Layout (Session 83K-78 Redesign):
+    - Row 1: P&L Summary | Live Option Positions
+    - Row 2: STRAT Signals with Tabs (Active Setups | Triggered | Low Magnitude)
+    - Row 3: Trade Progress Visualization
 
     Returns:
         Bootstrap container with options trading interface
@@ -71,16 +71,16 @@ def create_options_panel():
     return dbc.Container([
 
         # ============================================
-        # ROW 1: Trade Entry + Regime Signal
+        # ROW 1: P&L Summary + Live Positions (Moved to Top)
         # ============================================
         dbc.Row([
 
-            # Left: Trade Entry Form
+            # Left: P&L Summary
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader([
-                        html.I(className='fas fa-edit me-2', style={'color': DARK_THEME['accent_green']}),
-                        'New Options Trade'
+                        html.I(className='fas fa-dollar-sign me-2', style={'color': DARK_THEME['accent_green']}),
+                        'Options P&L Summary'
                     ], style={
                         'backgroundColor': DARK_THEME['card_header'],
                         'color': DARK_THEME['text_primary'],
@@ -88,255 +88,16 @@ def create_options_panel():
                         'borderBottom': f'1px solid {DARK_THEME["border"]}'
                     }),
                     dbc.CardBody([
-
-                        # Symbol Input
-                        dbc.Row([
-                            dbc.Col([
-                                dbc.Label('Symbol', className='text-light mb-1'),
-                                dbc.Input(
-                                    id='options-symbol-input',
-                                    type='text',
-                                    placeholder='SPY',
-                                    value='SPY',
-                                    style={
-                                        'backgroundColor': DARK_THEME['input_bg'],
-                                        'color': DARK_THEME['text_primary'],
-                                        'border': f'1px solid {DARK_THEME["border"]}'
-                                    }
-                                )
-                            ], width=4),
-
-                            dbc.Col([
-                                dbc.Label('Direction', className='text-light mb-1'),
-                                dbc.Select(
-                                    id='options-direction-select',
-                                    options=[
-                                        {'label': '📈 CALL (Bullish)', 'value': 'call'},
-                                        {'label': '📉 PUT (Bearish)', 'value': 'put'}
-                                    ],
-                                    value='call',
-                                    style={
-                                        'backgroundColor': DARK_THEME['input_bg'],
-                                        'color': DARK_THEME['text_primary'],
-                                        'border': f'1px solid {DARK_THEME["border"]}'
-                                    }
-                                )
-                            ], width=4),
-
-                            dbc.Col([
-                                dbc.Label('Contracts', className='text-light mb-1'),
-                                dbc.Input(
-                                    id='options-quantity-input',
-                                    type='number',
-                                    min=1,
-                                    max=10,
-                                    value=1,
-                                    style={
-                                        'backgroundColor': DARK_THEME['input_bg'],
-                                        'color': DARK_THEME['text_primary'],
-                                        'border': f'1px solid {DARK_THEME["border"]}'
-                                    }
-                                )
-                            ], width=4),
-                        ], className='mb-3'),
-
-                        # Strike and Expiration
-                        dbc.Row([
-                            dbc.Col([
-                                dbc.Label('Strike Price', className='text-light mb-1'),
-                                dbc.Input(
-                                    id='options-strike-input',
-                                    type='number',
-                                    placeholder='Auto from STRAT',
-                                    style={
-                                        'backgroundColor': DARK_THEME['input_bg'],
-                                        'color': DARK_THEME['text_primary'],
-                                        'border': f'1px solid {DARK_THEME["border"]}'
-                                    }
-                                )
-                            ], width=4),
-
-                            dbc.Col([
-                                dbc.Label('Expiration', className='text-light mb-1'),
-                                dbc.Input(
-                                    id='options-expiry-input',
-                                    type='date',
-                                    style={
-                                        'backgroundColor': DARK_THEME['input_bg'],
-                                        'color': DARK_THEME['text_primary'],
-                                        'border': f'1px solid {DARK_THEME["border"]}'
-                                    }
-                                )
-                            ], width=4),
-
-                            dbc.Col([
-                                dbc.Label('Entry Price', className='text-light mb-1'),
-                                dbc.Input(
-                                    id='options-entry-input',
-                                    type='number',
-                                    step=0.01,
-                                    placeholder='Premium $',
-                                    style={
-                                        'backgroundColor': DARK_THEME['input_bg'],
-                                        'color': DARK_THEME['text_primary'],
-                                        'border': f'1px solid {DARK_THEME["border"]}'
-                                    }
-                                )
-                            ], width=4),
-                        ], className='mb-3'),
-
-                        # Target and Stop from STRAT Pattern
-                        dbc.Row([
-                            dbc.Col([
-                                dbc.Label('Pattern Target', className='text-light mb-1'),
-                                dbc.InputGroup([
-                                    dbc.InputGroupText('$', style={
-                                        'backgroundColor': DARK_THEME['card_header'],
-                                        'color': DARK_THEME['accent_green'],
-                                        'border': f'1px solid {DARK_THEME["border"]}'
-                                    }),
-                                    dbc.Input(
-                                        id='options-target-input',
-                                        type='number',
-                                        step=0.01,
-                                        placeholder='Measured Move',
-                                        style={
-                                            'backgroundColor': DARK_THEME['input_bg'],
-                                            'color': DARK_THEME['accent_green'],
-                                            'border': f'1px solid {DARK_THEME["border"]}'
-                                        }
-                                    )
-                                ])
-                            ], width=6),
-
-                            dbc.Col([
-                                dbc.Label('Stop Loss', className='text-light mb-1'),
-                                dbc.InputGroup([
-                                    dbc.InputGroupText('$', style={
-                                        'backgroundColor': DARK_THEME['card_header'],
-                                        'color': DARK_THEME['accent_red'],
-                                        'border': f'1px solid {DARK_THEME["border"]}'
-                                    }),
-                                    dbc.Input(
-                                        id='options-stop-input',
-                                        type='number',
-                                        step=0.01,
-                                        placeholder='Pattern Stop',
-                                        style={
-                                            'backgroundColor': DARK_THEME['input_bg'],
-                                            'color': DARK_THEME['accent_red'],
-                                            'border': f'1px solid {DARK_THEME["border"]}'
-                                        }
-                                    )
-                                ])
-                            ], width=6),
-                        ], className='mb-3'),
-
-                        # Action Buttons
-                        dbc.Row([
-                            dbc.Col([
-                                dbc.Button([
-                                    html.I(className='fas fa-magic me-2'),
-                                    'Load STRAT Signal'
-                                ],
-                                    id='load-strat-signal-btn',
-                                    color='info',
-                                    className='w-100',
-                                    outline=True
-                                )
-                            ], width=6),
-
-                            dbc.Col([
-                                dbc.Button([
-                                    html.I(className='fas fa-paper-plane me-2'),
-                                    'Submit Trade'
-                                ],
-                                    id='submit-options-trade-btn',
-                                    color='success',
-                                    className='w-100'
-                                )
-                            ], width=6),
-                        ]),
-
-                        # Alpaca Options Info
-                        dbc.Alert([
-                            html.I(className='fas fa-check-circle me-2'),
-                            html.Strong('Alpaca Paper Trading: '),
-                            'Options trading enabled by default. ',
-                            'Orders execute via Alpaca Options API. ',
-                            html.A('Docs', href='https://docs.alpaca.markets/docs/options-trading',
-                                   target='_blank', className='alert-link')
-                        ],
-                            color='success',
-                            className='mt-3 mb-0',
-                            style={'fontSize': '0.8rem'}
-                        )
-
-                    ], style={'backgroundColor': DARK_THEME['card_bg']})
-                ], style={
-                    'backgroundColor': DARK_THEME['card_bg'],
-                    'border': f'1px solid {DARK_THEME["border"]}'
-                }, className='shadow')
-            ], width=12, lg=7, className='mb-3'),
-
-            # Right: Current STRAT Signal
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader([
-                        html.I(className='fas fa-crosshairs me-2', style={'color': DARK_THEME['accent_yellow']}),
-                        'Active STRAT Signal'
-                    ], style={
-                        'backgroundColor': DARK_THEME['card_header'],
-                        'color': DARK_THEME['text_primary'],
-                        'fontWeight': 'bold',
-                        'borderBottom': f'1px solid {DARK_THEME["border"]}'
-                    }),
-                    dbc.CardBody([
-                        html.Div(id='strat-signal-display', children=[
-                            _create_strat_signal_placeholder()
-                        ])
+                        _create_pnl_summary_cards()
                     ], style={'backgroundColor': DARK_THEME['card_bg']})
                 ], style={
                     'backgroundColor': DARK_THEME['card_bg'],
                     'border': f'1px solid {DARK_THEME["border"]}',
                     'height': '100%'
                 }, className='shadow')
-            ], width=12, lg=5, className='mb-3'),
+            ], width=12, lg=4, className='mb-3'),
 
-        ], className='mb-4'),
-
-        # ============================================
-        # ROW 2: Pending STRAT Signals
-        # ============================================
-        dbc.Row([
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader([
-                        html.I(className='fas fa-crosshairs me-2', style={'color': DARK_THEME['accent_yellow']}),
-                        'Pending STRAT Signals',
-                        html.Span(id='options-signals-count', className='ms-2')
-                    ], style={
-                        'backgroundColor': DARK_THEME['card_header'],
-                        'color': DARK_THEME['text_primary'],
-                        'fontWeight': 'bold',
-                        'borderBottom': f'1px solid {DARK_THEME["border"]}'
-                    }),
-                    dbc.CardBody([
-                        html.Div(id='options-signals-container', children=[
-                            _create_no_signals_placeholder()
-                        ])
-                    ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': '0'})
-                ], style={
-                    'backgroundColor': DARK_THEME['card_bg'],
-                    'border': f'1px solid {DARK_THEME["border"]}'
-                }, className='shadow')
-            ], width=12)
-        ], className='mb-4'),
-
-        # ============================================
-        # ROW 3: Live Option Positions
-        # ============================================
-        dbc.Row([
+            # Right: Live Option Positions
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader([
@@ -356,17 +117,95 @@ def create_options_panel():
                     ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': '0'})
                 ], style={
                     'backgroundColor': DARK_THEME['card_bg'],
+                    'border': f'1px solid {DARK_THEME["border"]}',
+                    'height': '100%'
+                }, className='shadow')
+            ], width=12, lg=8, className='mb-3'),
+
+        ], className='mb-4'),
+
+        # ============================================
+        # ROW 2: STRAT Signals with Tabs
+        # ============================================
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.I(className='fas fa-crosshairs me-2', style={'color': DARK_THEME['accent_yellow']}),
+                        'STRAT Signals',
+                        html.Span(id='options-signals-count', className='ms-2')
+                    ], style={
+                        'backgroundColor': DARK_THEME['card_header'],
+                        'color': DARK_THEME['text_primary'],
+                        'fontWeight': 'bold',
+                        'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                    }),
+                    dbc.CardBody([
+                        # Signal Tabs
+                        dbc.Tabs([
+                            dbc.Tab(
+                                label='Active Setups',
+                                tab_id='tab-setups',
+                                label_style={'color': DARK_THEME['text_secondary']},
+                                active_label_style={
+                                    'color': DARK_THEME['accent_blue'],
+                                    'fontWeight': 'bold'
+                                },
+                                children=[
+                                    html.Div(
+                                        id='signals-setups-container',
+                                        children=[_create_no_signals_placeholder()],
+                                        style={'marginTop': '1rem'}
+                                    )
+                                ]
+                            ),
+                            dbc.Tab(
+                                label='Triggered',
+                                tab_id='tab-triggered',
+                                label_style={'color': DARK_THEME['text_secondary']},
+                                active_label_style={
+                                    'color': DARK_THEME['accent_green'],
+                                    'fontWeight': 'bold'
+                                },
+                                children=[
+                                    html.Div(
+                                        id='signals-triggered-container',
+                                        children=[_create_no_signals_placeholder()],
+                                        style={'marginTop': '1rem'}
+                                    )
+                                ]
+                            ),
+                            dbc.Tab(
+                                label='Low Magnitude',
+                                tab_id='tab-low-mag',
+                                label_style={'color': DARK_THEME['text_secondary']},
+                                active_label_style={
+                                    'color': DARK_THEME['accent_red'],
+                                    'fontWeight': 'bold'
+                                },
+                                children=[
+                                    html.Div(
+                                        id='signals-lowmag-container',
+                                        children=[_create_no_signals_placeholder()],
+                                        style={'marginTop': '1rem'}
+                                    )
+                                ]
+                            ),
+                        ], id='signals-tabs', active_tab='tab-setups', style={
+                            'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                        }),
+                    ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': '1rem'})
+                ], style={
+                    'backgroundColor': DARK_THEME['card_bg'],
                     'border': f'1px solid {DARK_THEME["border"]}'
                 }, className='shadow')
             ], width=12)
         ], className='mb-4'),
 
         # ============================================
-        # ROW 3: Trade Progress Chart + P&L Summary
+        # ROW 3: Trade Progress Chart
         # ============================================
         dbc.Row([
-
-            # Left: Trade Progress Visualization
             dbc.Col([
                 dbc.Card([
                     dbc.CardHeader([
@@ -389,34 +228,14 @@ def create_options_panel():
                     'backgroundColor': DARK_THEME['card_bg'],
                     'border': f'1px solid {DARK_THEME["border"]}'
                 }, className='shadow')
-            ], width=12, lg=8, className='mb-3'),
-
-            # Right: P&L Summary
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardHeader([
-                        html.I(className='fas fa-dollar-sign me-2', style={'color': DARK_THEME['accent_green']}),
-                        'Options P&L Summary'
-                    ], style={
-                        'backgroundColor': DARK_THEME['card_header'],
-                        'color': DARK_THEME['text_primary'],
-                        'fontWeight': 'bold',
-                        'borderBottom': f'1px solid {DARK_THEME["border"]}'
-                    }),
-                    dbc.CardBody([
-                        _create_pnl_summary_cards()
-                    ], style={'backgroundColor': DARK_THEME['card_bg']})
-                ], style={
-                    'backgroundColor': DARK_THEME['card_bg'],
-                    'border': f'1px solid {DARK_THEME["border"]}',
-                    'height': '100%'
-                }, className='shadow')
-            ], width=12, lg=4, className='mb-3'),
-
-        ]),
+            ], width=12)
+        ], className='mb-4'),
 
         # Hidden storage for trade data
         dcc.Store(id='options-trades-store', data=[]),
+
+        # Hidden container for backward compatibility (old signals container)
+        html.Div(id='options-signals-container', style={'display': 'none'}),
 
         # Auto-refresh interval for live data (30 seconds)
         dcc.Interval(
@@ -486,12 +305,13 @@ def _create_no_positions_placeholder():
     })
 
 
-def create_signals_table(signals: List[Dict]) -> html.Table:
+def create_signals_table(signals: List[Dict], show_triggered_time: bool = False) -> html.Table:
     """
-    Create table displaying pending STRAT signals.
+    Create table displaying STRAT signals.
 
     Args:
         signals: List of signal dictionaries from OptionsDataLoader
+        show_triggered_time: If True, show triggered_at column instead of detected_time
 
     Returns:
         HTML table component
@@ -514,6 +334,14 @@ def create_signals_table(signals: List[Dict]) -> html.Table:
             status_color = 'secondary'
         else:
             status_color = 'warning'
+
+        # Magnitude color - highlight low magnitude
+        magnitude = signal.get('magnitude_pct', 0)
+        mag_color = DARK_THEME['text_secondary'] if magnitude >= 0.5 else DARK_THEME['accent_red']
+
+        # Time display - triggered_at or detected_time
+        time_value = signal.get('triggered_at') if show_triggered_time else signal.get('detected_time')
+        time_display = time_value if time_value else '-'
 
         rows.append(
             html.Tr([
@@ -560,10 +388,11 @@ def create_signals_table(signals: List[Dict]) -> html.Table:
 
                 # Magnitude
                 html.Td([
-                    f"{signal.get('magnitude_pct', 0):.2f}%"
+                    f"{magnitude:.2f}%"
                 ], style={
                     'padding': '0.75rem',
-                    'color': DARK_THEME['text_secondary']
+                    'color': mag_color,
+                    'fontWeight': 'bold' if magnitude < 0.5 else 'normal'
                 }),
 
                 # R:R
@@ -574,6 +403,11 @@ def create_signals_table(signals: List[Dict]) -> html.Table:
                     'color': DARK_THEME['accent_blue']
                 }),
 
+                # Time (Detected or Triggered)
+                html.Td([
+                    html.Small(time_display, style={'color': DARK_THEME['text_secondary']})
+                ], style={'padding': '0.75rem'}),
+
                 # Status
                 html.Td([
                     dbc.Badge(status, color=status_color)
@@ -581,6 +415,9 @@ def create_signals_table(signals: List[Dict]) -> html.Table:
 
             ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
         )
+
+    # Dynamic header based on time column type
+    time_header = 'Triggered' if show_triggered_time else 'Detected'
 
     return html.Table([
         html.Thead([
@@ -592,6 +429,7 @@ def create_signals_table(signals: List[Dict]) -> html.Table:
                 html.Th('Target / Stop', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Mag', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('R:R', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th(time_header, style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Status', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
             ], style={'backgroundColor': DARK_THEME['card_header']})
         ]),

@@ -204,10 +204,77 @@ class OptionsDataLoader:
                 s for s in all_signals.values()
                 if s.status in ('TRIGGERED', 'HISTORICAL_TRIGGERED')
             ]
+            # Sort by triggered_at descending
+            triggered.sort(key=lambda s: s.triggered_at or datetime.min, reverse=True)
             return [self._signal_to_dict(s) for s in triggered]
         except Exception as e:
             logger.error(f"Error getting triggered signals: {e}")
             return []
+
+    def get_setup_signals(self, min_magnitude: float = 0.5) -> List[Dict]:
+        """
+        Get SETUP signals awaiting entry trigger that meet magnitude threshold.
+
+        Args:
+            min_magnitude: Minimum magnitude % to include (default 0.5%)
+
+        Returns:
+            List of setup signal dictionaries meeting criteria
+        """
+        try:
+            if self.use_remote:
+                # Get pending signals from API and filter locally
+                signals = self._fetch_from_api('/signals/pending')
+                return [s for s in signals if s.get('magnitude_pct', 0) >= min_magnitude]
+            signals = self.signal_store.get_setup_signals_for_monitoring()
+            filtered = [s for s in signals if s.magnitude_pct >= min_magnitude]
+            filtered.sort(key=lambda s: s.detected_time or datetime.min, reverse=True)
+            return [self._signal_to_dict(s) for s in filtered]
+        except Exception as e:
+            logger.error(f"Error getting setup signals: {e}")
+            return []
+
+    def get_low_magnitude_signals(self, max_magnitude: float = 0.5) -> List[Dict]:
+        """
+        Get signals that don't meet magnitude threshold (for review).
+
+        Args:
+            max_magnitude: Maximum magnitude % to include (signals below this)
+
+        Returns:
+            List of low magnitude signal dictionaries
+        """
+        try:
+            if self.use_remote:
+                # Get all active signals and filter locally
+                signals = self._fetch_from_api('/signals/active')
+                return [s for s in signals
+                        if s.get('magnitude_pct', 0) < max_magnitude
+                        and s.get('status') not in ('EXPIRED', 'CONVERTED')]
+            all_signals = self.signal_store.load_signals()
+            low_mag = [
+                s for s in all_signals.values()
+                if s.magnitude_pct < max_magnitude
+                and s.status not in ('EXPIRED', 'CONVERTED')
+            ]
+            low_mag.sort(key=lambda s: s.detected_time or datetime.min, reverse=True)
+            return [self._signal_to_dict(s) for s in low_mag]
+        except Exception as e:
+            logger.error(f"Error getting low magnitude signals: {e}")
+            return []
+
+    def get_signals_by_category(self) -> Dict[str, List[Dict]]:
+        """
+        Get all signals organized by category for tabbed display.
+
+        Returns:
+            Dictionary with keys: 'setups', 'triggered', 'low_magnitude'
+        """
+        return {
+            'setups': self.get_setup_signals(),
+            'triggered': self.get_triggered_signals(),
+            'low_magnitude': self.get_low_magnitude_signals()
+        }
 
     def get_option_positions(self) -> List[Dict]:
         """
