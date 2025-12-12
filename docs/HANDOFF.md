@@ -1,9 +1,73 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 12, 2025 (Session 83K-77)
+**Last Updated:** December 12, 2025 (Session 83K-78)
 **Current Branch:** `main`
-**Phase:** Paper Trading - VPS DEPLOYED
-**Status:** CRITICAL BUG FIXED - Rapid entry/exit safeguards implemented
+**Phase:** Paper Trading - MONITORING
+**Status:** Dashboard enhanced, watchlist expanded, monitoring live trades
+
+---
+
+## Session 83K-78: Dashboard Enhancement + Watchlist Expansion
+
+**Date:** December 12, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Now in monitoring phase
+
+### Dashboard Redesign
+
+| Change | Description |
+|--------|-------------|
+| Manual entry removed | All trades via Alpaca automation |
+| P&L + Positions at top | More visible at first glance |
+| Tabbed signals | Active Setups / Triggered / Low Magnitude |
+| Trigger time column | Shows when pattern triggered |
+| Low magnitude highlighting | Red text for < 0.5% magnitude |
+
+### Watchlist Expanded (5 -> 11 symbols)
+
+| Category | Symbols |
+|----------|---------|
+| Core ETFs | SPY, QQQ, IWM, DIA |
+| Mega-caps | AAPL, TSLA, MSFT, GOOGL |
+| Retail momentum | HOOD, QBTS, ACHR |
+
+### Commits
+
+```
+301f2a9 feat: redesign options dashboard with tabbed signals and trigger times
+a979e02 feat: expand scanner watchlist to 11 symbols
+```
+
+### Files Modified
+
+- `dashboard/components/options_panel.py` - Layout redesign, tabs, removed manual entry
+- `dashboard/app.py` - Updated callbacks for tabbed signals
+- `dashboard/data_loaders/options_loader.py` - Added signal filtering methods
+- `strat/signal_automation/config.py` - Expanded symbol list
+
+### VPS Update Required
+
+```bash
+ssh atlas@178.156.223.251
+cd ~/vectorbt-workspace && git pull
+sudo systemctl restart atlas-daemon
+```
+
+### Session 83K-79 Priorities
+
+1. **Monitor Live Trading** - Watch Discord alerts with new symbols
+2. **Comprehensive Project Audit** - Architecture docs, README updates
+3. **Strategy Analysis** - Review current vs planned strategies
+4. **Technical Debt Cleanup** - Remove unused code, consolidate docs
+
+### Future Sessions
+
+1. **Crypto Strategy Research** - Leveraged derivatives (no theta decay)
+2. **Scanner Architecture** - Sector rotation, dynamic stock selection (deferred)
+
+### Plan Mode Recommendation
+
+**PLAN MODE: ON** - Comprehensive audit requires planning.
 
 ---
 
