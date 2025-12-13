@@ -1,9 +1,69 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 13, 2025 (Session CRYPTO-2)
+**Last Updated:** December 13, 2025 (Session CRYPTO-3)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Crypto signal scanner complete, ready for automation
+**Status:** Crypto automation stack complete, ready for VPS deployment
+
+---
+
+## Session CRYPTO-3: Entry Monitor and Daemon (COMPLETE)
+
+**Date:** December 13, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Full automation stack implemented
+
+### Objective
+
+Build entry trigger monitoring and daemon orchestration for 24/7 crypto paper trading.
+
+### Files Created
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `crypto/scanning/entry_monitor.py` | 24/7 trigger polling with maintenance window | 320 |
+| `crypto/scanning/daemon.py` | Main orchestration daemon | 675 |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/scanning/__init__.py` | Export entry monitor and daemon classes |
+| `crypto/__init__.py` | Export new classes, bump to v0.3.0 |
+
+### Key Features
+
+1. **CryptoEntryMonitor** - Polls prices every 60s, checks SETUP triggers
+2. **CryptoSignalDaemon** - Orchestrates scanner (15min), monitor (1min), paper trader
+3. **24/7 Operation** - No market hours filter
+4. **Friday Maintenance Window** - Pauses during 5-6 PM ET
+5. **Paper Trading Integration** - Wired to PaperTrader for simulated execution
+6. **Signal Deduplication** - Prevents duplicate signals across scans
+
+### Verified Working
+
+```python
+from crypto import CryptoSignalDaemon
+
+daemon = CryptoSignalDaemon()
+signals = daemon.run_scan_and_monitor()
+# BTC: 3-2U LONG (1w) [COMPLETED]
+# ETH: 2D-1-? LONG (1d) [SETUP] - trigger: $3,136.30
+
+daemon.start(block=False)  # Background mode works
+daemon.stop()
+```
+
+### Session CRYPTO-4 Priorities
+
+1. **Intraday Leverage** - Update config for 10x intraday (6PM-4PM ET window)
+2. **Paper Balance** - Update default to $1,000
+3. **VPS Deployment** - Create CLI script for production daemon
+4. **Position Monitoring** - Add stop/target tracking for open trades
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Implementation continues from established architecture.
 
 ---
 
