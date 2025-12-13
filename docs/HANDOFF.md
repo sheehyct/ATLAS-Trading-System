@@ -1,9 +1,89 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 12, 2025 (Session 83K-82)
+**Last Updated:** December 13, 2025 (Session CRYPTO-2)
 **Current Branch:** `main`
-**Phase:** Paper Trading - MONITORING + Crypto Module Integration
-**Status:** Crypto derivatives module integrated, paper trading simulation ready
+**Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
+**Status:** Crypto signal scanner complete, ready for automation
+
+---
+
+## Session CRYPTO-2: Crypto STRAT Signal Scanner (COMPLETE)
+
+**Date:** December 13, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Core scanner implemented and verified
+
+### Objective
+
+Connect crypto module to Atlas STRAT engine for pattern detection on BTC/ETH perpetual futures.
+
+### Files Created
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `crypto/scanning/__init__.py` | Module initialization | 15 |
+| `crypto/scanning/models.py` | CryptoDetectedSignal, CryptoSignalContext dataclasses | 90 |
+| `crypto/scanning/signal_scanner.py` | CryptoSignalScanner - core pattern detection | 650 |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/config.py` | Added MAINTENANCE_WINDOW config, signal filters |
+| `crypto/data/state.py` | Added signal tracking methods (add_detected_signal, get_pending_setups, etc.) |
+| `crypto/__init__.py` | Export scanning module, bump to v0.2.0 |
+
+### Key Features
+
+1. **CryptoSignalScanner** - Detects all STRAT patterns (2-2, 3-2, 3-2-2, 2-1-2, 3-1-2)
+2. **24/7 Operation** - No market hours filter (crypto is 24/7)
+3. **Friday Maintenance Window** - Handles 5-6 PM ET Coinbase INTX maintenance
+4. **Multi-Timeframe** - Scans 1w, 1d, 4h, 1h, 15m
+5. **TFC Score** - Full Timeframe Continuity calculation
+6. **SETUP Detection** - Detects X-1 patterns waiting for live break
+
+### Verified Working
+
+```python
+from crypto.scanning import CryptoSignalScanner
+
+scanner = CryptoSignalScanner()
+signals = scanner.scan_all_timeframes('BTC-PERP-INTX')
+scanner.print_signals(signals)
+
+# Found 13 signals across all timeframes
+# Weekly: 3-2U LONG detected
+# Daily: 3-1-2D SHORT detected
+# 4h: Multiple patterns including SETUP signals
+```
+
+### Architecture
+
+```
+Coinbase OHLCV Data
+       |
+       v
+classify_bars_nb() [from strat/bar_classifier.py - unchanged]
+       |
+       v
+detect_*_patterns_nb() [from strat/pattern_detector.py - unchanged]
+       |
+       v
+CryptoDetectedSignal objects
+       |
+       v
+CryptoSystemState.add_detected_signal()
+```
+
+### Session CRYPTO-3 Priorities
+
+1. **Entry Monitor** - Create `crypto/scanning/entry_monitor.py` for 24/7 trigger polling
+2. **Daemon** - Create `crypto/scanning/daemon.py` orchestrator
+3. **Paper Trading Integration** - Wire triggers to PaperTrader execution
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Architecture established, next session is implementation.
 
 ---
 

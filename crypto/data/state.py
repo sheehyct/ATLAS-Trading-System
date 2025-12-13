@@ -5,10 +5,13 @@ Tracks bar classifications, OHLCV data, patterns, positions, and account info.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pandas as pd
+
+if TYPE_CHECKING:
+    from crypto.scanning.models import CryptoDetectedSignal
 
 
 @dataclass
@@ -207,3 +210,125 @@ class CryptoSystemState:
         self.last_update_time = None
         self.is_healthy = True
         self.last_error = None
+
+    # =========================================================================
+    # SIGNAL TRACKING (Session CRYPTO-2)
+    # =========================================================================
+
+    def add_detected_signal(self, signal: "CryptoDetectedSignal") -> None:
+        """
+        Add a detected signal to active patterns.
+
+        Args:
+            signal: CryptoDetectedSignal from scanner
+        """
+        pattern_dict = {
+            "type": signal.pattern_type,
+            "direction": signal.direction,
+            "symbol": signal.symbol,
+            "timeframe": signal.timeframe,
+            "signal_type": signal.signal_type,
+            "entry_price": signal.entry_trigger,
+            "stop_price": signal.stop_price,
+            "target_price": signal.target_price,
+            "magnitude_pct": signal.magnitude_pct,
+            "risk_reward": signal.risk_reward,
+            "setup_bar_high": signal.setup_bar_high,
+            "setup_bar_low": signal.setup_bar_low,
+            "has_maintenance_gap": signal.has_maintenance_gap,
+            "detected_at": signal.detected_time.isoformat(),
+        }
+        self.active_patterns.append(pattern_dict)
+        self.last_update_time = datetime.utcnow()
+
+    def get_pending_setups(self) -> List[Dict[str, Any]]:
+        """
+        Get SETUP signals that are waiting for price trigger.
+
+        Returns:
+            List of SETUP patterns (not yet triggered)
+        """
+        return [
+            p for p in self.active_patterns if p.get("signal_type") == "SETUP"
+        ]
+
+    def check_signal_triggers(
+        self, current_prices: Dict[str, float]
+    ) -> List[Dict[str, Any]]:
+        """
+        Check if any pending SETUP signals have triggered.
+
+        Args:
+            current_prices: Dict mapping symbol to current price
+
+        Returns:
+            List of triggered patterns (ready for entry)
+        """
+        triggered = []
+
+        for pattern in self.get_pending_setups():
+            symbol = pattern.get("symbol")
+            if symbol not in current_prices:
+                continue
+
+            price = current_prices[symbol]
+            direction = pattern.get("direction")
+            entry = pattern.get("entry_price", 0)
+
+            # Check trigger conditions
+            if direction == "LONG" and price >= entry:
+                pattern["triggered_at"] = datetime.utcnow().isoformat()
+                pattern["triggered_price"] = price
+                triggered.append(pattern)
+            elif direction == "SHORT" and price <= entry:
+                pattern["triggered_at"] = datetime.utcnow().isoformat()
+                pattern["triggered_price"] = price
+                triggered.append(pattern)
+
+        return triggered
+
+    def remove_expired_signals(self, max_age_hours: int = 24) -> int:
+        """
+        Remove signals older than max_age.
+
+        Args:
+            max_age_hours: Maximum signal age in hours
+
+        Returns:
+            Number of signals removed
+        """
+        now = datetime.utcnow()
+        initial_count = len(self.active_patterns)
+
+        self.active_patterns = [
+            p
+            for p in self.active_patterns
+            if (now - datetime.fromisoformat(p["detected_at"]))
+            < timedelta(hours=max_age_hours)
+        ]
+
+        return initial_count - len(self.active_patterns)
+
+    def get_signals_by_symbol(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        Get all active signals for a specific symbol.
+
+        Args:
+            symbol: Trading symbol (e.g., 'BTC-PERP-INTX')
+
+        Returns:
+            List of signals for the symbol
+        """
+        return [p for p in self.active_patterns if p.get("symbol") == symbol]
+
+    def get_signals_by_timeframe(self, timeframe: str) -> List[Dict[str, Any]]:
+        """
+        Get all active signals for a specific timeframe.
+
+        Args:
+            timeframe: Timeframe (e.g., '4h', '1d')
+
+        Returns:
+            List of signals for the timeframe
+        """
+        return [p for p in self.active_patterns if p.get("timeframe") == timeframe]

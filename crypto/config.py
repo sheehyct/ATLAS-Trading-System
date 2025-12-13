@@ -194,6 +194,41 @@ LOOKBACK_BARS: int = 100
 # Enable HTF resampling for pattern detection
 ENABLE_HTF_RESAMPLING: bool = True
 
+# Entry monitor polling interval (for live trigger detection)
+ENTRY_MONITOR_POLL_SECONDS: int = 60  # 1 minute
+
+# =============================================================================
+# MAINTENANCE WINDOW (Coinbase INTX)
+# =============================================================================
+# Coinbase crypto futures have a 1-hour maintenance window every Friday.
+# During this window, no trading occurs and bar data may be incomplete.
+# Bars overlapping this window should be excluded from pattern detection.
+
+MAINTENANCE_WINDOW_ENABLED: bool = True
+
+# Maintenance window timing (UTC)
+# Friday 5-6 PM ET = Friday 22:00-23:00 UTC (standard time)
+# Note: During daylight saving time, this shifts by 1 hour
+MAINTENANCE_DAY: int = 4  # 0=Monday, 4=Friday
+MAINTENANCE_START_HOUR_UTC: int = 22  # 22:00 UTC = 5 PM ET
+MAINTENANCE_END_HOUR_UTC: int = 23  # 23:00 UTC = 6 PM ET
+
+# =============================================================================
+# SIGNAL FILTERS
+# =============================================================================
+
+# Minimum target magnitude (as percentage of entry price)
+MIN_MAGNITUDE_PCT: float = 0.5
+
+# Minimum reward:risk ratio for signals
+MIN_SIGNAL_RISK_REWARD: float = 1.5
+
+# Signal expiry (how long SETUP signals remain valid)
+SIGNAL_EXPIRY_HOURS: int = 24
+
+# Pattern types to scan (all STRAT patterns)
+SCAN_PATTERN_TYPES: List[str] = ["2-2", "3-2", "3-2-2", "2-1-2", "3-1-2"]
+
 # =============================================================================
 # API LIMITS
 # =============================================================================
