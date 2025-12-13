@@ -32,7 +32,20 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
+try:
+    import pytz
+    ET_TIMEZONE = pytz.timezone("America/New_York")
+except ImportError:
+    # Fallback if pytz not available
+    ET_TIMEZONE = None
+
 from crypto import config
+from crypto.config import (
+    get_current_leverage_tier,
+    get_max_leverage_for_symbol,
+    is_intraday_window,
+    time_until_intraday_close_et,
+)
 from crypto.exchange.coinbase_client import CoinbaseClient
 from crypto.scanning.entry_monitor import (
     CryptoEntryMonitor,
@@ -42,6 +55,8 @@ from crypto.scanning.entry_monitor import (
 from crypto.scanning.models import CryptoDetectedSignal
 from crypto.scanning.signal_scanner import CryptoSignalScanner
 from crypto.simulation.paper_trader import PaperTrader
+from crypto.simulation.position_monitor import CryptoPositionMonitor
+from crypto.trading.sizing import calculate_position_size, should_skip_trade
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +146,7 @@ class CryptoSignalDaemon:
         # Components
         self.scanner = scanner or CryptoSignalScanner(client=self.client)
         self.paper_trader = paper_trader
+        self.position_monitor: Optional[CryptoPositionMonitor] = None
         self.entry_monitor: Optional[CryptoEntryMonitor] = None
 
         # Signal tracking
@@ -160,22 +176,28 @@ class CryptoSignalDaemon:
     # =========================================================================
 
     def _setup_paper_trader(self) -> None:
-        """Initialize paper trader if execution enabled."""
+        """Initialize paper trader and position monitor if execution enabled."""
         if not self.config.enable_execution:
             logger.info("Execution disabled - signals will be detected only")
             return
 
         if self.paper_trader is not None:
             logger.info("Using provided paper trader")
-            return
+        else:
+            self.paper_trader = PaperTrader(
+                starting_balance=self.config.paper_balance,
+                account_name="crypto_daemon",
+            )
+            logger.info(
+                f"Paper trader initialized (balance: ${self.config.paper_balance:,.2f})"
+            )
 
-        self.paper_trader = PaperTrader(
-            starting_balance=self.config.paper_balance,
-            account_name="crypto_daemon",
+        # Initialize position monitor (Session CRYPTO-4)
+        self.position_monitor = CryptoPositionMonitor(
+            client=self.client,
+            paper_trader=self.paper_trader,
         )
-        logger.info(
-            f"Paper trader initialized (balance: ${self.config.paper_balance:,.2f})"
-        )
+        logger.info("Position monitor initialized")
 
     def _setup_entry_monitor(self) -> None:
         """Initialize entry trigger monitor."""
@@ -228,9 +250,21 @@ class CryptoSignalDaemon:
             except Exception as e:
                 logger.error(f"Custom trigger callback error: {e}")
 
+    def _get_current_time_et(self) -> datetime:
+        """Get current time in ET timezone."""
+        now_utc = datetime.now(timezone.utc)
+        if ET_TIMEZONE is not None:
+            return now_utc.astimezone(ET_TIMEZONE)
+        # Fallback: approximate ET as UTC-5 (ignores DST)
+        from datetime import timedelta
+        return now_utc - timedelta(hours=5)
+
     def _execute_trade(self, event: CryptoTriggerEvent) -> None:
         """
-        Execute trade via paper trader.
+        Execute trade via paper trader with time-based leverage.
+
+        Uses intraday leverage (10x) during 6PM-4PM ET window,
+        swing leverage (4x) during 4PM-6PM ET gap.
 
         Args:
             event: Trigger event
@@ -241,36 +275,74 @@ class CryptoSignalDaemon:
         signal = event.signal
         direction = signal.direction  # 'LONG' or 'SHORT'
 
-        # Calculate position size based on risk
-        # Using ATR-based sizing from signal context
-        risk_per_trade = self.config.paper_balance * 0.02  # 2% risk
-        stop_distance = abs(event.current_price - signal.stop_price)
+        # Get current leverage tier based on time
+        now_et = self._get_current_time_et()
+        tier = get_current_leverage_tier(now_et)
+        max_leverage = get_max_leverage_for_symbol(signal.symbol, now_et)
 
-        if stop_distance > 0:
-            position_size = risk_per_trade / stop_distance
-        else:
-            position_size = 0.01  # Minimum size
+        logger.info(
+            f"Leverage tier: {tier} ({max_leverage}x) for {signal.symbol}"
+        )
+
+        # Check if trade should be skipped due to leverage constraints
+        skip, reason = should_skip_trade(
+            account_value=self.paper_trader.account.current_balance,
+            risk_percent=config.DEFAULT_RISK_PERCENT,
+            entry_price=event.current_price,
+            stop_price=signal.stop_price,
+            max_leverage=max_leverage,
+        )
+
+        if skip:
+            logger.warning(f"SKIPPING TRADE: {reason}")
+            return
+
+        # Calculate position size with time-based leverage
+        position_size, implied_leverage, actual_risk = calculate_position_size(
+            account_value=self.paper_trader.account.current_balance,
+            risk_percent=config.DEFAULT_RISK_PERCENT,
+            entry_price=event.current_price,
+            stop_price=signal.stop_price,
+            max_leverage=max_leverage,
+        )
+
+        if position_size <= 0:
+            logger.warning("Position size is zero or negative - skipping trade")
+            return
 
         # Map direction to side (BUY for LONG, SELL for SHORT)
         side = "BUY" if direction == "LONG" else "SELL"
 
-        # Execute via paper trader
+        # Log intraday window info
+        if tier == "intraday":
+            time_remaining = time_until_intraday_close_et(now_et)
+            logger.info(
+                f"INTRADAY TRADE: {time_remaining.total_seconds()/3600:.1f}h "
+                f"until 4PM ET close requirement"
+            )
+
+        # Execute via paper trader with stop/target for position monitoring
         try:
             trade = self.paper_trader.open_trade(
                 symbol=signal.symbol,
                 side=side,
                 quantity=position_size,
                 entry_price=event.current_price,
+                stop_price=signal.stop_price,
+                target_price=signal.target_price,
+                timeframe=signal.timeframe,
+                pattern_type=signal.pattern_type,
             )
 
             self._execution_count += 1
             logger.info(
                 f"TRADE OPENED: {trade.trade_id} {signal.symbol} {side} "
-                f"qty={position_size:.6f} @ ${event.current_price:,.2f}"
+                f"qty={position_size:.6f} @ ${event.current_price:,.2f} "
+                f"({implied_leverage:.1f}x leverage, ${actual_risk:.2f} risk)"
             )
-
-            # Store trade metadata for later reference
-            # (stop/target tracking would be separate monitoring system)
+            logger.info(
+                f"  Stop: ${signal.stop_price:,.2f} | Target: ${signal.target_price:,.2f}"
+            )
 
         except Exception as e:
             logger.warning(f"Failed to open trade for {signal.symbol}: {e}")
@@ -457,9 +529,15 @@ class CryptoSignalDaemon:
             logger.debug(f"Cleaned up {len(expired_ids)} expired signals")
 
     def _health_loop(self) -> None:
-        """Background health check loop."""
+        """Background health check loop with position monitoring."""
         while not self._shutdown_event.is_set():
             try:
+                # Check positions for stop/target exits (Session CRYPTO-4)
+                if self.position_monitor:
+                    closed_count = self.check_positions()
+                    if closed_count > 0:
+                        logger.info(f"Position monitor closed {closed_count} trade(s)")
+
                 status = self.get_status()
                 logger.info(
                     f"HEALTH: scans={status['scan_count']}, "
@@ -604,6 +682,14 @@ class CryptoSignalDaemon:
         if self.paper_trader:
             paper_stats = self.paper_trader.get_account_summary()
 
+        # Get current leverage tier
+        now_et = self._get_current_time_et()
+        tier = get_current_leverage_tier(now_et)
+        is_intraday = is_intraday_window(now_et)
+        time_to_close = None
+        if is_intraday:
+            time_to_close = time_until_intraday_close_et(now_et).total_seconds()
+
         return {
             "running": self._running,
             "start_time": (
@@ -617,6 +703,9 @@ class CryptoSignalDaemon:
             "error_count": self._error_count,
             "signals_in_store": signals_in_store,
             "maintenance_window": self.is_maintenance_window(),
+            "leverage_tier": tier,
+            "intraday_available": is_intraday,
+            "intraday_close_seconds": time_to_close,
             "symbols": self.config.symbols,
             "scan_interval": self.config.scan_interval,
             "entry_monitor": entry_stats,
@@ -634,6 +723,42 @@ class CryptoSignalDaemon:
             return []
         return self.entry_monitor.get_pending_signals()
 
+    # =========================================================================
+    # POSITION MONITORING (Session CRYPTO-4)
+    # =========================================================================
+
+    def check_positions(self) -> int:
+        """
+        Check open positions for stop/target exits and execute if triggered.
+
+        Returns:
+            Number of positions closed
+        """
+        if self.position_monitor is None:
+            logger.debug("Position monitor not initialized")
+            return 0
+
+        # Check for exit conditions
+        exit_signals = self.position_monitor.check_exits()
+
+        if not exit_signals:
+            return 0
+
+        # Execute exits
+        closed = self.position_monitor.execute_all_exits(exit_signals)
+        return len(closed)
+
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        """
+        Get all open positions with current P&L.
+
+        Returns:
+            List of position dicts with P&L info
+        """
+        if self.position_monitor is None:
+            return []
+        return self.position_monitor.get_open_positions_with_pnl()
+
     def print_status(self) -> None:
         """Print current daemon status."""
         status = self.get_status()
@@ -645,6 +770,19 @@ class CryptoSignalDaemon:
         print(f"Uptime: {status['uptime_seconds']:.0f}s" if status["uptime_seconds"] else "Not started")
         print(f"Maintenance Window: {status['maintenance_window']}")
         print()
+
+        # Leverage tier info
+        tier = status.get('leverage_tier', 'swing')
+        is_intraday = status.get('intraday_available', False)
+        time_to_close = status.get('intraday_close_seconds')
+        print(f"Leverage Tier: {tier.upper()} ({'10x' if tier == 'intraday' else '4x'})")
+        if is_intraday and time_to_close:
+            hours = time_to_close / 3600
+            print(f"  Intraday Window: {hours:.1f}h until 4PM ET close")
+        elif not is_intraday:
+            print(f"  Note: In 4-6PM ET gap (swing only)")
+        print()
+
         print(f"Scans: {status['scan_count']}")
         print(f"Signals Detected: {status['signal_count']}")
         print(f"Triggers Fired: {status['trigger_count']}")

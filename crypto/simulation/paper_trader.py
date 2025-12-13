@@ -30,6 +30,12 @@ class SimulatedTrade:
     pnl: Optional[float] = None
     pnl_percent: Optional[float] = None
     status: str = "OPEN"  # OPEN, CLOSED
+    # Position monitoring fields (Session CRYPTO-4)
+    stop_price: Optional[float] = None
+    target_price: Optional[float] = None
+    timeframe: Optional[str] = None
+    pattern_type: Optional[str] = None
+    exit_reason: Optional[str] = None  # 'STOP', 'TARGET', 'MANUAL'
 
     def close(self, exit_price: float, exit_time: Optional[datetime] = None) -> None:
         """
@@ -65,6 +71,11 @@ class SimulatedTrade:
             "pnl": self.pnl,
             "pnl_percent": self.pnl_percent,
             "status": self.status,
+            "stop_price": self.stop_price,
+            "target_price": self.target_price,
+            "timeframe": self.timeframe,
+            "pattern_type": self.pattern_type,
+            "exit_reason": self.exit_reason,
         }
 
     @classmethod
@@ -78,6 +89,11 @@ class SimulatedTrade:
             entry_price=data["entry_price"],
             entry_time=datetime.fromisoformat(data["entry_time"]),
             status=data.get("status", "OPEN"),
+            stop_price=data.get("stop_price"),
+            target_price=data.get("target_price"),
+            timeframe=data.get("timeframe"),
+            pattern_type=data.get("pattern_type"),
+            exit_reason=data.get("exit_reason"),
         )
         if data.get("exit_price"):
             trade.exit_price = data["exit_price"]
@@ -155,6 +171,10 @@ class PaperTrader:
         quantity: float,
         entry_price: float,
         entry_time: Optional[datetime] = None,
+        stop_price: Optional[float] = None,
+        target_price: Optional[float] = None,
+        timeframe: Optional[str] = None,
+        pattern_type: Optional[str] = None,
     ) -> SimulatedTrade:
         """
         Open a new simulated trade.
@@ -165,6 +185,10 @@ class PaperTrader:
             quantity: Position size in base currency
             entry_price: Entry price
             entry_time: Entry timestamp (defaults to now)
+            stop_price: Stop loss price for position monitoring
+            target_price: Take profit price for position monitoring
+            timeframe: Signal timeframe (e.g., '1d', '4h')
+            pattern_type: STRAT pattern (e.g., '3-2U', '2D-1-2U')
 
         Returns:
             SimulatedTrade object
@@ -176,15 +200,21 @@ class PaperTrader:
             quantity=quantity,
             entry_price=entry_price,
             entry_time=entry_time or datetime.utcnow(),
+            stop_price=stop_price,
+            target_price=target_price,
+            timeframe=timeframe,
+            pattern_type=pattern_type,
         )
 
         self.account.open_trades.append(trade)
         logger.info(
-            "Opened simulated trade: %s %s %s @ %.2f",
+            "Opened simulated trade: %s %s %s @ %.2f (stop=%.2f, target=%.2f)",
             trade.trade_id,
             side,
             symbol,
             entry_price,
+            stop_price or 0,
+            target_price or 0,
         )
 
         self._save_state()

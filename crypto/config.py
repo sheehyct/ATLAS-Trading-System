@@ -46,12 +46,12 @@ CRYPTO_SPOT_SYMBOLS: List[str] = [
 # Leverage tiers based on holding period
 LEVERAGE_TIERS: Dict[str, Dict[str, float]] = {
     "intraday": {
-        "BTC": 10.0,   # Close before funding (8h)
+        "BTC": 10.0,   # Must close before 4PM ET
         "ETH": 10.0,
         "SOL": 10.0,
     },
     "swing": {
-        "BTC": 4.0,    # Holding through funding periods
+        "BTC": 4.0,    # Holding through funding periods, 24/7
         "ETH": 4.0,
         "SOL": 3.0,    # More volatile
     },
@@ -59,6 +59,25 @@ LEVERAGE_TIERS: Dict[str, Dict[str, float]] = {
 
 # Default leverage tier for position sizing
 DEFAULT_LEVERAGE_TIER: str = "swing"  # Conservative default
+
+# =============================================================================
+# INTRADAY LEVERAGE WINDOW (Coinbase INTX)
+# =============================================================================
+# Coinbase offers up to 10x leverage for intraday positions.
+# Intraday window: 6PM ET to 4PM ET next day (22 hours)
+# Unavailable window: 4PM ET to 6PM ET (2 hours) - swing leverage only
+#
+# Positions must be closed before 4PM ET to use intraday leverage.
+# If holding past 4PM ET, margin requirements increase to swing tier.
+
+# Intraday window start time (6PM ET = 18:00)
+INTRADAY_WINDOW_START_HOUR_ET: int = 18  # 6PM ET
+
+# Intraday window end time (4PM ET = 16:00 next day)
+INTRADAY_WINDOW_END_HOUR_ET: int = 16  # 4PM ET
+
+# Enable automatic tier switching based on time of day
+ENABLE_TIME_BASED_LEVERAGE: bool = True
 
 # Symbol-specific max leverage (legacy, use LEVERAGE_TIERS)
 SYMBOL_MAX_LEVERAGE: Dict[str, float] = {
@@ -244,3 +263,102 @@ COINBASE_MAX_CANDLES_PER_REQUEST: int = 300
 # Log all trades to file
 LOG_TRADES: bool = True
 TRADE_LOG_PATH: str = "crypto/logs/trades.log"
+
+
+# =============================================================================
+# LEVERAGE TIER HELPER FUNCTIONS
+# =============================================================================
+
+
+def is_intraday_window(now_et: "datetime.datetime") -> bool:
+    """
+    Check if current time is within intraday leverage window.
+
+    Intraday window: 6PM ET to 4PM ET next day (22 hours).
+    Unavailable: 4PM ET to 6PM ET (2 hours).
+
+    Args:
+        now_et: Current datetime in ET timezone
+
+    Returns:
+        True if intraday leverage is available
+    """
+    hour = now_et.hour
+    # Intraday window: 18:00 (6PM) to 16:00 (4PM) next day
+    # This means: hour >= 18 OR hour < 16
+    # Unavailable: 16:00 to 18:00 (4PM to 6PM)
+    return hour >= INTRADAY_WINDOW_START_HOUR_ET or hour < INTRADAY_WINDOW_END_HOUR_ET
+
+
+def get_current_leverage_tier(now_et: "datetime.datetime") -> str:
+    """
+    Get the current leverage tier based on time of day.
+
+    Args:
+        now_et: Current datetime in ET timezone
+
+    Returns:
+        "intraday" or "swing"
+    """
+    if not ENABLE_TIME_BASED_LEVERAGE:
+        return DEFAULT_LEVERAGE_TIER
+
+    if is_intraday_window(now_et):
+        return "intraday"
+    return "swing"
+
+
+def get_max_leverage_for_symbol(
+    symbol: str,
+    now_et: "datetime.datetime",
+) -> float:
+    """
+    Get the maximum leverage for a symbol based on current time.
+
+    Args:
+        symbol: Trading symbol (e.g., "BTC-PERP-INTX")
+        now_et: Current datetime in ET timezone
+
+    Returns:
+        Maximum leverage (10.0 for intraday, 4.0 for swing)
+    """
+    tier = get_current_leverage_tier(now_et)
+
+    # Extract base asset from symbol (BTC-PERP-INTX -> BTC)
+    base_asset = symbol.split("-")[0]
+
+    return LEVERAGE_TIERS.get(tier, {}).get(base_asset, DEFAULT_MAX_LEVERAGE)
+
+
+def time_until_intraday_close_et(now_et: "datetime.datetime") -> "datetime.timedelta":
+    """
+    Calculate time remaining until intraday window closes (4PM ET).
+
+    If currently outside intraday window, returns timedelta(0).
+
+    Args:
+        now_et: Current datetime in ET timezone
+
+    Returns:
+        Timedelta until 4PM ET, or 0 if outside window
+    """
+    from datetime import timedelta
+
+    if not is_intraday_window(now_et):
+        return timedelta(0)
+
+    hour = now_et.hour
+    # Calculate hours until 16:00 (4PM)
+    if hour >= INTRADAY_WINDOW_START_HOUR_ET:
+        # After 6PM, need to go through midnight to 4PM
+        # Hours remaining = (24 - hour) + 16
+        hours_remaining = (24 - hour) + INTRADAY_WINDOW_END_HOUR_ET
+    else:
+        # Before 4PM, just subtract
+        hours_remaining = INTRADAY_WINDOW_END_HOUR_ET - hour
+
+    # Subtract current minutes for more precision
+    minutes_remaining = 60 - now_et.minute
+    hours_remaining -= 1  # Adjust for partial hour
+
+    return timedelta(hours=hours_remaining, minutes=minutes_remaining)

@@ -1,9 +1,96 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 13, 2025 (Session CRYPTO-3)
+**Last Updated:** December 13, 2025 (Session CRYPTO-4)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Crypto automation stack complete, ready for VPS deployment
+**Status:** Crypto module v0.4.0 with intraday leverage and VPS deployment ready
+
+---
+
+## Session CRYPTO-4: Intraday Leverage and VPS Deployment (COMPLETE)
+
+**Date:** December 13, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Intraday leverage, VPS deployment, position monitoring
+
+### Objective
+
+Add time-based leverage tier switching and VPS deployment infrastructure.
+
+### Files Created
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `scripts/run_crypto_daemon.py` | CLI entry point for VPS daemon | 370 |
+| `deploy/atlas-crypto-daemon.service` | systemd service file | 50 |
+| `crypto/simulation/position_monitor.py` | Stop/target exit monitoring | 250 |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/config.py` | Added intraday leverage window (6PM-4PM ET), helper functions |
+| `crypto/__init__.py` | Export leverage helpers, bump to v0.4.0 |
+| `crypto/scanning/daemon.py` | Time-based leverage in _execute_trade, position monitoring integration |
+| `crypto/simulation/paper_trader.py` | Added stop/target/timeframe/pattern to SimulatedTrade |
+| `crypto/simulation/__init__.py` | Export CryptoPositionMonitor, ExitSignal |
+
+### Key Features
+
+1. **Time-Based Leverage Tiers**
+   - Intraday: 10x available 6PM-4PM ET (22 hours/day)
+   - Swing: 4x available 24/7
+   - Helper functions: `is_intraday_window()`, `get_max_leverage_for_symbol()`
+
+2. **VPS Deployment**
+   - CLI script with start, scan, status, positions, performance, leverage, reset commands
+   - systemd service file for production deployment
+   - Log file support for daemon mode
+
+3. **Position Monitoring**
+   - Stop/target prices stored with trades
+   - CryptoPositionMonitor checks exits in health loop
+   - Auto-close on stop loss or take profit
+
+### Verified Working
+
+```python
+from crypto import is_intraday_window, get_max_leverage_for_symbol
+
+# At 10AM ET (intraday window)
+# BTC-PERP-INTX: 10x leverage
+
+# At 5PM ET (4-6PM gap)
+# BTC-PERP-INTX: 4x leverage (swing only)
+```
+
+```bash
+uv run python scripts/run_crypto_daemon.py leverage
+# Current Tier: INTRADAY (10x)
+# Time until 4PM ET close: 0.1 hours
+```
+
+### VPS Deployment Commands
+
+```bash
+# On VPS (178.156.223.251)
+sudo cp deploy/atlas-crypto-daemon.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable atlas-crypto-daemon
+sudo systemctl start atlas-crypto-daemon
+sudo journalctl -u atlas-crypto-daemon -f
+```
+
+### Session CRYPTO-5 Priorities
+
+1. **VPS Deployment Test** - Deploy to VPS and verify 24/7 operation
+2. **Entry Monitor Enhancement** - More frequent position checks (every 60s vs 5min)
+3. **Discord Alerts** - Add crypto signal alerts to Discord
+4. **Performance Tracking** - Dashboard integration for crypto paper trades
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - VPS deployment is operational work.
 
 ---
 

@@ -1,0 +1,59 @@
+# Atlas Crypto STRAT Signal Daemon - systemd Service
+# Session CRYPTO-4
+#
+# Installation:
+#   sudo cp atlas-crypto-daemon.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable atlas-crypto-daemon
+#   sudo systemctl start atlas-crypto-daemon
+#
+# Commands:
+#   sudo systemctl status atlas-crypto-daemon
+#   sudo systemctl stop atlas-crypto-daemon
+#   sudo systemctl restart atlas-crypto-daemon
+#   sudo journalctl -u atlas-crypto-daemon -f
+
+[Unit]
+Description=Atlas Crypto STRAT Signal Daemon
+Documentation=https://github.com/your-repo/atlas
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atlas
+Group=atlas
+WorkingDirectory=/home/atlas/vectorbt-workspace
+Environment="PATH=/home/atlas/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="HOME=/home/atlas"
+
+# Load environment variables from .env file
+EnvironmentFile=-/home/atlas/vectorbt-workspace/.env
+
+# Command to run
+ExecStart=/home/atlas/.local/bin/uv run python scripts/run_crypto_daemon.py start --log-file /home/atlas/vectorbt-workspace/crypto/logs/daemon.log
+
+# Restart policy
+Restart=always
+RestartSec=30
+
+# Graceful shutdown
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGINT
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=atlas-crypto-daemon
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/atlas/vectorbt-workspace/crypto/simulation/data
+ReadWritePaths=/home/atlas/vectorbt-workspace/crypto/logs
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
