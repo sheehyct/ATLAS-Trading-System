@@ -692,10 +692,25 @@ class CryptoSignalScanner:
                     )
                     signals.append(signal)
 
-        # Detect SETUP patterns (last bar only)
+        # Detect SETUP patterns (still valid - inside bar not yet broken)
         setups = self._detect_setups(df)
         for p in setups:
-            if p["index"] == len(df) - 1:
+            setup_idx = p["index"]
+            setup_high = p.get("setup_bar_high", 0.0)
+            setup_low = p.get("setup_bar_low", 0.0)
+
+            # Check if setup is still valid (no subsequent bar broke inside bar)
+            # Setup is valid if all bars after setup_idx are inside the setup bar range
+            setup_still_valid = True
+            for j in range(setup_idx + 1, len(df)):
+                bar_high = df["High"].iloc[j]
+                bar_low = df["Low"].iloc[j]
+                if bar_high > setup_high or bar_low < setup_low:
+                    # Setup was broken by a subsequent bar
+                    setup_still_valid = False
+                    break
+
+            if setup_still_valid:
                 setup_ts = p.get("setup_bar_timestamp")
                 if hasattr(setup_ts, "to_pydatetime"):
                     setup_ts = setup_ts.to_pydatetime()
