@@ -1,9 +1,123 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 12, 2025 (Session 83K-81)
+**Last Updated:** December 12, 2025 (Session 83K-82)
 **Current Branch:** `main`
-**Phase:** Paper Trading - MONITORING
-**Status:** Dashboard P&L and Strategy Performance COMPLETE
+**Phase:** Paper Trading - MONITORING + Crypto Module Integration
+**Status:** Crypto derivatives module integrated, paper trading simulation ready
+
+---
+
+## Session 83K-82: Crypto Derivatives Module Integration (COMPLETE)
+
+**Date:** December 12, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Core infrastructure ready for paper trading
+
+### Objective
+
+Integrate BTC/ETH/SOL derivatives trading capability into Atlas using Coinbase Advanced Trade API. This complements the existing equities STRAT options strategy with 24/7 crypto trading.
+
+### Source Project
+
+Adapted code from `C:\Cypto_Trading_Bot` (Gemini 3.0 Pro prototype) - kept Coinbase client, discarded duplicate STRAT code (Atlas has better implementation).
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `crypto/__init__.py` | Module initialization |
+| `crypto/config.py` | Configuration (symbols, risk params, timeframes) |
+| `crypto/exchange/__init__.py` | Exchange module |
+| `crypto/exchange/coinbase_client.py` | Coinbase API client with public API fallback |
+| `crypto/data/__init__.py` | Data module |
+| `crypto/data/state.py` | System state management (bar classifications, positions) |
+| `crypto/trading/__init__.py` | Trading module |
+| `crypto/trading/sizing.py` | ATR-based position sizing with leverage limits |
+| `crypto/simulation/__init__.py` | Simulation module |
+| `crypto/simulation/paper_trader.py` | Paper trading with trade history, P&L tracking |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `.env` | Added COINBASE_API_KEY, COINBASE_API_SECRET |
+| `pyproject.toml` | Added coinbase-advanced-py>=1.8.2, removed alpaca-trade-api (conflict) |
+
+### Key Features
+
+1. **CoinbaseClient** (`crypto/exchange/coinbase_client.py`)
+   - Historical OHLCV data with resampling (4h, 1w)
+   - Public API fallback when auth fails (no auth needed for market data)
+   - Simulation mode for paper trading (mock orders, positions)
+   - Order creation (market, limit, stop)
+
+2. **PaperTrader** (`crypto/simulation/paper_trader.py`)
+   - Trade history with P&L calculation
+   - FIFO matching for closed trades
+   - Performance metrics (win rate, profit factor, expectancy)
+   - JSON persistence for session continuity
+
+3. **Position Sizing** (`crypto/trading/sizing.py`)
+   - ATR-based sizing with leverage cap (default 8x)
+   - Skip trade logic when leverage exceeds limit
+
+4. **State Management** (`crypto/data/state.py`)
+   - Multi-timeframe bar classifications
+   - Continuity scoring (FTFC)
+   - Veto checks (Weekly/Daily inside bars)
+
+### Verified Working
+
+```python
+# Current prices fetching (via public API)
+BTC-USD: $90,387
+ETH-USD: $3,091
+SOL-USD: $132
+
+# OHLCV data for all timeframes
+15m, 1h, 4h, 1d - all working
+
+# Paper trading simulation
+Trades open/close with P&L calculation working
+```
+
+### API Credentials - WORKING
+
+New Coinbase API credentials generated and verified working:
+- Authenticated API access confirmed
+- 16 accounts found
+- Perpetual futures products accessible
+
+### Perpetual Futures Access - VERIFIED
+
+| Product | Type | Status |
+|---------|------|--------|
+| `BTC-PERP-INTX` | Perpetual | Working ($90,177) |
+| `ETH-PERP-INTX` | Perpetual | Working ($3,121) |
+
+### Derivatives Infrastructure Added
+
+| File | Purpose |
+|------|---------|
+| `crypto/config.py` | Updated with INTX symbols, leverage tiers, funding rates, margin |
+| `crypto/trading/derivatives.py` | Funding cost calc, liquidation price, margin requirements |
+
+**Leverage Tiers:**
+- Intraday: 10x (close before 8h funding)
+- Swing: 4x BTC/ETH, 3x SOL
+
+**Funding:** 8h intervals (00:00, 08:00, 16:00 UTC), ~10% APR default
+
+### Session 83K-83 Priorities
+
+1. **Connect to Atlas STRAT** - Wire crypto data to `strat/` module for pattern detection
+2. **Create Crypto Signal Scanner** - Similar to `strat/paper_signal_scanner.py`
+3. **Test Paper Trading** - Validate simulation with real perp prices
+4. **Dashboard Integration** - Add crypto section to Atlas dashboard
+
+### Plan Mode Recommendation
+
+**PLAN MODE: ON** - Next step is connecting crypto to Atlas STRAT engine for pattern detection.
 
 ---
 
