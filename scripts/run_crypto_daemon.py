@@ -188,7 +188,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
         for s in signals:
             print(
                 f"  [{s.direction}] {s.symbol} {s.pattern_type} ({s.timeframe}) "
-                f"@ ${s.entry_price:,.2f} -> ${s.target_price:,.2f} "
+                f"@ ${s.entry_trigger:,.2f} -> ${s.target_price:,.2f} "
                 f"(R:R {s.risk_reward:.2f}) [{s.signal_type}]"
             )
     else:
