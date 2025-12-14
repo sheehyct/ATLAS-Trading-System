@@ -1,9 +1,90 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 14, 2025 (Session CRYPTO-5)
+**Last Updated:** December 14, 2025 (Session CRYPTO-6)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Crypto module v0.5.0 - Daemon deployed to VPS with Discord alerts
+**Status:** Crypto module v0.6.0 - Dashboard integration via REST API
+
+---
+
+## Session CRYPTO-6: Dashboard Integration via REST API (COMPLETE)
+
+**Date:** December 14, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - REST API + Dashboard crypto panel
+
+### Objective
+
+Add crypto paper trading panel to dashboard via REST API from VPS daemon.
+
+### Files Created
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `crypto/api/__init__.py` | API module init | 18 |
+| `crypto/api/server.py` | Flask REST API server | 232 |
+| `dashboard/data_loaders/crypto_loader.py` | Dashboard data loader | 311 |
+| `dashboard/components/crypto_panel.py` | Dashboard panel component | 1012 |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/scanning/daemon.py` | Added api_enabled, api_host, api_port config; _start_api_server() method |
+| `dashboard/data_loaders/__init__.py` | Export CryptoDataLoader |
+| `dashboard/app.py` | Import crypto components; init crypto_loader; add Crypto Trading tab; add callbacks |
+
+### Key Features
+
+1. **REST API (Port 8080)**
+   - Runs as daemon thread (single service)
+   - Endpoints: /health, /status, /positions, /signals, /performance, /trades
+   - Auto-starts with daemon
+
+2. **Dashboard Crypto Panel**
+   - Account summary: balance, P&L, return %
+   - Daemon status: running, leverage tier, scan counts
+   - Open positions with unrealized P&L
+   - Pending SETUP signals tab
+   - Closed trades tab with summary
+   - Performance metrics tab
+   - 30-second auto-refresh
+
+3. **Architecture**
+   - VPS daemon exposes API on port 8080
+   - Railway dashboard calls API via CRYPTO_API_URL env var
+   - Clean separation of concerns
+
+### Deployment Steps
+
+**VPS:**
+```bash
+ssh atlas@178.156.223.251
+cd ~/vectorbt-workspace && git pull
+sudo ufw allow 8080/tcp
+sudo systemctl restart atlas-crypto-daemon
+curl http://localhost:8080/health
+```
+
+**Railway:**
+1. Add env var: `CRYPTO_API_URL=http://178.156.223.251:8080`
+2. Push to main (auto-deploys)
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `c391111` | feat(crypto): add REST API and dashboard crypto trading panel |
+
+### Session CRYPTO-7 Priorities
+
+1. **Live Trading Mode** - Enable execution in daemon
+2. **Position Exit Tracking** - Track stop/target hits in dashboard
+3. **Performance Analytics** - Aggregate P&L by timeframe/pattern
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Execution enablement is operational work.
 
 ---
 
