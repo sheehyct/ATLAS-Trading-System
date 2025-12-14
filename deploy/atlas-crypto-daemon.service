@@ -53,6 +53,8 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/home/atlas/vectorbt-workspace/crypto/simulation/data
 ReadWritePaths=/home/atlas/vectorbt-workspace/crypto/logs
+ReadWritePaths=/home/atlas/.cache
+ReadWritePaths=/home/atlas/.local/share/uv
 PrivateTmp=true
 
 [Install]
