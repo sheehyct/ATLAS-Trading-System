@@ -76,6 +76,16 @@ curl http://localhost:8080/health
 |------|---------|
 | `c391111` | feat(crypto): add REST API and dashboard crypto trading panel |
 
+### Investigation: TradingView vs Coinbase Data
+
+During session, investigated discrepancies between Discord alerts and TradingView charts:
+
+- **Finding:** TradingView was missing Dec 13-14 data, causing visual mismatch
+- **Root Cause:** Different data sources (TradingView vs Coinbase INTX)
+- **Verification:** Bar classification is CORRECT based on Coinbase data
+- **Confirmed:** All 5 timeframes (1w, 1d, 4h, 1h, 15m) are being scanned
+- **Note:** Use Coinbase data for analysis since we trade on Coinbase INTX
+
 ### Session CRYPTO-7 Priorities
 
 1. **Live Trading Mode** - Enable execution in daemon
