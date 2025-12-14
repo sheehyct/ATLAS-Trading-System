@@ -206,6 +206,7 @@ class CryptoSignalDaemon:
             maintenance_window_enabled=self.config.maintenance_window_enabled,
             signal_expiry_hours=self.config.signal_expiry_hours,
             on_trigger=self._on_trigger,
+            on_poll=self._on_poll,  # Session CRYPTO-5: 60s position checks
         )
 
         self.entry_monitor = CryptoEntryMonitor(
@@ -215,6 +216,17 @@ class CryptoSignalDaemon:
         logger.info(
             f"Entry monitor initialized (poll: {self.config.entry_poll_interval}s)"
         )
+
+    def _on_poll(self) -> None:
+        """
+        Callback on each entry monitor poll cycle - Session CRYPTO-5.
+
+        Used for more frequent position monitoring (60s instead of 5min health loop).
+        """
+        if self.position_monitor:
+            closed_count = self.check_positions()
+            if closed_count > 0:
+                logger.info(f"Poll position check: closed {closed_count} trade(s)")
 
     # =========================================================================
     # TRIGGER HANDLING
@@ -529,15 +541,10 @@ class CryptoSignalDaemon:
             logger.debug(f"Cleaned up {len(expired_ids)} expired signals")
 
     def _health_loop(self) -> None:
-        """Background health check loop with position monitoring."""
+        """Background health check loop for status logging."""
+        # Note: Position monitoring moved to entry monitor poll (60s) in Session CRYPTO-5
         while not self._shutdown_event.is_set():
             try:
-                # Check positions for stop/target exits (Session CRYPTO-4)
-                if self.position_monitor:
-                    closed_count = self.check_positions()
-                    if closed_count > 0:
-                        logger.info(f"Position monitor closed {closed_count} trade(s)")
-
                 status = self.get_status()
                 logger.info(
                     f"HEALTH: scans={status['scan_count']}, "

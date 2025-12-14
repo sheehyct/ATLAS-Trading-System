@@ -85,6 +85,9 @@ class CryptoEntryMonitorConfig:
     # Callback when trigger fires
     on_trigger: Optional[Callable[[CryptoTriggerEvent], None]] = None
 
+    # Callback on each poll cycle (for position monitoring) - Session CRYPTO-5
+    on_poll: Optional[Callable[[], None]] = None
+
     # Signal expiry in hours
     signal_expiry_hours: int = config.SIGNAL_EXPIRY_HOURS
 
@@ -439,6 +442,13 @@ class CryptoEntryMonitor:
                             self.config.on_trigger(event)
                         except Exception as e:
                             logger.error(f"Trigger callback error: {e}")
+
+                # Fire on_poll callback (for position monitoring) - Session CRYPTO-5
+                if self.config.on_poll:
+                    try:
+                        self.config.on_poll()
+                    except Exception as e:
+                        logger.error(f"Poll callback error: {e}")
 
                 # Sleep until next poll
                 time_module.sleep(self.config.poll_interval)
