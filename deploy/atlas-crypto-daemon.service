@@ -31,7 +31,7 @@ Environment="HOME=/home/atlas"
 EnvironmentFile=-/home/atlas/vectorbt-workspace/.env
 
 # Command to run
-ExecStart=/home/atlas/.local/bin/uv run python scripts/run_crypto_daemon.py start --log-file /home/atlas/vectorbt-workspace/crypto/logs/daemon.log
+ExecStart=/home/atlas/.local/bin/uv run python scripts/run_crypto_daemon.py --log-file /home/atlas/vectorbt-workspace/crypto/logs/daemon.log start
 
 # Restart policy
 Restart=always
