@@ -61,8 +61,10 @@ from crypto.trading.sizing import calculate_position_size, should_skip_trade
 # Optional Discord alerter import - Session CRYPTO-5
 try:
     from crypto.alerters.discord_alerter import CryptoDiscordAlerter
-except ImportError:
+except Exception as _discord_import_err:
     CryptoDiscordAlerter = None  # type: ignore
+    # Log will be available after logger is configured
+    _discord_import_error_msg = str(_discord_import_err)
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +248,8 @@ class CryptoSignalDaemon:
             return
 
         if CryptoDiscordAlerter is None:
-            logger.warning("Discord alerter not available (import failed)")
+            error_msg = globals().get('_discord_import_error_msg', 'unknown error')
+            logger.warning(f"Discord alerter not available (import failed: {error_msg})")
             return
 
         try:
