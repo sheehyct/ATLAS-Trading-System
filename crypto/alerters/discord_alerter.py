@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 from crypto.scanning.models import CryptoDetectedSignal, CryptoSignalContext
 from crypto.scanning.entry_monitor import CryptoTriggerEvent
-from crypto import config, is_intraday_window, get_max_leverage_for_symbol
+from crypto.config import is_intraday_window, get_max_leverage_for_symbol
 
 logger = logging.getLogger(__name__)
 
