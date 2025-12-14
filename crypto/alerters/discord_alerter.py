@@ -21,6 +21,13 @@ from crypto.scanning.models import CryptoDetectedSignal, CryptoSignalContext
 from crypto.scanning.entry_monitor import CryptoTriggerEvent
 from crypto.config import is_intraday_window, get_max_leverage_for_symbol
 
+# Timezone support
+try:
+    import pytz
+    ET_TIMEZONE = pytz.timezone("America/New_York")
+except ImportError:
+    ET_TIMEZONE = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -169,6 +176,15 @@ class CryptoDiscordAlerter:
         """Generate unique key for a signal."""
         return f"{signal.symbol}_{signal.timeframe}_{signal.pattern_type}_{signal.direction}"
 
+    def _get_now_et(self) -> datetime:
+        """Get current time in Eastern timezone."""
+        now_utc = datetime.now(timezone.utc)
+        if ET_TIMEZONE is not None:
+            return now_utc.astimezone(ET_TIMEZONE)
+        # Fallback: UTC-5 approximation
+        from datetime import timedelta
+        return (now_utc - timedelta(hours=5)).replace(tzinfo=None)
+
     def _create_signal_embed(self, signal: CryptoDetectedSignal) -> Dict[str, Any]:
         """Create Discord embed for a crypto signal."""
         color = COLORS.get(signal.direction, COLORS['INFO'])
@@ -184,8 +200,9 @@ class CryptoDiscordAlerter:
         description = f"**{signal.pattern_type}** {signal_type_str} on {signal.timeframe}"
 
         # Leverage tier info
-        leverage = get_max_leverage_for_symbol(signal.symbol)
-        tier = "INTRADAY" if is_intraday_window() else "SWING"
+        now_et = self._get_now_et()
+        leverage = get_max_leverage_for_symbol(signal.symbol, now_et)
+        tier = "INTRADAY" if is_intraday_window(now_et) else "SWING"
 
         # Fields
         fields = [
