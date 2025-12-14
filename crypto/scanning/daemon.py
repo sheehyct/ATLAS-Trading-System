@@ -58,6 +58,12 @@ from crypto.simulation.paper_trader import PaperTrader
 from crypto.simulation.position_monitor import CryptoPositionMonitor
 from crypto.trading.sizing import calculate_position_size, should_skip_trade
 
+# Optional Discord alerter import - Session CRYPTO-5
+try:
+    from crypto.alerters.discord_alerter import CryptoDiscordAlerter
+except ImportError:
+    CryptoDiscordAlerter = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +101,9 @@ class CryptoDaemonConfig:
 
     # Callback when signal triggered (for custom handling)
     on_trigger: Optional[Callable[[CryptoTriggerEvent], None]] = None
+
+    # Discord webhook URL for alerts (Session CRYPTO-5)
+    discord_webhook_url: Optional[str] = None
 
 
 class CryptoSignalDaemon:
@@ -148,6 +157,7 @@ class CryptoSignalDaemon:
         self.paper_trader = paper_trader
         self.position_monitor: Optional[CryptoPositionMonitor] = None
         self.entry_monitor: Optional[CryptoEntryMonitor] = None
+        self.discord_alerter: Optional[CryptoDiscordAlerter] = None  # Session CRYPTO-5
 
         # Signal tracking
         self._detected_signals: Dict[str, CryptoDetectedSignal] = {}
@@ -170,6 +180,7 @@ class CryptoSignalDaemon:
         # Initialize components
         self._setup_paper_trader()
         self._setup_entry_monitor()
+        self._setup_discord_alerter()  # Session CRYPTO-5
 
     # =========================================================================
     # COMPONENT SETUP
@@ -228,6 +239,25 @@ class CryptoSignalDaemon:
             if closed_count > 0:
                 logger.info(f"Poll position check: closed {closed_count} trade(s)")
 
+    def _setup_discord_alerter(self) -> None:
+        """Initialize Discord alerter if webhook URL provided - Session CRYPTO-5."""
+        if not self.config.discord_webhook_url:
+            logger.debug("Discord alerter not configured (no webhook URL)")
+            return
+
+        if CryptoDiscordAlerter is None:
+            logger.warning("Discord alerter not available (import failed)")
+            return
+
+        try:
+            self.discord_alerter = CryptoDiscordAlerter(
+                webhook_url=self.config.discord_webhook_url,
+                username='ATLAS Crypto Bot',
+            )
+            logger.info("Discord alerter initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize Discord alerter: {e}")
+
     # =========================================================================
     # TRIGGER HANDLING
     # =========================================================================
@@ -261,6 +291,13 @@ class CryptoSignalDaemon:
                 self.config.on_trigger(event)
             except Exception as e:
                 logger.error(f"Custom trigger callback error: {e}")
+
+        # Send Discord alert - Session CRYPTO-5
+        if self.discord_alerter:
+            try:
+                self.discord_alerter.send_trigger_alert(event)
+            except Exception as e:
+                logger.error(f"Discord trigger alert error: {e}")
 
     def _get_current_time_et(self) -> datetime:
         """Get current time in ET timezone."""
@@ -440,6 +477,13 @@ class CryptoSignalDaemon:
                         f"{signal.direction} ({signal.timeframe}) "
                         f"[{signal.signal_type}]"
                     )
+
+                    # Send Discord alert - Session CRYPTO-5
+                    if self.discord_alerter:
+                        try:
+                            self.discord_alerter.send_signal_alert(signal)
+                        except Exception as e:
+                            logger.error(f"Discord signal alert error: {e}")
 
             except Exception as e:
                 logger.error(f"Error scanning {symbol}: {e}")

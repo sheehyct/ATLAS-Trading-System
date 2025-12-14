@@ -108,17 +108,22 @@ def cmd_start(args: argparse.Namespace) -> int:
     if args.balance:
         paper_balance = args.balance
 
+    # Discord webhook - Session CRYPTO-5
+    discord_webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
+
     # Create config
     daemon_config = CryptoDaemonConfig(
         symbols=symbols,
         paper_balance=paper_balance,
         enable_execution=not args.no_execute,
+        discord_webhook_url=discord_webhook_url,
     )
 
     print(f"Configuration:")
     print(f"  Symbols: {', '.join(symbols)}")
     print(f"  Paper Balance: ${paper_balance:,.2f}")
     print(f"  Execution: {'Enabled' if daemon_config.enable_execution else 'Disabled'}")
+    print(f"  Discord Alerts: {'Enabled' if discord_webhook_url else 'Disabled'}")
     print(f"  Scan Interval: {daemon_config.scan_interval}s")
     print(f"  Entry Poll Interval: {daemon_config.entry_poll_interval}s")
     print()
