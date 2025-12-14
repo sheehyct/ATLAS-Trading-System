@@ -303,6 +303,10 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
         self._session = requests.Session()
         self._connected = False
 
+        # Session 84: Cache for strike/expiration lookups to minimize API calls
+        self._strikes_cache: Dict[str, List[float]] = {}  # Key: "symbol_expiration"
+        self._dates_cache: Dict[str, List[datetime]] = {}  # Key: "symbol_expiration_strike_right"
+
     def _create_default_logger(self) -> logging.Logger:
         """Create default logger if none provided."""
         logger = logging.getLogger('thetadata_client')
@@ -587,8 +591,16 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
                 return response.json()
 
             except requests.exceptions.RequestException as e:
+                error_str = str(e).lower()
+
+                # Session 84: 472 = NO_DATA - do NOT retry, just return empty
+                if '472' in error_str:
+                    self.logger.debug(f"No data (472) from {endpoint}")
+                    return {'response': []}
+
+                # Only retry on transient errors
                 is_retryable = any(
-                    keyword in str(e).lower()
+                    keyword in error_str
                     for keyword in ['timeout', 'connection', '429', '503']
                 )
 
@@ -836,7 +848,7 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
             'strike': self._format_strike(strike),
             'right': self._format_right(option_type),
             'date': self._format_date(as_of),
-            'interval': '1h',  # Hourly intervals for intraday Greeks
+            'interval': '5m',  # Session 85: Use 5m instead of 1h (1h causes 472 errors)
         }
 
         try:
@@ -1099,6 +1111,244 @@ class ThetaDataRESTClient(ThetaDataProviderBase):
                 f"{str(e)}"
             )
             return pd.DataFrame()
+
+    # =========================================================================
+    # Session 84: Strike/Expiration Validation Methods
+    # =========================================================================
+
+    def get_dates_with_data(
+        self,
+        underlying: str,
+        expiration: datetime,
+        strike: float,
+        option_type: str
+    ) -> List[datetime]:
+        """
+        Get all dates that have quote data for a specific contract.
+
+        Uses the /v3/option/list/dates/quote endpoint to find dates
+        with available data BEFORE requesting quotes.
+
+        Session 84: Added to prevent 472 errors by pre-validating data availability.
+
+        Args:
+            underlying: Underlying symbol (e.g., 'SPY')
+            expiration: Option expiration date
+            strike: Strike price in dollars
+            option_type: 'C' or 'P'
+
+        Returns:
+            List of dates with available quote data
+        """
+        cache_key = f"{underlying}_{self._format_expiration(expiration)}_{strike}_{option_type}"
+
+        # Check cache first
+        if cache_key in self._dates_cache:
+            return self._dates_cache[cache_key]
+
+        params = {
+            'symbol': underlying.upper(),
+            'expiration': self._format_expiration(expiration),
+            'strike': self._format_strike(strike),
+            'right': self._format_right(option_type),
+        }
+
+        try:
+            result = self._make_request_v3('option/list/dates/quote', params)
+
+            response_list = result.get('response', [])
+            if not response_list:
+                self._dates_cache[cache_key] = []
+                return []
+
+            dates = []
+            for item in response_list:
+                date_str = item.get('date', '')
+                if not date_str:
+                    continue
+
+                try:
+                    dt = datetime.strptime(date_str, '%Y-%m-%d')
+                    dates.append(dt)
+                except ValueError:
+                    try:
+                        dt = datetime.strptime(date_str, '%Y%m%d')
+                        dates.append(dt)
+                    except ValueError:
+                        continue
+
+            dates = sorted(dates)
+            self._dates_cache[cache_key] = dates
+            return dates
+
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to get dates for {underlying} {strike} {option_type} "
+                f"exp {expiration.date()}: {str(e)}"
+            )
+            return []
+
+    def get_strikes_cached(
+        self,
+        underlying: str,
+        expiration: datetime
+    ) -> List[float]:
+        """
+        Get available strikes with caching.
+
+        Session 84: Cached version of get_strikes() to minimize API calls
+        during backtest runs.
+
+        Args:
+            underlying: Underlying symbol
+            expiration: Expiration date
+
+        Returns:
+            List of available strike prices in dollars
+        """
+        cache_key = f"{underlying}_{self._format_expiration(expiration)}"
+
+        # Check cache first
+        if cache_key in self._strikes_cache:
+            return self._strikes_cache[cache_key]
+
+        # Fetch from API
+        strikes = self.get_strikes(underlying, expiration)
+        self._strikes_cache[cache_key] = strikes
+        return strikes
+
+    def find_nearest_strike(
+        self,
+        available_strikes: List[float],
+        target_strike: float,
+        underlying_price: float,
+        prefer_atm: bool = True
+    ) -> Optional[float]:
+        """
+        Find the nearest available strike to a target.
+
+        Session 84: Utility method for strike selection with ATM fallback.
+
+        Args:
+            available_strikes: List of strikes that exist in ThetaData
+            target_strike: Desired strike price
+            underlying_price: Current underlying price (for ATM calculation)
+            prefer_atm: If True and target not found, fall back to ATM
+
+        Returns:
+            Nearest available strike, or None if no strikes available
+        """
+        if not available_strikes:
+            return None
+
+        # Find exact match first
+        if target_strike in available_strikes:
+            return target_strike
+
+        # Find nearest strike to target
+        nearest = min(available_strikes, key=lambda s: abs(s - target_strike))
+
+        # If nearest is too far from target, prefer ATM
+        if prefer_atm and abs(nearest - target_strike) > abs(target_strike - underlying_price) * 0.5:
+            # Find ATM strike instead
+            atm = min(available_strikes, key=lambda s: abs(s - underlying_price))
+            return atm
+
+        return nearest
+
+    def find_valid_expiration(
+        self,
+        underlying: str,
+        target_date: datetime,
+        target_dte: int,
+        min_dte: int = 7,
+        max_dte: int = 90
+    ) -> Optional[datetime]:
+        """
+        Find a valid expiration near the target DTE for historical backtesting.
+
+        Session 84: IMPORTANT - For historical data, we CALCULATE the expiration
+        (third Friday of target month) rather than querying current expirations.
+        The /v3/option/list/expirations endpoint returns CURRENT expirations,
+        not historical ones.
+
+        Args:
+            underlying: Underlying symbol
+            target_date: Historical date (the entry date for the trade)
+            target_dte: Target days to expiration
+            min_dte: Minimum acceptable DTE
+            max_dte: Maximum acceptable DTE
+
+        Returns:
+            Valid expiration date, or None if none found
+        """
+        # Calculate target expiration date
+        target_exp_date = target_date + timedelta(days=target_dte)
+
+        # Find third Friday of that month (standard monthly expiration)
+        year = target_exp_date.year
+        month = target_exp_date.month
+
+        # First day of month
+        first_day = datetime(year, month, 1)
+        # Find first Friday (weekday 4)
+        days_until_friday = (4 - first_day.weekday()) % 7
+        first_friday = first_day + timedelta(days=days_until_friday)
+        # Third Friday
+        third_friday = first_friday + timedelta(weeks=2)
+
+        # If third Friday is too close to target_date (less than min_dte), use next month
+        if (third_friday.date() - target_date.date()).days < min_dte:
+            # Try next month
+            if month == 12:
+                year += 1
+                month = 1
+            else:
+                month += 1
+            first_day = datetime(year, month, 1)
+            days_until_friday = (4 - first_day.weekday()) % 7
+            first_friday = first_day + timedelta(days=days_until_friday)
+            third_friday = first_friday + timedelta(weeks=2)
+
+        return third_friday
+
+    def validate_contract(
+        self,
+        underlying: str,
+        expiration: datetime,
+        strike: float,
+        option_type: str,
+        as_of: datetime
+    ) -> bool:
+        """
+        Check if a contract has data for a specific date.
+
+        Session 84: Pre-validation to avoid 472 errors.
+
+        Args:
+            underlying: Underlying symbol
+            expiration: Expiration date
+            strike: Strike price
+            option_type: 'C' or 'P'
+            as_of: Historical date to check
+
+        Returns:
+            True if data exists for this contract on this date
+        """
+        dates = self.get_dates_with_data(underlying, expiration, strike, option_type)
+
+        if not dates:
+            return False
+
+        # Check if as_of date is in the list of dates with data
+        as_of_date = as_of.date()
+        return any(d.date() == as_of_date for d in dates)
+
+    def clear_cache(self) -> None:
+        """Clear all cached data. Call at start of new backtest run."""
+        self._strikes_cache.clear()
+        self._dates_cache.clear()
+        self.logger.debug("ThetaData cache cleared")
 
 
 # Convenience function for creating client

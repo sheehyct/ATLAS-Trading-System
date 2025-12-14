@@ -1,7 +1,7 @@
 # STRAT Options Validation - Master Findings Report
 
 **Generated:** 2025-12-07
-**Last Updated:** Session 83K-53 (December 7, 2025)
+**Last Updated:** Session 85 (December 14, 2025)
 **Data Period:** January 8, 2020 - November 25, 2025 (5.9 years)
 **Total Trades Analyzed:** 2,468 (options) + 8,748 (equity validation)
 **Symbols:** AAPL, DIA, IWM, QQQ, SPY
@@ -631,3 +631,129 @@ Based on bars-to-magnitude analysis, recommended DTE settings:
 | 1D | Daily bars |
 | 1W | Weekly bars |
 | 1M | Monthly bars |
+
+---
+
+## 26. ThetaData Real Pricing Validation (Session 84-85)
+
+### Overview
+
+Sessions 84-85 validated STRAT options performance using **real historical options pricing** from ThetaData instead of Black-Scholes synthetic pricing. This provides ground-truth validation of the strategy.
+
+### Critical Fixes Applied
+
+1. **ThetaData 472 Errors (Session 84):** Root cause was querying `/option/list/expirations` which returns CURRENT expirations only. Fix: Calculate third Friday expiration instead of querying API.
+
+2. **STRAT Strike Selection (Session 84 - CRITICAL):** Original formula selected 6-7% OTM strikes (lottery tickets). Correct STRAT methodology: strike within [Entry, Target] range.
+   ```
+   WRONG:  strike = entry + underlying_price * 0.065 (6-7% OTM)
+   CORRECT: strike = entry + 0.3 * (target - entry) for calls
+            strike = entry - 0.3 * (entry - target) for puts
+   ```
+
+3. **Greeks Interval (Session 85):** Changed `/option/history/greeks/first_order` interval from `1h` to `5m` to avoid 472 errors.
+
+### SPY Backtest Results (ThetaData Real Pricing, 2018-2024)
+
+**Benchmark:** SPY Buy-and-Hold = +121.5% ($25,000 to $55,380)
+
+| Risk Level | Final Capital | Return | Profit Factor | Win Rate | vs B&H |
+|------------|--------------|--------|---------------|----------|--------|
+| 2% | $34,380 | +37.5% | 1.14 | 46.3% | -84% behind |
+| 5% | $45,416 | +81.7% | 1.22 | 46.3% | -40% behind |
+| 6% | $45,649 | +82.6% | 1.20 | 46.3% | -39% behind |
+| **7%** | **$51,972** | **+107.9%** | **1.23** | **46.3%** | **-14% behind** |
+| 8% | $100,326 | +301.3% | 1.43 | 46.3% | +180% ahead |
+| 10% | $120,668 | +382.7% | 1.48 | 46.3% | +261% ahead |
+
+**Key Finding:** 7% risk level most closely matches SPY B&H benchmark.
+
+### Best Performing Patterns (10% Risk, ThetaData)
+
+| Pattern | Trades | P&L | Win Rate |
+|---------|--------|-----|----------|
+| 2-2 Up | 218 | +$64,978 | 48.0% |
+| 2U-1-2U | 40 | +$25,696 | 50.0% |
+| 2D-1-2U | 28 | +$14,987 | 54.0% |
+| 2U-1-2D | 32 | +$4,877 | 41.0% |
+
+### Worst Performing Patterns (10% Risk, ThetaData)
+
+| Pattern | Trades | P&L | Win Rate |
+|---------|--------|-----|----------|
+| 2D-1-2D | 20 | -$13,971 | 25.0% |
+| 3-1-2 Up | 18 | -$3,201 | 50.0% |
+
+### Performance by Timeframe (7% Risk)
+
+| Timeframe | Trades | P&L | Win Rate |
+|-----------|--------|-----|----------|
+| 1D | 307 | +$29,893 | 77.2% |
+| 1W | 47 | -$656 | 80.9% |
+| 1M | 11 | -$2,265 | 72.7% |
+
+**Key Finding:** Daily timeframe drives all profitability. Weekly and Monthly underperform with ThetaData real pricing.
+
+---
+
+## 27. Greeks Verification (Session 85)
+
+### Methodology
+
+Sampled 30 trades across 2018-2024 and queried ThetaData `/option/history/greeks/first_order` endpoint to verify strike selection produces deltas in target range (0.30-0.80).
+
+### Results
+
+| Metric | Value |
+|--------|-------|
+| ThetaData Success Rate | 96.7% (29/30 trades) |
+| **In Target Range (0.30-0.80)** | **100%** |
+| Mean Delta (absolute) | 0.507 |
+| Median Delta | 0.510 |
+| Delta Range | 0.405 - 0.673 |
+
+### Delta Distribution
+
+| Range | Trades | Interpretation |
+|-------|--------|----------------|
+| < 0.20 (deep OTM) | 0 | None |
+| 0.20-0.30 (OTM) | 0 | None |
+| 0.30-0.50 (slight OTM) | 14 | Good directional exposure |
+| 0.50-0.70 (ATM/ITM) | 15 | Optimal delta range |
+| 0.70-0.80 (ITM) | 0 | None |
+| > 0.80 (deep ITM) | 0 | None |
+
+### By Option Type
+
+| Type | Mean Delta | Trades |
+|------|------------|--------|
+| Calls | +0.510 | 26 |
+| Puts | -0.484 | 3 |
+
+### Assessment
+
+**PASS:** STRAT strike selection methodology (strike within [Entry, Target] range) produces optimal deltas centered around 0.50 (ATM). This validates the strike selection formula:
+- Calls: `strike = entry + 0.3 * (target - entry)`
+- Puts: `strike = entry - 0.3 * (entry - target)`
+
+---
+
+## 28. QuantStats Reports Generated (Session 85)
+
+Professional tearsheets generated for each risk level with ThetaData real pricing:
+
+| Report | Risk | Return | Location |
+|--------|------|--------|----------|
+| strat_options_SPY_2pct_thetadata.html | 2% | +37.5% | reports/ |
+| strat_options_SPY_5pct_thetadata.html | 5% | +81.7% | reports/ |
+| strat_options_SPY_6pct_thetadata.html | 6% | +82.6% | reports/ |
+| strat_options_SPY_7pct_thetadata.html | 7% | +107.9% | reports/ |
+| strat_options_SPY_8pct_thetadata.html | 8% | +301.3% | reports/ |
+| strat_options_SPY_10pct_thetadata.html | 10% | +382.7% | reports/ |
+
+Each report includes:
+- Cumulative returns vs SPY buy-and-hold
+- Monthly returns heatmap
+- Drawdown analysis (ranked)
+- Rolling Sharpe ratio
+- Trade-level metrics by pattern/timeframe
