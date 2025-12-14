@@ -1,9 +1,89 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 13, 2025 (Session CRYPTO-4)
+**Last Updated:** December 14, 2025 (Session CRYPTO-5)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Crypto module v0.4.0 with intraday leverage and VPS deployment ready
+**Status:** Crypto module v0.5.0 - Daemon deployed to VPS with Discord alerts
+
+---
+
+## Session CRYPTO-5: VPS Deployment and Discord Alerts (COMPLETE)
+
+**Date:** December 14, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - VPS deployment, 60s position monitoring, Discord alerts
+
+### Objective
+
+Deploy crypto daemon to VPS for 24/7 operation and add Discord alerts for signals.
+
+### Files Created
+
+| File | Purpose | Lines |
+|------|---------|-------|
+| `crypto/alerters/__init__.py` | Alerters module init | 10 |
+| `crypto/alerters/discord_alerter.py` | CryptoDiscordAlerter class | 520 |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/scanning/daemon.py` | Added discord_webhook_url config, _on_poll callback, Discord integration |
+| `crypto/scanning/entry_monitor.py` | Added on_poll callback for 60s position checks |
+| `scripts/run_crypto_daemon.py` | Added Discord webhook env var support |
+| `deploy/atlas-crypto-daemon.service` | Fixed argument order, added cache paths |
+
+### Key Features
+
+1. **VPS Deployment (LIVE)**
+   - Daemon running 24/7 on 178.156.223.251
+   - systemd service auto-starts on boot
+   - Logs at `/home/atlas/vectorbt-workspace/crypto/logs/daemon.log`
+
+2. **60-Second Position Monitoring**
+   - Moved from 5-minute health loop to entry monitor poll
+   - Faster stop/target exit detection
+   - via `on_poll` callback in entry monitor
+
+3. **Discord Alerts**
+   - Rich embeds with color-coded signals (green=LONG, red=SHORT)
+   - Leverage tier and TFC score in alerts
+   - Trigger alerts for SETUP patterns
+   - Separate crypto webhook configured
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `2321b42` | fix(crypto): correct entry_price -> entry_trigger in CLI |
+| `0bdadff` | fix(crypto): resolve pandas FutureWarning |
+| `75452ea` | fix(deploy): add uv cache paths to systemd |
+| `576196f` | fix(deploy): correct argument order |
+| `6392b4f` | feat(crypto): add 60s position monitoring via poll |
+| `6dd2bf9` | feat(crypto): add Discord alerts for crypto signals |
+| `6460f33` | fix(crypto): improve Discord alerter import error logging |
+| `67e8981` | fix(crypto): resolve circular import in Discord alerter |
+| `1a7a230` | fix(crypto): pass now_et to leverage/intraday functions |
+
+### VPS Status
+
+```bash
+# Check daemon status
+ssh atlas@178.156.223.251 "sudo systemctl status atlas-crypto-daemon"
+
+# View logs
+ssh atlas@178.156.223.251 "sudo journalctl -u atlas-crypto-daemon -f"
+```
+
+### Session CRYPTO-6 Priorities
+
+1. **Dashboard Integration** - Add crypto paper trading panel
+2. **Live Trading** - Enable execution mode (currently signals only)
+3. **Performance Tracking** - Aggregate crypto P&L metrics
+
+### Plan Mode Recommendation
+
+**PLAN MODE: ON** - Dashboard integration requires architectural planning.
 
 ---
 
@@ -80,6 +160,14 @@ sudo systemctl enable atlas-crypto-daemon
 sudo systemctl start atlas-crypto-daemon
 sudo journalctl -u atlas-crypto-daemon -f
 ```
+
+### Bug Fix: SETUP Detection Across Inside Bars
+
+**Issue:** SETUP patterns (2-1, 3-1) were only detected if on the last bar. Missed setups when subsequent bars were also inside bars (e.g., 2D-1-1 structure).
+
+**Fix:** Now checks if inside bar high/low was broken by subsequent bars. If still valid, SETUP is included.
+
+**Commit:** `6ed6169` - fix(crypto): detect SETUP patterns that remain valid across inside bars
 
 ### Session CRYPTO-5 Priorities
 
