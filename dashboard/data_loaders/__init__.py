@@ -5,6 +5,7 @@ from dashboard.data_loaders.backtest_loader import BacktestDataLoader
 from dashboard.data_loaders.live_loader import LiveDataLoader
 from dashboard.data_loaders.orders_loader import OrdersDataLoader
 from dashboard.data_loaders.options_loader import OptionsDataLoader
+from dashboard.data_loaders.crypto_loader import CryptoDataLoader
 
 __all__ = [
     'RegimeDataLoader',
@@ -12,4 +13,5 @@ __all__ = [
     'LiveDataLoader',
     'OrdersDataLoader',
     'OptionsDataLoader',
+    'CryptoDataLoader',
 ]

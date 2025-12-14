@@ -59,6 +59,15 @@ from dashboard.components.options_panel import (
     create_trade_progress_chart,
     create_closed_trades_table,
 )
+from dashboard.components.crypto_panel import (
+    create_crypto_panel,
+    create_account_summary_display,
+    create_daemon_status_display,
+    create_positions_table as create_crypto_positions_table,
+    create_signals_table as create_crypto_signals_table,
+    create_closed_trades_table as create_crypto_closed_table,
+    create_performance_metrics,
+)
 
 # Import data loaders
 from dashboard.data_loaders.regime_loader import RegimeDataLoader
@@ -66,6 +75,7 @@ from dashboard.data_loaders.backtest_loader import BacktestDataLoader
 from dashboard.data_loaders.live_loader import LiveDataLoader
 from dashboard.data_loaders.orders_loader import OrdersDataLoader
 from dashboard.data_loaders.options_loader import OptionsDataLoader
+from dashboard.data_loaders.crypto_loader import CryptoDataLoader
 
 # Import visualizations
 from dashboard.visualizations.regime_viz import (
@@ -177,6 +187,16 @@ try:
 except Exception as e:
     logger.warning(f"OptionsDataLoader initialization failed: {e}")
     options_loader = None
+
+try:
+    crypto_loader = CryptoDataLoader()
+    if crypto_loader._connected:
+        logger.info("CryptoDataLoader initialized successfully with VPS connection")
+    else:
+        logger.warning(f"CryptoDataLoader initialized but not connected: {crypto_loader.init_error}")
+except Exception as e:
+    logger.warning(f"CryptoDataLoader initialization failed: {e}")
+    crypto_loader = None
 
 # ============================================
 # APP LAYOUT
@@ -290,6 +310,17 @@ app.layout = dbc.Container([
                             'font-weight': 'bold'
                         }
                     ),
+
+                    # Tab 6: Crypto Trading (Session CRYPTO-6)
+                    dbc.Tab(
+                        label='Crypto Trading',
+                        tab_id='crypto-tab',
+                        label_style={'color': COLORS['text_primary']},
+                        active_label_style={
+                            'color': '#22D3EE',  # Cyan for crypto
+                            'font-weight': 'bold'
+                        }
+                    ),
                 ],
             ),
         ], className='p-0')
@@ -342,6 +373,8 @@ def render_tab_content(active_tab):
         return create_risk_panel()
     elif active_tab == 'options-tab':
         return create_options_panel()
+    elif active_tab == 'crypto-tab':
+        return create_crypto_panel()
     else:
         return html.Div('Tab content not found')
 
@@ -1625,6 +1658,124 @@ def update_trade_progress(n_intervals, active_tab):
     except Exception as e:
         logger.error(f"Error updating trade progress: {e}")
         return create_trade_progress_chart([])
+
+
+# ============================================
+# CRYPTO TRADING CALLBACKS (Session CRYPTO-6)
+# ============================================
+
+@app.callback(
+    [Output('crypto-account-summary', 'children'),
+     Output('crypto-daemon-status', 'children'),
+     Output('crypto-positions-container', 'children'),
+     Output('crypto-positions-count', 'children')],
+    [Input('crypto-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_crypto_overview(n_intervals, active_tab):
+    """
+    Update crypto overview: account summary, daemon status, positions.
+
+    Only updates when crypto tab is active to save resources.
+    """
+    try:
+        # Skip update if not on crypto tab
+        if active_tab != 'crypto-tab':
+            from dash import no_update
+            return no_update, no_update, no_update, no_update
+
+        if crypto_loader is None:
+            from dashboard.components.crypto_panel import _create_api_error_placeholder
+            error_placeholder = _create_api_error_placeholder('Crypto loader not available')
+            return (
+                error_placeholder,
+                error_placeholder,
+                error_placeholder,
+                dbc.Badge('!', color='danger')
+            )
+
+        # Fetch data
+        account = crypto_loader.get_account_summary()
+        status = crypto_loader.get_daemon_status()
+        positions = crypto_loader.get_open_positions()
+
+        # Position count badge
+        pos_count = len(positions)
+        badge_color = 'info' if pos_count > 0 else 'secondary'
+
+        return (
+            create_account_summary_display(account),
+            create_daemon_status_display(status),
+            create_crypto_positions_table(positions),
+            dbc.Badge(str(pos_count), color=badge_color, className='ms-2')
+        )
+
+    except Exception as e:
+        logger.error(f"Error updating crypto overview: {e}")
+        from dashboard.components.crypto_panel import _create_api_error_placeholder
+        error_placeholder = _create_api_error_placeholder(f'Error: {str(e)[:50]}')
+        return (
+            error_placeholder,
+            error_placeholder,
+            error_placeholder,
+            dbc.Badge('!', color='danger')
+        )
+
+
+@app.callback(
+    [Output('crypto-signals-container', 'children'),
+     Output('crypto-closed-container', 'children'),
+     Output('crypto-performance-container', 'children')],
+    [Input('crypto-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_crypto_tabs(n_intervals, active_tab):
+    """
+    Update crypto tab content: signals, closed trades, performance.
+
+    Only updates when crypto tab is active to save resources.
+    """
+    try:
+        # Skip update if not on crypto tab
+        if active_tab != 'crypto-tab':
+            from dash import no_update
+            return no_update, no_update, no_update
+
+        if crypto_loader is None:
+            from dashboard.components.crypto_panel import (
+                _create_no_signals_placeholder,
+                _create_no_closed_trades_placeholder,
+                _create_api_error_placeholder,
+            )
+            return (
+                _create_no_signals_placeholder(),
+                _create_no_closed_trades_placeholder(),
+                _create_api_error_placeholder('Crypto loader not available')
+            )
+
+        # Fetch data
+        signals = crypto_loader.get_pending_signals()
+        closed = crypto_loader.get_closed_trades(limit=50)
+        metrics = crypto_loader.get_performance_metrics()
+
+        return (
+            create_crypto_signals_table(signals),
+            create_crypto_closed_table(closed),
+            create_performance_metrics(metrics)
+        )
+
+    except Exception as e:
+        logger.error(f"Error updating crypto tabs: {e}")
+        from dashboard.components.crypto_panel import (
+            _create_no_signals_placeholder,
+            _create_no_closed_trades_placeholder,
+            _create_api_error_placeholder,
+        )
+        return (
+            _create_no_signals_placeholder(),
+            _create_no_closed_trades_placeholder(),
+            _create_api_error_placeholder(f'Error: {str(e)[:50]}')
+        )
 
 
 # ============================================

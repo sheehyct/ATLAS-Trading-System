@@ -107,6 +107,11 @@ class CryptoDaemonConfig:
     # Discord webhook URL for alerts (Session CRYPTO-5)
     discord_webhook_url: Optional[str] = None
 
+    # REST API configuration (Session CRYPTO-6)
+    api_enabled: bool = True
+    api_host: str = '0.0.0.0'
+    api_port: int = 8080
+
 
 class CryptoSignalDaemon:
     """
@@ -170,6 +175,7 @@ class CryptoSignalDaemon:
         self._shutdown_event = threading.Event()
         self._scan_thread: Optional[threading.Thread] = None
         self._health_thread: Optional[threading.Thread] = None
+        self._api_thread: Optional[threading.Thread] = None  # Session CRYPTO-6
 
         # Statistics
         self._start_time: Optional[datetime] = None
@@ -260,6 +266,31 @@ class CryptoSignalDaemon:
             logger.info("Discord alerter initialized")
         except Exception as e:
             logger.error(f"Failed to initialize Discord alerter: {e}")
+
+    def _start_api_server(self) -> None:
+        """Start REST API server in background thread - Session CRYPTO-6."""
+        try:
+            from crypto.api.server import init_api, run_api
+
+            # Initialize API with daemon reference
+            init_api(self)
+
+            # Start API in background thread
+            self._api_thread = threading.Thread(
+                target=run_api,
+                kwargs={
+                    'host': self.config.api_host,
+                    'port': self.config.api_port,
+                },
+                daemon=True,
+                name="CryptoAPIServer",
+            )
+            self._api_thread.start()
+            logger.info(
+                f"REST API server started on {self.config.api_host}:{self.config.api_port}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to start API server: {e}")
 
     # =========================================================================
     # TRIGGER HANDLING
@@ -664,6 +695,10 @@ class CryptoSignalDaemon:
         )
         self._health_thread.start()
         logger.info("Health check loop started")
+
+        # Start REST API server (Session CRYPTO-6)
+        if self.config.api_enabled:
+            self._start_api_server()
 
         logger.info("Crypto signal daemon started successfully")
 
