@@ -336,7 +336,8 @@ class CoinbaseClient:
         df = pd.DataFrame(data)
         for col in ["open", "high", "low", "close", "volume"]:
             df[col] = pd.to_numeric(df[col])
-        df["datetime"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+        # Ensure timestamp is numeric before conversion (fixes FutureWarning)
+        df["datetime"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="s", utc=True)
         df = df.set_index("datetime").sort_index()
         return df[["open", "high", "low", "close", "volume"]]
 
