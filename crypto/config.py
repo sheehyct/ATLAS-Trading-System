@@ -240,7 +240,8 @@ MAINTENANCE_END_HOUR_UTC: int = 23  # 23:00 UTC = 6 PM ET
 MIN_MAGNITUDE_PCT: float = 0.5
 
 # Minimum reward:risk ratio for signals
-MIN_SIGNAL_RISK_REWARD: float = 1.5
+# Lowered from 1.5 to 1.0 to allow daily timeframe patterns (Session CRYPTO-8)
+MIN_SIGNAL_RISK_REWARD: float = 1.0
 
 # Signal expiry (how long SETUP signals remain valid)
 SIGNAL_EXPIRY_HOURS: int = 24
