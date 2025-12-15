@@ -1,9 +1,94 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 15, 2025 (Session CRYPTO-7)
+**Last Updated:** December 15, 2025 (Session CRYPTO-8)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Crypto module v0.7.0 - Discord trade alerts wired
+**Status:** Crypto module v0.8.0 - Pattern transition detection fixed
+
+---
+
+## Session CRYPTO-8: STRAT Pattern Transition Detection Fix (COMPLETE)
+
+**Date:** December 15, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Critical STRAT entry logic fixed
+
+### Objective
+
+Fix incorrect trade entries caused by misclassifying bars and not detecting when SETUP patterns become 2-bar patterns.
+
+### Root Cause Discovered
+
+STRAT principle "Where is the next 2?" was not implemented correctly:
+- A SETUP (X-1-?) was assigned predetermined direction (LONG or SHORT)
+- When the inside bar broke OPPOSITE direction, the trade was still entered in original direction
+- Example: 2U-1-? LONG setup, but bar broke DOWN → should be 2U-2D SHORT, not LONG
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/scanning/models.py` | Added prior_bar_type/high/low fields to track pattern transitions |
+| `crypto/scanning/signal_scanner.py` | Populate prior bar info for all SETUP signals (2-1, 3-1) |
+| `crypto/scanning/entry_monitor.py` | Rewrite check_triggers() to watch BOTH directions |
+| `crypto/scanning/daemon.py` | Use actual_direction from trigger event, prevent duplicate positions |
+| `crypto/config.py` | Lowered MIN_SIGNAL_RISK_REWARD from 1.5 to 1.0 |
+| `dashboard/components/crypto_panel.py` | Added entry_time display to open positions |
+
+### Key Fixes
+
+1. **Bidirectional SETUP Monitoring**
+   - Entry monitor now watches BOTH inside bar high AND low
+   - Break above → X-1-2U → LONG
+   - Break below → X-2D (2-bar pattern) → SHORT
+
+2. **Pattern Transition Detection**
+   - When inside bar breaks down: 2U-1-? → 2U-2D (reversal SHORT)
+   - When inside bar breaks down: 2D-1-? → 2D-2D (continuation SHORT)
+   - Prior bar info stored to identify resulting 2-bar pattern
+
+3. **Duplicate Position Prevention**
+   - Check for existing position before opening new trade
+   - Prevents multiple positions on same symbol from different timeframes
+
+4. **R:R Threshold Lowered**
+   - Changed from 1.5 to 1.0 to allow daily timeframe patterns
+   - Daily patterns typically have R:R 0.6-1.3 due to target placement
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `6a80ed6` | fix(crypto): lower R:R threshold to 1.0 for daily patterns |
+| `dcf6fc8` | fix(crypto): prevent duplicate positions and add entry times to dashboard |
+| `8296211` | fix(crypto): detect SETUP→2-bar pattern transitions in entry monitor |
+
+### Investigation: 4H BTC Misclassification
+
+**Issue:** 4H BTC bar classified as inside (1) when it was actually 2D (broke down)
+
+**Root Cause:** Bar classification was correct at scan time, but bar continued forming and broke down after scan. Entry monitor didn't detect the pattern change.
+
+**Fix:** Entry monitor now checks if "inside bar" has broken its bounds in either direction:
+- Broke UP → pattern completes as X-1-2U
+- Broke DOWN → pattern becomes X-2D (2-bar)
+
+### Session CRYPTO-9 Priorities
+
+1. **Dashboard Closed Trades Enhancement**
+   - Add pattern/setup traded to closed trades section
+   - Add entry time (currently only exit time shown)
+   - Add TFC score for each trade
+
+2. **Monitor Pattern Detection**
+   - Verify bidirectional SETUP monitoring works in production
+   - Confirm 2-bar pattern detection (2U-2D, 2D-2U, etc.)
+
+3. **Live Trading Mode** - Enable execution (deferred from CRYPTO-7)
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Dashboard enhancement is straightforward implementation.
 
 ---
 
