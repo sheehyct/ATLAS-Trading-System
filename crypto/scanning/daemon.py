@@ -370,8 +370,7 @@ class CryptoSignalDaemon:
 
         # Check if position already exists for this symbol (Session CRYPTO-8)
         # Only allow one position per symbol to prevent duplicate entries
-        open_trades = self.paper_trader.get_open_trades()
-        existing_position = any(t.symbol == signal.symbol for t in open_trades)
+        existing_position = self.paper_trader.get_open_position(signal.symbol)
         if existing_position:
             logger.info(
                 f"SKIPPING TRADE: Position already exists for {signal.symbol} "
