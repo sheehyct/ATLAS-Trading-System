@@ -1,9 +1,113 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 15, 2025 (Session CRYPTO-8)
+**Last Updated:** December 15, 2025 (Session CRYPTO-9)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Crypto module v0.8.0 - Pattern transition detection fixed
+**Status:** Equity daemon cron fix deployed - scans now run on Mondays
+
+---
+
+## Session CRYPTO-9: Cron Fix + Dashboard Closed Trades Enhancement (COMPLETE)
+
+**Date:** December 15, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Cron fix deployed, dashboard enhanced
+
+### Part 1: Critical Cron Day-of-Week Bug Fix
+
+Investigate and fix why the equity/options STRAT daemon had zero activity during today's market session (Monday).
+
+### Root Cause Discovered
+
+**CRITICAL BUG:** All cron expressions used `1-5` for day_of_week, but APScheduler interprets this as Tuesday-Saturday, NOT Monday-Friday.
+
+**APScheduler weekday mapping:**
+- 0 = Monday
+- 1 = Tuesday
+- 2 = Wednesday
+- 3 = Thursday
+- 4 = Friday
+- 5 = Saturday
+- 6 = Sunday
+
+**Impact:** Scans never ran on Mondays. Today is Monday, so zero scans occurred despite the daemon running.
+
+### Evidence
+
+```python
+# Test with 1-5 (old config - WRONG)
+CronTrigger(day_of_week='1-5')  # Tue-Sat
+# Result: Next run = Tuesday (skips Monday)
+
+# Test with mon-fri (new config - CORRECT)
+CronTrigger(day_of_week='mon-fri')  # Mon-Fri
+# Result: Next run = Monday (same day)
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/signal_automation/config.py` | Fixed 4 cron expressions: 1-5 -> mon-fri, 5 -> fri |
+
+### Key Fixes
+
+1. **hourly_cron:** `'30 9-15 * * 1-5'` -> `'30 9-15 * * mon-fri'`
+2. **daily_cron:** `'0 17 * * 1-5'` -> `'0 17 * * mon-fri'`
+3. **weekly_cron:** `'0 18 * * 5'` -> `'0 18 * * fri'` (was running Saturday)
+4. **base_scan_cron:** `'30,45,0,15 9-15 * * 1-5'` -> `'30,45,0,15 9-15 * * mon-fri'`
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `553ee45` | fix(strat): correct cron day-of-week from 1-5 to mon-fri |
+
+### Verification
+
+After fix deployment, tested cron schedule on VPS:
+- Before: Next run = Tomorrow (Tuesday) 9:00 AM
+- After: Next run = Today (Monday) 3:15 PM
+
+Scans now correctly scheduled for remaining market hours today (3:15, 3:30, 3:45 PM).
+
+### Part 2: Dashboard Closed Trades Enhancement
+
+Enhanced the crypto dashboard closed trades table with additional information.
+
+**Files Modified:**
+
+| File | Changes |
+|------|---------|
+| `crypto/simulation/paper_trader.py` | Added tfc_score field to SimulatedTrade |
+| `crypto/scanning/daemon.py` | Pass TFC score from signal context when opening trades |
+| `dashboard/components/crypto_panel.py` | Enhanced closed trades table display |
+
+**Closed Trades Table Enhancements:**
+- Pattern (pattern_type + timeframe) displayed with symbol
+- Entry time displayed alongside entry price
+- TFC score column with color highlighting (green for 3+/4)
+- Consolidated columns (Entry/Exit show price + time)
+
+**Commits:**
+
+| Hash | Message |
+|------|---------|
+| `58a5cf4` | feat(crypto): enhance closed trades dashboard with pattern, entry time, TFC |
+
+### Crypto Daemon Status
+
+The crypto daemon was working correctly - not affected by cron bug. It detected 21 signals across 6 scans today.
+
+### Session CRYPTO-10 Priorities
+
+1. **Monitor equity daemon scans** - Verify scans run tomorrow (Tuesday)
+2. **Monitor pattern detection** - Verify bidirectional SETUP monitoring in production
+3. **Live Trading Mode** for crypto (deferred from CRYPTO-7)
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Monitoring and operational work.
 
 ---
 
