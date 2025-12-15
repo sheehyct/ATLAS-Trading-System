@@ -832,29 +832,45 @@ class AlpacaTradingClient:
 
         while True:
             try:
-                # Use the trading client's get_activities method
-                activities = self._retry_api_call(
-                    self.client.get_activities,
-                    activity_types='FILL',
-                    after=after.isoformat() if after else None,
-                    page_size=page_size,
-                    page_token=page_token
-                )
+                # Build query params
+                # Note: alpaca-py TradingClient.get() needs RFC3339 format: YYYY-MM-DDTHH:MM:SSZ
+                params = {
+                    'page_size': page_size,
+                }
+                if after:
+                    params['after'] = after.strftime('%Y-%m-%dT%H:%M:%SZ')
+                if page_token:
+                    params['page_token'] = page_token
+
+                # Use raw API call - TradingClient doesn't have get_activities method
+                # Session CRYPTO-9: Fixed to use client.get() instead of client.get_activities()
+                activities = self.client.get('/account/activities/FILL', params)
 
                 if not activities:
                     break
 
                 for activity in activities:
-                    # Normalize the activity data
-                    symbol = getattr(activity, 'symbol', None)
-                    side = getattr(activity, 'side', None)
-                    price = getattr(activity, 'price', None)
-                    qty = getattr(activity, 'qty', None)
-                    transaction_time = getattr(activity, 'transaction_time', None)
-                    activity_id = getattr(activity, 'id', None)
+                    # Response is a list of dicts from the raw API
+                    symbol = activity.get('symbol')
+                    side = activity.get('side')
+                    price = activity.get('price')
+                    qty = activity.get('qty')
+                    transaction_time_str = activity.get('transaction_time')
+                    activity_id = activity.get('id')
 
                     if not all([symbol, side, price, qty]):
                         continue
+
+                    # Parse transaction_time from ISO format
+                    transaction_time = None
+                    if transaction_time_str:
+                        try:
+                            # Handle timezone-aware ISO format
+                            transaction_time = datetime.fromisoformat(
+                                transaction_time_str.replace('Z', '+00:00')
+                            )
+                        except ValueError:
+                            pass
 
                     fills.append({
                         'id': str(activity_id) if activity_id else '',
@@ -862,8 +878,8 @@ class AlpacaTradingClient:
                         'side': str(side).lower(),
                         'price': float(price),
                         'qty': float(qty),
-                        'time': transaction_time.isoformat() if transaction_time else '',
-                        'time_dt': transaction_time if transaction_time else None
+                        'time': transaction_time_str or '',
+                        'time_dt': transaction_time
                     })
 
                 # Check for next page
@@ -871,7 +887,7 @@ class AlpacaTradingClient:
                 if len(activities) < page_size:
                     break
 
-                page_token = str(activities[-1].id) if activities else None
+                page_token = activities[-1].get('id') if activities else None
                 if not page_token:
                     break
 
