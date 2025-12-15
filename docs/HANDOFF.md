@@ -86,11 +86,23 @@ During session, investigated discrepancies between Discord alerts and TradingVie
 - **Confirmed:** All 5 timeframes (1w, 1d, 4h, 1h, 15m) are being scanned
 - **Note:** Use Coinbase data for analysis since we trade on Coinbase INTX
 
+### BUG: Daily Timeframe Alerts Missing
+
+**Issue:** ETH daily 2D-1-2D pattern (Dec 12-14) not alerted despite daemon running.
+- Pattern confirmed in Coinbase data: Dec 12 (2D) -> Dec 13 (1) -> Dec 14 (2D)
+- Entry trigger $3,078.49 was hit (Dec 14 low = $3,050)
+- 4h/1h alerts working, but daily missing
+
+**Investigate in CRYPTO-7:**
+1. Add verbose logging for daily timeframe pattern detection
+2. Check if daily bars detected correctly during incomplete bar periods
+3. Verify `detected_time` handling for daily patterns
+
 ### Session CRYPTO-7 Priorities
 
-1. **Live Trading Mode** - Enable execution in daemon
-2. **Position Exit Tracking** - Track stop/target hits in dashboard
-3. **Performance Analytics** - Aggregate P&L by timeframe/pattern
+1. **Debug Daily Alerts** - Add logging, fix missing daily timeframe signals
+2. **Live Trading Mode** - Enable execution in daemon
+3. **Position Exit Tracking** - Track stop/target hits in dashboard
 
 ### Plan Mode Recommendation
 
