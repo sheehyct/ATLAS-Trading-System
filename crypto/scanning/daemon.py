@@ -435,6 +435,7 @@ class CryptoSignalDaemon:
                 target_price=signal.target_price,
                 timeframe=signal.timeframe,
                 pattern_type=signal.pattern_type,
+                tfc_score=signal.context.tfc_score,  # Session CRYPTO-9
             )
 
             self._execution_count += 1

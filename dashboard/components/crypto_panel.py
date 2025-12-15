@@ -777,12 +777,27 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
         symbol = trade.get('symbol', '')
         side = trade.get('side', '')
         quantity = trade.get('quantity', 0)
-        entry_price = trade.get('entry_price', 0)
-        exit_price = trade.get('exit_price', 0)
+        entry_price = trade.get('entry_price') or 0
+        exit_price = trade.get('exit_price') or 0
         pnl = trade.get('pnl', 0) or 0
         pnl_pct = trade.get('pnl_percent', 0) or 0
         exit_reason = trade.get('exit_reason', '')
         exit_time = trade.get('exit_time', '')
+        entry_time = trade.get('entry_time', '')  # Session CRYPTO-9
+        pattern_type = trade.get('pattern_type', '')  # Session CRYPTO-9
+        timeframe = trade.get('timeframe', '')  # Session CRYPTO-9
+        tfc_score = trade.get('tfc_score')  # Session CRYPTO-9
+
+        # Format entry time
+        entry_time_display = ''
+        if entry_time:
+            try:
+                from datetime import datetime
+                if isinstance(entry_time, str):
+                    dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+                    entry_time_display = dt.strftime('%m/%d %H:%M')
+            except Exception:
+                entry_time_display = str(entry_time)[:16]
 
         # P&L color
         row_pnl_color = DARK_THEME['accent_green'] if pnl >= 0 else DARK_THEME['accent_red']
@@ -794,14 +809,20 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
         # Exit reason badge color
         reason_color = 'success' if exit_reason == 'TARGET' else 'danger' if exit_reason == 'STOP' else 'secondary'
 
+        # TFC score display
+        tfc_display = f'{tfc_score}/4' if tfc_score is not None else '-'
+        tfc_color = DARK_THEME['accent_green'] if tfc_score and tfc_score >= 3 else DARK_THEME['text_secondary']
+
         rows.append(
             html.Tr([
-                # Symbol
+                # Symbol + Pattern
                 html.Td([
-                    html.Span(symbol, style={
+                    html.Div(symbol, style={
                         'fontWeight': 'bold',
                         'color': DARK_THEME['text_primary']
-                    })
+                    }),
+                    html.Small(f'{pattern_type} ({timeframe})' if pattern_type else '',
+                               style={'color': DARK_THEME['text_secondary']})
                 ], style={'padding': '0.75rem'}),
 
                 # Side
@@ -809,20 +830,24 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                     html.Span(side_label, style={'color': side_color})
                 ], style={'padding': '0.75rem'}),
 
-                # Qty
+                # Entry Price + Time
                 html.Td([
-                    f'{quantity:.6f}'
-                ], style={'padding': '0.75rem', 'color': DARK_THEME['text_secondary']}),
+                    html.Div(f'${entry_price:,.2f}', style={
+                        'color': DARK_THEME['text_primary']
+                    }),
+                    html.Small(entry_time_display, style={
+                        'color': DARK_THEME['text_secondary']
+                    }) if entry_time_display else None
+                ], style={'padding': '0.75rem'}),
 
-                # Entry
+                # Exit Price + Time
                 html.Td([
-                    f'${entry_price:,.2f}'
-                ], style={'padding': '0.75rem', 'color': DARK_THEME['text_secondary']}),
-
-                # Exit
-                html.Td([
-                    f'${exit_price:,.2f}'
-                ], style={'padding': '0.75rem', 'color': DARK_THEME['text_secondary']}),
+                    html.Div(f'${exit_price:,.2f}', style={
+                        'color': DARK_THEME['text_primary']
+                    }),
+                    html.Small(str(exit_time)[:16] if exit_time else '',
+                               style={'color': DARK_THEME['text_secondary']})
+                ], style={'padding': '0.75rem'}),
 
                 # Realized P&L
                 html.Td([
@@ -833,15 +858,17 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                     html.Small(f'({pnl_pct:+.2f}%)', style={'color': row_pnl_color})
                 ], style={'padding': '0.75rem'}),
 
+                # TFC Score
+                html.Td([
+                    html.Span(tfc_display, style={
+                        'color': tfc_color,
+                        'fontWeight': 'bold' if tfc_score and tfc_score >= 3 else 'normal'
+                    })
+                ], style={'padding': '0.75rem', 'textAlign': 'center'}),
+
                 # Exit Reason
                 html.Td([
                     dbc.Badge(exit_reason or 'MANUAL', color=reason_color)
-                ], style={'padding': '0.75rem'}),
-
-                # Exit Time
-                html.Td([
-                    html.Small(str(exit_time)[:16] if exit_time else '',
-                               style={'color': DARK_THEME['text_secondary']})
                 ], style={'padding': '0.75rem'}),
 
             ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
@@ -850,14 +877,13 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
     table = html.Table([
         html.Thead([
             html.Tr([
-                html.Th('Symbol', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Symbol / Pattern', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Side', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
-                html.Th('Qty', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Entry', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Exit', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('P&L', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
-                html.Th('Reason', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
-                html.Th('Closed', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('TFC', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem', 'textAlign': 'center'}),
+                html.Th('Result', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
             ], style={'backgroundColor': DARK_THEME['card_header']})
         ]),
         html.Tbody(rows)

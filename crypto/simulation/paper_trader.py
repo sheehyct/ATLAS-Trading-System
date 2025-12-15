@@ -36,6 +36,7 @@ class SimulatedTrade:
     timeframe: Optional[str] = None
     pattern_type: Optional[str] = None
     exit_reason: Optional[str] = None  # 'STOP', 'TARGET', 'MANUAL'
+    tfc_score: Optional[int] = None  # Timeframe Continuity score (0-4)
 
     def close(self, exit_price: float, exit_time: Optional[datetime] = None) -> None:
         """
@@ -76,6 +77,7 @@ class SimulatedTrade:
             "timeframe": self.timeframe,
             "pattern_type": self.pattern_type,
             "exit_reason": self.exit_reason,
+            "tfc_score": self.tfc_score,
         }
 
     @classmethod
@@ -94,6 +96,7 @@ class SimulatedTrade:
             timeframe=data.get("timeframe"),
             pattern_type=data.get("pattern_type"),
             exit_reason=data.get("exit_reason"),
+            tfc_score=data.get("tfc_score"),
         )
         if data.get("exit_price"):
             trade.exit_price = data["exit_price"]
@@ -175,6 +178,7 @@ class PaperTrader:
         target_price: Optional[float] = None,
         timeframe: Optional[str] = None,
         pattern_type: Optional[str] = None,
+        tfc_score: Optional[int] = None,
     ) -> SimulatedTrade:
         """
         Open a new simulated trade.
@@ -189,6 +193,7 @@ class PaperTrader:
             target_price: Take profit price for position monitoring
             timeframe: Signal timeframe (e.g., '1d', '4h')
             pattern_type: STRAT pattern (e.g., '3-2U', '2D-1-2U')
+            tfc_score: Timeframe Continuity score (0-4)
 
         Returns:
             SimulatedTrade object
@@ -204,6 +209,7 @@ class PaperTrader:
             target_price=target_price,
             timeframe=timeframe,
             pattern_type=pattern_type,
+            tfc_score=tfc_score,
         )
 
         self.account.open_trades.append(trade)
