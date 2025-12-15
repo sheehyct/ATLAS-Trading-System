@@ -337,8 +337,10 @@ class CryptoEntryMonitor:
         Check all pending signals for entry trigger breaches.
 
         Per STRAT methodology (from strat-methodology skill):
-        - LONG: price > setup_bar_high (bullish break)
-        - SHORT: price < setup_bar_low (bearish break)
+        - SETUP signals watch BOTH directions (Session CRYPTO-8):
+          - Break above inside bar high → pattern completes as X-1-2U → LONG
+          - Break below inside bar low → pattern becomes X-2D (2-bar) → SHORT
+        - "Where is the next 2?" - the direction that breaks first determines entry
 
         Entry is LIVE when current bar breaks inside bar bound.
 
@@ -366,35 +368,79 @@ class CryptoEntryMonitor:
             if current_price is None:
                 continue
 
-            # Determine trigger level based on direction
-            # Per STRAT: X-1-2 patterns trigger when price breaks inside bar
+            # CRITICAL FIX (Session CRYPTO-8): Check BOTH directions for SETUP signals
+            # Per STRAT: "Where is the next 2?" - whichever direction breaks first
             is_triggered = False
             trigger_level = 0.0
+            actual_direction = signal.direction  # May change if opposite break
 
-            if signal.direction == "LONG":
-                # Use setup_bar_high for bullish break
-                trigger_level = signal.setup_bar_high
-                if trigger_level > 0:
-                    # LONG triggers when price > setup_bar_high (strict break above)
-                    is_triggered = current_price > trigger_level
-            else:  # SHORT
-                # Use setup_bar_low for bearish break
-                trigger_level = signal.setup_bar_low
-                if trigger_level > 0:
-                    # SHORT triggers when price < setup_bar_low (strict break below)
-                    is_triggered = current_price < trigger_level
+            setup_high = signal.setup_bar_high
+            setup_low = signal.setup_bar_low
+
+            # Check for upward break (inside bar becomes 2U → bullish)
+            broke_up = setup_high > 0 and current_price > setup_high
+            # Check for downward break (inside bar becomes 2D → bearish)
+            broke_down = setup_low > 0 and current_price < setup_low
+
+            if broke_up and not broke_down:
+                # Inside bar broke UP → pattern completes as X-1-2U → LONG
+                trigger_level = setup_high
+                actual_direction = "LONG"
+                is_triggered = True
+                logger.info(
+                    f"SETUP RESOLVED UP: {signal.symbol} {signal.pattern_type} → "
+                    f"X-1-2U LONG @ ${trigger_level:,.2f}"
+                )
+
+            elif broke_down and not broke_up:
+                # Inside bar broke DOWN → bar is now 2D
+                # Pattern changes from X-1-? to X-2D (2-bar pattern)
+                trigger_level = setup_low
+                actual_direction = "SHORT"
+                is_triggered = True
+
+                # Determine the 2-bar pattern based on prior bar
+                prior_type = getattr(signal, 'prior_bar_type', 0)
+                if prior_type == 2:  # Prior was 2U
+                    new_pattern = "2U-2D"
+                elif prior_type == -2:  # Prior was 2D
+                    new_pattern = "2D-2D"
+                elif prior_type == 3:  # Prior was outside
+                    new_pattern = "3-2D"
+                else:
+                    new_pattern = "X-2D"
+
+                logger.info(
+                    f"SETUP CHANGED TO 2-BAR: {signal.symbol} {signal.pattern_type} → "
+                    f"{new_pattern} SHORT @ ${trigger_level:,.2f}"
+                )
+
+            elif broke_up and broke_down:
+                # Both bounds broken → outside bar (type 3)
+                # This is unusual during monitoring - log and skip
+                logger.warning(
+                    f"OUTSIDE BAR: {signal.symbol} {signal.pattern_type} broke both bounds"
+                )
 
             if is_triggered:
+                # Update signal direction if it changed
+                if actual_direction != signal.direction:
+                    # Create modified signal with new direction for the trigger event
+                    # Note: We don't modify the original signal object
+                    pass  # Direction is captured in actual_direction
+
                 event = CryptoTriggerEvent(
                     signal=signal,
                     trigger_price=trigger_level,
                     current_price=current_price,
                 )
+                # Store the actual direction for execution
+                event._actual_direction = actual_direction
                 triggered.append(event)
                 triggered_ids.append(self._generate_signal_id(signal))
 
                 logger.info(
-                    f"TRIGGER: {signal.symbol} {signal.pattern_type} {signal.direction} "
+                    f"TRIGGER: {signal.symbol} {signal.pattern_type} {actual_direction} "
                     f"@ ${trigger_level:,.2f} (current: ${current_price:,.2f}, "
                     f"timeframe: {signal.timeframe})"
                 )

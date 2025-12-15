@@ -66,6 +66,12 @@ class CryptoDetectedSignal:
     setup_bar_low: float = 0.0
     setup_bar_timestamp: Optional[datetime] = None
 
+    # Prior bar info for detecting pattern transitions (Session CRYPTO-8)
+    # When SETUP's inside bar breaks, this determines the resulting 2-bar pattern
+    prior_bar_type: int = 0  # 2 = 2U, -2 = 2D, 3 = outside
+    prior_bar_high: float = 0.0
+    prior_bar_low: float = 0.0
+
     # Maintenance window flag
     has_maintenance_gap: bool = False
 

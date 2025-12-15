@@ -482,6 +482,12 @@ class CryptoSignalScanner:
                 setup_bar_low = low[i]
                 has_gap = bool(df["is_maintenance_gap"].iloc[i])
 
+                # Prior bar info for detecting 2-bar patterns (Session CRYPTO-8)
+                # For 3-1, prior bar is the outside bar (type 3)
+                prior_bar_type = int(classifications[i - 1]) if i > 0 else 0
+                prior_bar_high = high[i - 1] if i > 0 else 0.0
+                prior_bar_low = low[i - 1] if i > 0 else 0.0
+
                 # Bullish setup
                 if not np.isnan(bull_trigger[i]) and not np.isnan(stop_long[i]):
                     entry = bull_trigger[i]
@@ -511,6 +517,9 @@ class CryptoSignalScanner:
                                 "setup_bar_timestamp": df.index[i],
                                 "setup_pattern": "3-1-2",
                                 "has_maintenance_gap": has_gap,
+                                "prior_bar_type": prior_bar_type,
+                                "prior_bar_high": prior_bar_high,
+                                "prior_bar_low": prior_bar_low,
                             }
                         )
 
@@ -543,6 +552,9 @@ class CryptoSignalScanner:
                                 "setup_bar_timestamp": df.index[i],
                                 "setup_pattern": "3-1-2",
                                 "has_maintenance_gap": has_gap,
+                                "prior_bar_type": prior_bar_type,
+                                "prior_bar_high": prior_bar_high,
+                                "prior_bar_low": prior_bar_low,
                             }
                         )
 
@@ -566,6 +578,12 @@ class CryptoSignalScanner:
                 setup_bar_low = low[i]
                 has_gap = bool(df["is_maintenance_gap"].iloc[i])
 
+                # Prior bar info for detecting 2-bar patterns (Session CRYPTO-8)
+                # When inside bar breaks opposite direction, pattern becomes X-2D or X-2U
+                prior_bar_type = int(classifications[i - 1]) if i > 0 else 0
+                prior_bar_high = high[i - 1] if i > 0 else 0.0
+                prior_bar_low = low[i - 1] if i > 0 else 0.0
+
                 # Bullish setup
                 if not np.isnan(bull_trigger[i]) and not np.isnan(stop_long[i]):
                     entry = bull_trigger[i]
@@ -595,6 +613,9 @@ class CryptoSignalScanner:
                                 "setup_bar_timestamp": df.index[i],
                                 "setup_pattern": "2-1-2",
                                 "has_maintenance_gap": has_gap,
+                                "prior_bar_type": prior_bar_type,
+                                "prior_bar_high": prior_bar_high,
+                                "prior_bar_low": prior_bar_low,
                             }
                         )
 
@@ -627,6 +648,9 @@ class CryptoSignalScanner:
                                 "setup_bar_timestamp": df.index[i],
                                 "setup_pattern": "2-1-2",
                                 "has_maintenance_gap": has_gap,
+                                "prior_bar_type": prior_bar_type,
+                                "prior_bar_high": prior_bar_high,
+                                "prior_bar_low": prior_bar_low,
                             }
                         )
 
@@ -735,6 +759,9 @@ class CryptoSignalScanner:
                     setup_bar_high=p.get("setup_bar_high", 0.0),
                     setup_bar_low=p.get("setup_bar_low", 0.0),
                     setup_bar_timestamp=setup_ts,
+                    prior_bar_type=p.get("prior_bar_type", 0),
+                    prior_bar_high=p.get("prior_bar_high", 0.0),
+                    prior_bar_low=p.get("prior_bar_low", 0.0),
                     has_maintenance_gap=p.get("has_maintenance_gap", False),
                 )
                 signals.append(signal)

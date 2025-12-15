@@ -364,7 +364,9 @@ class CryptoSignalDaemon:
             return
 
         signal = event.signal
-        direction = signal.direction  # 'LONG' or 'SHORT'
+        # Use actual direction from entry monitor if pattern changed (Session CRYPTO-8)
+        # This handles cases where SETUP (X-1-?) became 2-bar pattern (X-2D)
+        direction = getattr(event, '_actual_direction', signal.direction)
 
         # Check if position already exists for this symbol (Session CRYPTO-8)
         # Only allow one position per symbol to prevent duplicate entries
