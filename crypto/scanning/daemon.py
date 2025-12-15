@@ -355,6 +355,8 @@ class CryptoSignalDaemon:
         Uses intraday leverage (10x) during 6PM-4PM ET window,
         swing leverage (4x) during 4PM-6PM ET gap.
 
+        Only one position per symbol allowed - skips if position already exists.
+
         Args:
             event: Trigger event
         """
@@ -363,6 +365,17 @@ class CryptoSignalDaemon:
 
         signal = event.signal
         direction = signal.direction  # 'LONG' or 'SHORT'
+
+        # Check if position already exists for this symbol (Session CRYPTO-8)
+        # Only allow one position per symbol to prevent duplicate entries
+        open_trades = self.paper_trader.get_open_trades()
+        existing_position = any(t.symbol == signal.symbol for t in open_trades)
+        if existing_position:
+            logger.info(
+                f"SKIPPING TRADE: Position already exists for {signal.symbol} "
+                f"(signal: {signal.pattern_type} {signal.timeframe})"
+            )
+            return
 
         # Get current leverage tier based on time
         now_et = self._get_current_time_et()

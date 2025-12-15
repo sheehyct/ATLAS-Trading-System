@@ -505,6 +505,7 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
         side = pos.get('side', '')
         quantity = pos.get('quantity', 0)
         entry_price = pos.get('entry_price', 0)
+        entry_time = pos.get('entry_time', '')
         current_price = pos.get('current_price', 0)
         unrealized_pnl = pos.get('unrealized_pnl', 0)
         unrealized_pnl_pct = pos.get('unrealized_pnl_percent', 0)
@@ -512,6 +513,18 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
         target_price = pos.get('target_price', 0)
         pattern = pos.get('pattern_type', '')
         timeframe = pos.get('timeframe', '')
+
+        # Format entry time (Session CRYPTO-8)
+        entry_time_display = ''
+        if entry_time:
+            try:
+                from datetime import datetime
+                if isinstance(entry_time, str):
+                    # Parse ISO format and format for display
+                    dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
+                    entry_time_display = dt.strftime('%m/%d %H:%M')
+            except Exception:
+                entry_time_display = str(entry_time)[:16]
 
         # P&L color
         pnl_color = DARK_THEME['accent_green'] if unrealized_pnl >= 0 else DARK_THEME['accent_red']
@@ -546,10 +559,15 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
                     f'{quantity:.6f}'
                 ], style={'padding': '0.75rem', 'color': DARK_THEME['text_primary']}),
 
-                # Entry Price
+                # Entry Price + Time
                 html.Td([
-                    f'${entry_price:,.2f}'
-                ], style={'padding': '0.75rem', 'color': DARK_THEME['text_primary']}),
+                    html.Div(f'${entry_price:,.2f}', style={
+                        'color': DARK_THEME['text_primary']
+                    }),
+                    html.Small(entry_time_display, style={
+                        'color': DARK_THEME['text_secondary']
+                    }) if entry_time_display else None
+                ], style={'padding': '0.75rem'}),
 
                 # Current Price
                 html.Td([
