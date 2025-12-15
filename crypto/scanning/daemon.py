@@ -107,6 +107,12 @@ class CryptoDaemonConfig:
     # Discord webhook URL for alerts (Session CRYPTO-5)
     discord_webhook_url: Optional[str] = None
 
+    # Discord alert types (Session CRYPTO-7)
+    alert_on_signal_detection: bool = False  # Pattern detection (noisy)
+    alert_on_trigger: bool = False  # When SETUP price hit (but trade may not execute)
+    alert_on_trade_entry: bool = True  # When trade actually executes
+    alert_on_trade_exit: bool = True  # When trade closes with P&L
+
     # REST API configuration (Session CRYPTO-6)
     api_enabled: bool = True
     api_host: str = '0.0.0.0'
@@ -326,8 +332,8 @@ class CryptoSignalDaemon:
             except Exception as e:
                 logger.error(f"Custom trigger callback error: {e}")
 
-        # Send Discord alert - Session CRYPTO-5
-        if self.discord_alerter:
+        # Send Discord trigger alert - Session CRYPTO-5 (controlled by config)
+        if self.discord_alerter and self.config.alert_on_trigger:
             try:
                 self.discord_alerter.send_trigger_alert(event)
             except Exception as e:
@@ -427,6 +433,18 @@ class CryptoSignalDaemon:
                 f"  Stop: ${signal.stop_price:,.2f} | Target: ${signal.target_price:,.2f}"
             )
 
+            # Send Discord entry alert (Session CRYPTO-7)
+            if self.discord_alerter and self.config.alert_on_trade_entry:
+                try:
+                    self.discord_alerter.send_entry_alert(
+                        signal=signal,
+                        entry_price=event.current_price,
+                        quantity=position_size,
+                        leverage=implied_leverage,
+                    )
+                except Exception as alert_err:
+                    logger.warning(f"Failed to send entry alert: {alert_err}")
+
         except Exception as e:
             logger.warning(f"Failed to open trade for {signal.symbol}: {e}")
 
@@ -512,8 +530,8 @@ class CryptoSignalDaemon:
                         f"[{signal.signal_type}]"
                     )
 
-                    # Send Discord alert - Session CRYPTO-5
-                    if self.discord_alerter:
+                    # Send Discord signal alert - Session CRYPTO-5 (controlled by config)
+                    if self.discord_alerter and self.config.alert_on_signal_detection:
                         try:
                             self.discord_alerter.send_signal_alert(signal)
                         except Exception as e:
@@ -835,6 +853,31 @@ class CryptoSignalDaemon:
 
         # Execute exits
         closed = self.position_monitor.execute_all_exits(exit_signals)
+
+        # Send Discord exit alerts for each closed trade (Session CRYPTO-7)
+        if self.discord_alerter and self.config.alert_on_trade_exit and closed:
+            for trade in closed:
+                try:
+                    # Calculate P&L
+                    if trade.side == "BUY":  # LONG
+                        pnl = (trade.exit_price - trade.entry_price) * trade.quantity
+                        pnl_pct = ((trade.exit_price / trade.entry_price) - 1) * 100
+                    else:  # SHORT
+                        pnl = (trade.entry_price - trade.exit_price) * trade.quantity
+                        pnl_pct = ((trade.entry_price / trade.exit_price) - 1) * 100
+
+                    self.discord_alerter.send_exit_alert(
+                        symbol=trade.symbol,
+                        direction="LONG" if trade.side == "BUY" else "SHORT",
+                        exit_reason=trade.exit_reason or "Unknown",
+                        entry_price=trade.entry_price,
+                        exit_price=trade.exit_price,
+                        pnl=pnl,
+                        pnl_pct=pnl_pct,
+                    )
+                except Exception as alert_err:
+                    logger.warning(f"Failed to send exit alert: {alert_err}")
+
         return len(closed)
 
     def get_open_positions(self) -> List[Dict[str, Any]]:
