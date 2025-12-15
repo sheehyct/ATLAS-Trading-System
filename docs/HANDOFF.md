@@ -1,9 +1,64 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 14, 2025 (Session CRYPTO-6)
+**Last Updated:** December 15, 2025 (Session CRYPTO-7)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Crypto module v0.6.0 - Dashboard integration via REST API
+**Status:** Crypto module v0.7.0 - Discord trade alerts wired
+
+---
+
+## Session CRYPTO-7: Discord Trade Alerts + VPS Deployment (COMPLETE)
+
+**Date:** December 15, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Entry/exit Discord alerts, VPS REST API deployed
+
+### Objective
+
+Wire Discord alerts for actual trade execution (entry/exit with P&L), deploy REST API to VPS.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/scanning/daemon.py` | Added entry/exit alert calls, config flags for alert types |
+
+### Key Features
+
+1. **Discord Trade Alerts (NEW)**
+   - Entry alerts: symbol, pattern, price, quantity, leverage
+   - Exit alerts: symbol, exit reason, entry/exit price, P&L dollar and percent
+   - Config flags to control alert types (entry/exit enabled, signal/trigger disabled)
+
+2. **VPS Deployment (COMPLETE)**
+   - REST API deployed and running on port 8080
+   - Firewall opened: `sudo ufw allow 8080/tcp`
+   - Both daemons running: atlas-daemon, atlas-crypto-daemon
+
+### Config Flags Added
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `alert_on_trade_entry` | True | Alert when trade executes |
+| `alert_on_trade_exit` | True | Alert when trade closes with P&L |
+| `alert_on_signal_detection` | False | Alert on pattern detection (noisy) |
+| `alert_on_trigger` | False | Alert when SETUP price hit |
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `5c24481` | feat(crypto): wire Discord entry/exit trade alerts |
+
+### Session CRYPTO-8 Priorities
+
+1. **Debug Daily Alerts** - Add logging to find why daily timeframe patterns not alerting
+2. **Live Trading Mode** - Enable execution in daemon (currently paper only)
+3. **Position Exit Tracking** - Track stop/target hits in dashboard
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Debugging and operational work.
 
 ---
 
