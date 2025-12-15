@@ -41,14 +41,32 @@ description: Implements STRAT trading methodology with bar classification (Type 
 
 ### Key Patterns
 
-| Pattern | Structure | Trigger | Bias |
-|---------|-----------|---------|------|
-| **2-1-2 Bull** | 2U → 1 → 2U | Break of 2U high | Bullish |
-| **2-1-2 Bear** | 2D → 1 → 2D | Break of 2D low | Bearish |
-| **3-1-2 Bull** | 3 → 1 → 2U | Break of 2U high | Bullish |
-| **3-1-2 Bear** | 3 → 1 → 2D | Break of 2D low | Bearish |
-| **2-2 Bull** | 2U → 2U | Break of first 2U high | Continuation |
-| **2-2 Bear** | 2D → 2D | Break of first 2D low | Continuation |
+| Pattern | Structure | Trigger | Direction |
+|---------|-----------|---------|-----------|
+| **2U-1-2U** | 2U → 1 → 2U | Break of 2U high | Bullish (CALL) |
+| **2D-1-2D** | 2D → 1 → 2D | Break of 2D low | Bearish (PUT) |
+| **2D-1-2U** | 2D → 1 → 2U | Break of 2U high | Bullish (CALL) |
+| **2U-1-2D** | 2U → 1 → 2D | Break of 2D low | Bearish (PUT) |
+| **3-1-2U** | 3 → 1 → 2U | Break of 2U high | Bullish (CALL) |
+| **3-1-2D** | 3 → 1 → 2D | Break of 2D low | Bearish (PUT) |
+| **2U-2U** | 2U → 2U | Break of 2U high | Bullish (CALL) |
+| **2D-2D** | 2D → 2D | Break of 2D low | Bearish (PUT) |
+| **2D-2U** | 2D → 2U | Break of 2U high | Bullish (CALL) |
+| **2U-2D** | 2U → 2D | Break of 2D low | Bearish (PUT) |
+
+### CRITICAL: Direction Determination Rule
+
+**The EXIT bar (last directional bar) determines trade direction.**
+
+| Exit Bar | Direction | Option Type |
+|----------|-----------|-------------|
+| **2U** | Bullish | CALL |
+| **2D** | Bearish | PUT |
+
+**WARNING:** Pattern `2U-1-2D` is BEARISH (put) despite starting with 2U!
+- The first bar (2U) is the SETUP bar
+- The last bar (2D) is the EXIT bar that determines direction
+- NEVER infer direction from pattern name string matching (e.g., `'2U' in pattern`)
 
 ### Timeframe Continuity (4 C's)
 
