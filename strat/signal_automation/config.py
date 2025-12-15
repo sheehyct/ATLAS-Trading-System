@@ -90,14 +90,15 @@ class ScheduleConfig:
         timezone: Timezone for all schedules
     """
     # Cron expressions (minute hour day month day_of_week)
+    # NOTE: APScheduler uses 0=Mon, 1=Tue, ..., 6=Sun. Use 'mon-fri' for clarity.
     # Hourly: Run at :30 each hour from 9:30-15:30 ET, Mon-Fri
-    hourly_cron: str = '30 9-15 * * 1-5'
+    hourly_cron: str = '30 9-15 * * mon-fri'
 
     # Daily: Run at 5 PM ET after market close, Mon-Fri
-    daily_cron: str = '0 17 * * 1-5'
+    daily_cron: str = '0 17 * * mon-fri'
 
     # Weekly: Run at 6 PM ET on Friday
-    weekly_cron: str = '0 18 * * 5'
+    weekly_cron: str = '0 18 * * fri'
 
     # Monthly: Run at 6 PM ET on 28th of month (APScheduler doesn't support 'L')
     monthly_cron: str = '0 18 28 * *'
@@ -118,7 +119,7 @@ class ScheduleConfig:
     # 15-minute scan schedule (market hours, market-aligned)
     # Run at :30, :45, :00, :15 (after each 15-min bar closes)
     # This detects setups within 15 minutes of inside bar close
-    base_scan_cron: str = '30,45,0,15 9-15 * * 1-5'
+    base_scan_cron: str = '30,45,0,15 9-15 * * mon-fri'
 
     # =========================================================================
     # Legacy: Individual timeframe scans (used when enable_htf_resampling=False)
