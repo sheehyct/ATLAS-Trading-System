@@ -95,9 +95,38 @@ Enhanced the crypto dashboard closed trades table with additional information.
 |------|---------|
 | `58a5cf4` | feat(crypto): enhance closed trades dashboard with pattern, entry time, TFC |
 
+### Part 3: Equity/Options Closed Trades API Fix
+
+User reported that the Options Trading tab showed 0 closed trades despite 5 positions closing today.
+
+**Root Cause:** The `get_fill_activities()` method in `alpaca_trading_client.py` was calling `self.client.get_activities()` which doesn't exist in alpaca-py's TradingClient.
+
+**Fix:** Changed to use raw API call: `self.client.get('/account/activities/FILL', params)`
+
+**Additional fixes:**
+- Date format changed to RFC3339 (`YYYY-MM-DDTHH:MM:SSZ`) as required by Alpaca API
+- Response parsing updated since raw API returns dicts, not objects
+- ISO timestamp parsing for transaction_time
+
+**Files Modified:**
+
+| File | Changes |
+|------|---------|
+| `integrations/alpaca_trading_client.py` | Fixed get_fill_activities() to use raw API call |
+
+**Commits:**
+
+| Hash | Message |
+|------|---------|
+| `68255f6` | fix(alpaca): use raw API for get_fill_activities() |
+
+**Verification:**
+- Before fix: 0 fills, error "TradingClient object has no attribute get_activities"
+- After fix: 24 fills, 12 closed trades with P&L correctly calculated
+
 ### Crypto Daemon Status
 
-The crypto daemon was working correctly - not affected by cron bug. It detected 21 signals across 6 scans today.
+The crypto daemon was working correctly - not affected by these bugs. It detected 21 signals across 6 scans today.
 
 ### Session CRYPTO-10 Priorities
 
