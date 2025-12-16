@@ -10,13 +10,74 @@ Professional dark-themed crypto trading panel for dashboard integration:
 - Performance metrics
 
 Pattern: Based on options_panel.py
+
+Session CRYPTO-10: Added EST time conversion, TFC score to positions,
+                   proper STRAT pattern notation (2U/2D instead of just "2")
 """
 
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 from typing import List, Dict, Any
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from dashboard.config import COLORS, REFRESH_INTERVALS
+
+
+# ============================================
+# TIMEZONE & PATTERN HELPERS
+# ============================================
+
+def _format_time_est(time_str: str) -> str:
+    """
+    Convert ISO timestamp to EST display format.
+
+    Args:
+        time_str: ISO format timestamp (UTC or with timezone)
+
+    Returns:
+        Formatted string like "12/16 08:14"
+    """
+    if not time_str:
+        return ''
+    try:
+        # Parse ISO format
+        if isinstance(time_str, str):
+            dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+        else:
+            return str(time_str)[:16]
+
+        # Convert to EST
+        est = ZoneInfo('America/New_York')
+        dt_est = dt.astimezone(est)
+        return dt_est.strftime('%m/%d %H:%M')
+    except Exception:
+        return str(time_str)[:16]
+
+
+def _format_pattern_with_direction(pattern_type: str, side: str) -> str:
+    """
+    Format STRAT pattern with proper directional notation.
+
+    Per STRAT methodology, patterns should always use 2U/2D notation.
+    For SETUP patterns (ending in "?"), resolve direction based on trade side.
+
+    Args:
+        pattern_type: Pattern like "3-1-?", "2D-1-?", "2U-2U"
+        side: Trade side "BUY" or "SELL"
+
+    Returns:
+        Properly formatted pattern like "3-1-2U", "2D-1-2D"
+    """
+    if not pattern_type:
+        return ''
+
+    # If pattern ends with "?", resolve direction from trade side
+    if pattern_type.endswith('?'):
+        direction = '2U' if side == 'BUY' else '2D'
+        return pattern_type[:-1] + direction
+
+    return pattern_type
 
 
 # ============================================
@@ -490,6 +551,8 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
     """
     Create table displaying open positions with P&L.
 
+    Session CRYPTO-10: Added TFC score, EST times, proper pattern notation.
+
     Args:
         positions: List of position dicts from crypto_loader.get_open_positions()
 
@@ -513,18 +576,17 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
         target_price = pos.get('target_price', 0)
         pattern = pos.get('pattern_type', '')
         timeframe = pos.get('timeframe', '')
+        tfc_score = pos.get('tfc_score')
 
-        # Format entry time (Session CRYPTO-8)
-        entry_time_display = ''
-        if entry_time:
-            try:
-                from datetime import datetime
-                if isinstance(entry_time, str):
-                    # Parse ISO format and format for display
-                    dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
-                    entry_time_display = dt.strftime('%m/%d %H:%M')
-            except Exception:
-                entry_time_display = str(entry_time)[:16]
+        # Format entry time in EST (Session CRYPTO-10)
+        entry_time_display = _format_time_est(entry_time)
+
+        # Format pattern with proper direction (Session CRYPTO-10)
+        pattern_display = _format_pattern_with_direction(pattern, side)
+
+        # TFC score display (Session CRYPTO-10)
+        tfc_display = f'{tfc_score}/4' if tfc_score is not None else '-'
+        tfc_color = DARK_THEME['accent_green'] if tfc_score and tfc_score >= 3 else DARK_THEME['text_secondary']
 
         # P&L color
         pnl_color = DARK_THEME['accent_green'] if unrealized_pnl >= 0 else DARK_THEME['accent_red']
@@ -541,9 +603,9 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
                         'fontWeight': 'bold',
                         'color': DARK_THEME['text_primary']
                     }),
-                    html.Small(f'{pattern} ({timeframe})', style={
+                    html.Small(f'{pattern_display} ({timeframe})', style={
                         'color': DARK_THEME['text_secondary']
-                    })
+                    }) if pattern_display else None
                 ], style={'padding': '0.75rem'}),
 
                 # Side
@@ -554,12 +616,7 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
                     })
                 ], style={'padding': '0.75rem'}),
 
-                # Quantity
-                html.Td([
-                    f'{quantity:.6f}'
-                ], style={'padding': '0.75rem', 'color': DARK_THEME['text_primary']}),
-
-                # Entry Price + Time
+                # Entry Price + Time (EST)
                 html.Td([
                     html.Div(f'${entry_price:,.2f}', style={
                         'color': DARK_THEME['text_primary']
@@ -585,6 +642,14 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
                     })
                 ], style={'padding': '0.75rem'}),
 
+                # TFC Score (Session CRYPTO-10)
+                html.Td([
+                    html.Span(tfc_display, style={
+                        'color': tfc_color,
+                        'fontWeight': 'bold' if tfc_score and tfc_score >= 3 else 'normal'
+                    })
+                ], style={'padding': '0.75rem', 'textAlign': 'center'}),
+
                 # Stop / Target
                 html.Td([
                     html.Span(f'${stop_price:,.2f}',
@@ -600,12 +665,12 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
     return html.Table([
         html.Thead([
             html.Tr([
-                html.Th('Symbol', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Symbol / Pattern', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Side', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
-                html.Th('Qty', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Entry', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Current', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('P&L', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('TFC', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem', 'textAlign': 'center'}),
                 html.Th('Stop / Target', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
             ], style={'backgroundColor': DARK_THEME['card_header']})
         ]),
@@ -641,7 +706,10 @@ def create_signals_table(signals: List[Dict]) -> html.Table:
         stop = signal.get('stop', signal.get('stop_price', 0))
         magnitude = signal.get('magnitude_pct', 0)
         risk_reward = signal.get('risk_reward', 0)
-        detected = signal.get('detected_time_display', signal.get('detected_time', ''))
+        detected_raw = signal.get('detected_time_display', signal.get('detected_time', ''))
+
+        # Format detected time in EST (Session CRYPTO-10)
+        detected = _format_time_est(detected_raw) if detected_raw else ''
 
         # Direction color
         dir_color = DARK_THEME['accent_green'] if direction == 'LONG' else DARK_THEME['accent_red']
@@ -729,6 +797,8 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
     """
     Create table displaying closed trades with realized P&L.
 
+    Session CRYPTO-10: Updated to use EST times and proper STRAT pattern notation.
+
     Args:
         trades: List of closed trade dicts from crypto_loader.get_closed_trades()
 
@@ -783,21 +853,17 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
         pnl_pct = trade.get('pnl_percent', 0) or 0
         exit_reason = trade.get('exit_reason', '')
         exit_time = trade.get('exit_time', '')
-        entry_time = trade.get('entry_time', '')  # Session CRYPTO-9
-        pattern_type = trade.get('pattern_type', '')  # Session CRYPTO-9
-        timeframe = trade.get('timeframe', '')  # Session CRYPTO-9
-        tfc_score = trade.get('tfc_score')  # Session CRYPTO-9
+        entry_time = trade.get('entry_time', '')
+        pattern_type = trade.get('pattern_type', '')
+        timeframe = trade.get('timeframe', '')
+        tfc_score = trade.get('tfc_score')
 
-        # Format entry time
-        entry_time_display = ''
-        if entry_time:
-            try:
-                from datetime import datetime
-                if isinstance(entry_time, str):
-                    dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
-                    entry_time_display = dt.strftime('%m/%d %H:%M')
-            except Exception:
-                entry_time_display = str(entry_time)[:16]
+        # Format times in EST (Session CRYPTO-10)
+        entry_time_display = _format_time_est(entry_time)
+        exit_time_display = _format_time_est(exit_time)
+
+        # Format pattern with proper direction (Session CRYPTO-10)
+        pattern_display = _format_pattern_with_direction(pattern_type, side)
 
         # P&L color
         row_pnl_color = DARK_THEME['accent_green'] if pnl >= 0 else DARK_THEME['accent_red']
@@ -821,7 +887,7 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                         'fontWeight': 'bold',
                         'color': DARK_THEME['text_primary']
                     }),
-                    html.Small(f'{pattern_type} ({timeframe})' if pattern_type else '',
+                    html.Small(f'{pattern_display} ({timeframe})' if pattern_display else '',
                                style={'color': DARK_THEME['text_secondary']})
                 ], style={'padding': '0.75rem'}),
 
@@ -830,7 +896,7 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                     html.Span(side_label, style={'color': side_color})
                 ], style={'padding': '0.75rem'}),
 
-                # Entry Price + Time
+                # Entry Price + Time (EST)
                 html.Td([
                     html.Div(f'${entry_price:,.2f}', style={
                         'color': DARK_THEME['text_primary']
@@ -840,13 +906,14 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                     }) if entry_time_display else None
                 ], style={'padding': '0.75rem'}),
 
-                # Exit Price + Time
+                # Exit Price + Time (EST)
                 html.Td([
                     html.Div(f'${exit_price:,.2f}', style={
                         'color': DARK_THEME['text_primary']
                     }),
-                    html.Small(str(exit_time)[:16] if exit_time else '',
-                               style={'color': DARK_THEME['text_secondary']})
+                    html.Small(exit_time_display, style={
+                        'color': DARK_THEME['text_secondary']
+                    }) if exit_time_display else None
                 ], style={'padding': '0.75rem'}),
 
                 # Realized P&L
