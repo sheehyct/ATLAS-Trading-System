@@ -908,9 +908,11 @@ class PaperSignalScanner:
         setups = self._detect_setups(df)
 
         for p in setups:
-            # SETUP signals: Only include if at the LAST bar (current inside bar)
-            # This ensures we're detecting setups that can be acted upon NOW
-            if p['index'] == len(df) - 1:
+            # Session CRYPTO-11: SETUP signals at second-to-last bar (most recent CLOSED inside bar)
+            # We skip the last bar in _detect_setups (it's live/incomplete), so the most
+            # recent actionable setup is at index len(df) - 2
+            # Also include slightly older setups (up to 3 bars back) that haven't been broken yet
+            if p['index'] >= len(df) - 4:
                 setup_ts = p.get('setup_bar_timestamp')
                 if hasattr(setup_ts, 'to_pydatetime'):
                     setup_ts = setup_ts.to_pydatetime()
