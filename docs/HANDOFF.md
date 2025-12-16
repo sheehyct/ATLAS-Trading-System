@@ -1,9 +1,77 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 16, 2025 (Session CRYPTO-10)
+**Last Updated:** December 16, 2025 (Session CRYPTO-11)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** STRAT implementation bugs fixed - live bar exclusion + stop placement
+**Status:** Equity daemon bug fixes deployed - live bar exclusion + bidirectional monitoring
+
+---
+
+## Session CRYPTO-11: Equity Daemon Bug Fixes (COMPLETE)
+
+**Date:** December 16, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Equity daemon now matches crypto daemon fixes
+
+### Objective
+
+Apply the same STRAT bug fixes from crypto daemon to equity daemon before market open.
+
+### Bugs Fixed
+
+**Bug 1: Live Bar as Setup Bar (paper_signal_scanner.py)**
+- Added `last_bar_idx` skip in 3-1 and 2-1 setup detection loops (lines 694-703, 775-780)
+- Mirrors fix in `crypto/scanning/signal_scanner.py`
+
+**Bug 2: Unidirectional Trigger Checking (entry_monitor.py)**
+- Replaced unidirectional CALL/PUT check with bidirectional monitoring
+- Now checks BOTH `setup_bar_high` and `setup_bar_low`
+- Implements "Where is the next 2?" per STRAT methodology
+- Stores `_actual_direction` on trigger event
+
+**Bug 3: Direction Handling (daemon.py)**
+- Added `getattr(event, '_actual_direction', signal.direction)` logic
+- Updates signal.direction if opposite break detected
+- Logs "DIRECTION CHANGED" when pattern breaks opposite
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/paper_signal_scanner.py` | +14 lines - live bar skip for 3-1 and 2-1 loops |
+| `strat/signal_automation/entry_monitor.py` | +40/-16 lines - bidirectional trigger logic |
+| `strat/signal_automation/daemon.py` | +14 lines - actual_direction handling |
+
+### Skill File Sync
+
+Copied `IMPLEMENTATION-BUGS.md` from project space to:
+`C:/Users/sheeh/.claude/skills/strat-methodology/IMPLEMENTATION-BUGS.md`
+
+### Verification
+
+- 297 STRAT tests passing (2 skipped)
+- 14 signal automation tests passing
+- VPS daemon showing "DIRECTION CHANGED" logs correctly
+- Bidirectional monitoring confirmed working:
+  - `MSFT 2U-1-? CALL -> PUT`
+  - `TSLA 3-1-? PUT -> CALL`
+  - `QQQ 2D-1-? CALL -> PUT`
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `adc61b4` | fix(strat): apply crypto daemon bug fixes to equity daemon |
+
+### Session CRYPTO-12 Priorities
+
+1. **Monitor equity daemon** - Watch for correct direction handling during market hours
+2. **Live Trading Mode for Crypto** - Enable execution (deferred from CRYPTO-7)
+3. **Options Backtest Bug** - Fix direction inference in backtest script
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Monitoring work.
 
 ---
 
