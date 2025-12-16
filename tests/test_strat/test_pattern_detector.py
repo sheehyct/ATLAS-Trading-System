@@ -122,7 +122,7 @@ class TestSynthetic212Patterns:
 
         Expected:
             Entry: Index 3
-            Stop: 97.0 (inside bar low)
+            Stop: 96.0 (first directional bar low - per STRAT methodology)
             Target: 105.0 (first directional bar high - structural level)
             Direction: 1 (bullish)
         """
@@ -139,7 +139,7 @@ class TestSynthetic212Patterns:
         )
 
         assert entries[3] == True
-        assert abs(stops[3] - 97.0) < 0.01, f"Stop should be 97.0, got {stops[3]}"
+        assert abs(stops[3] - 96.0) < 0.01, f"Stop should be 96.0 (first dir bar low), got {stops[3]}"
         assert abs(targets[3] - 105.0) < 0.01, f"Target should be 105.0 (structural level), got {targets[3]}"
         assert directions[3] == 1
 
@@ -155,7 +155,7 @@ class TestSynthetic212Patterns:
 
         Expected:
             Entry: Index 3
-            Stop: 98.0 (inside bar high)
+            Stop: 99.0 (first directional bar high - per STRAT methodology)
             Target: 90.0 (first directional bar low - structural level)
             Direction: -1 (bearish)
         """
@@ -172,7 +172,7 @@ class TestSynthetic212Patterns:
         )
 
         assert entries[3] == True
-        assert abs(stops[3] - 98.0) < 0.01
+        assert abs(stops[3] - 99.0) < 0.01, f"Stop should be 99.0 (first dir bar high), got {stops[3]}"
         assert abs(targets[3] - 90.0) < 0.01, f"Target should be 90.0 (structural level), got {targets[3]}"
         assert directions[3] == -1
 
@@ -188,7 +188,7 @@ class TestSynthetic212Patterns:
 
         Expected:
             Entry: Index 3
-            Stop: 91.0 (inside bar low)
+            Stop: 90.0 (first directional bar low - per STRAT methodology)
             Target: 99.0 (first directional bar high - structural level)
             Direction: 1 (bullish reversal)
         """
@@ -205,7 +205,7 @@ class TestSynthetic212Patterns:
         )
 
         assert entries[3] == True
-        assert abs(stops[3] - 91.0) < 0.01
+        assert abs(stops[3] - 90.0) < 0.01, f"Stop should be 90.0 (first dir bar low), got {stops[3]}"
         assert abs(targets[3] - 99.0) < 0.01, f"Target should be 99.0 (structural level), got {targets[3]}"
         assert directions[3] == 1  # Bullish reversal
 
@@ -221,7 +221,7 @@ class TestSynthetic212Patterns:
 
         Expected:
             Entry: Index 3
-            Stop: 104.0 (inside bar high)
+            Stop: 105.0 (first directional bar high - per STRAT methodology)
             Target: 96.0 (first directional bar low - structural level)
             Direction: -1 (bearish reversal)
         """
@@ -238,7 +238,7 @@ class TestSynthetic212Patterns:
         )
 
         assert entries[3] == True
-        assert abs(stops[3] - 104.0) < 0.01
+        assert abs(stops[3] - 105.0) < 0.01, f"Stop should be 105.0 (first dir bar high), got {stops[3]}"
         assert abs(targets[3] - 96.0) < 0.01, f"Target should be 96.0 (structural level), got {targets[3]}"
         assert directions[3] == -1  # Bearish reversal
 
@@ -351,8 +351,9 @@ class TestVBTIntegration:
         result = StratPatternDetector.run(classifications, high, low)
 
         # Verify 2-1-2 pattern at index 3
+        # Stop is at first directional bar high (index 1), per STRAT methodology
         assert result.entries_212.iloc[3] == True
-        assert abs(result.stops_212.iloc[3] - 98.0) < 0.01
+        assert abs(result.stops_212.iloc[3] - 99.0) < 0.01, f"Stop should be 99.0 (first dir bar high), got {result.stops_212.iloc[3]}"
         assert abs(result.targets_212.iloc[3] - 90.0) < 0.01  # Structural level: first directional bar low
         assert result.directions_212.iloc[3] == -1
 
