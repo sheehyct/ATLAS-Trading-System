@@ -303,6 +303,20 @@ class SignalDaemon:
         Signals are already sorted by priority (1M > 1W > 1D > 1H).
         """
         signal = event.signal
+
+        # Session CRYPTO-11: Use actual direction from entry monitor (bidirectional monitoring)
+        # This handles cases where SETUP (X-1-?) broke in opposite direction
+        actual_direction = getattr(event, '_actual_direction', signal.direction)
+        original_direction = signal.direction
+
+        # Update signal direction if it changed due to opposite break
+        if actual_direction != original_direction:
+            signal.direction = actual_direction
+            logger.info(
+                f"DIRECTION CHANGED: {signal.symbol} {signal.pattern_type} "
+                f"{original_direction} -> {actual_direction} (opposite break detected)"
+            )
+
         logger.info(
             f"ENTRY TRIGGERED: {signal.symbol} {signal.pattern_type} {signal.direction} "
             f"@ ${event.current_price:.2f} (trigger: ${event.trigger_price:.2f}, "

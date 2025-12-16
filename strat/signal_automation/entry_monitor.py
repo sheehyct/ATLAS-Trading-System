@@ -168,22 +168,40 @@ class EntryMonitor:
             if current_price is None:
                 continue
 
-            # Session 83K-68: Use setup_bar levels for trigger checking
-            # Per STRAT methodology: Entry happens when price BREAKS the setup level
-            # - CALL: price > setup_bar_high (bullish break)
-            # - PUT: price < setup_bar_low (bearish break)
+            # Session CRYPTO-11: BIDIRECTIONAL trigger checking for SETUP signals
+            # Per STRAT: "Where is the next 2?" - whichever direction breaks first
+            # This fixes the bug where we only checked the signal's declared direction
             is_triggered = False
+            trigger_level = 0.0
+            actual_direction = signal.direction  # May change if opposite break happens
 
-            if signal.direction == 'CALL':
-                # Use setup_bar_high if available, otherwise fall back to entry_trigger
-                trigger_level = signal.setup_bar_high if signal.setup_bar_high > 0 else signal.entry_trigger
-                # CALL triggers when price > trigger_level (strict break above)
-                is_triggered = current_price > trigger_level
-            else:  # PUT
-                # Use setup_bar_low if available, otherwise fall back to entry_trigger
-                trigger_level = signal.setup_bar_low if signal.setup_bar_low > 0 else signal.entry_trigger
-                # PUT triggers when price < trigger_level (strict break below)
-                is_triggered = current_price < trigger_level
+            # Get setup bar levels
+            setup_high = signal.setup_bar_high if signal.setup_bar_high > 0 else 0
+            setup_low = signal.setup_bar_low if signal.setup_bar_low > 0 else 0
+
+            # Check for breaks in both directions
+            broke_up = setup_high > 0 and current_price > setup_high
+            broke_down = setup_low > 0 and current_price < setup_low
+
+            if broke_up and not broke_down:
+                # Inside bar broke UP -> X-1-2U -> CALL
+                trigger_level = setup_high
+                actual_direction = 'CALL'
+                is_triggered = True
+            elif broke_down and not broke_up:
+                # Inside bar broke DOWN -> X-2D or X-1-2D -> PUT
+                trigger_level = setup_low
+                actual_direction = 'PUT'
+                is_triggered = True
+            elif broke_up and broke_down:
+                # Both bounds broken -> outside bar (type 3) - unusual during monitoring
+                logger.warning(
+                    f"OUTSIDE BAR: {signal.symbol} {signal.pattern_type} broke both bounds "
+                    f"(high: ${setup_high:.2f}, low: ${setup_low:.2f}, price: ${current_price:.2f})"
+                )
+                # Skip this signal - let next scan reclassify it
+                continue
+            # else: Neither broken - is_triggered remains False
 
             if is_triggered:
                 event = TriggerEvent(
@@ -191,10 +209,16 @@ class EntryMonitor:
                     trigger_price=trigger_level,
                     current_price=current_price,
                 )
+                # Store actual direction for executor (may differ from signal.direction)
+                event._actual_direction = actual_direction
                 triggered.append(event)
 
+                # Log with direction change indicator if applicable
+                direction_info = actual_direction
+                if actual_direction != signal.direction:
+                    direction_info = f"{actual_direction} (was {signal.direction})"
                 logger.info(
-                    f"TRIGGER: {signal.symbol} {signal.pattern_type} {signal.direction} "
+                    f"TRIGGER: {signal.symbol} {signal.pattern_type} {direction_info} "
                     f"@ ${trigger_level:.2f} (current: ${current_price:.2f}, "
                     f"priority: {signal.priority}, type: {signal.signal_type})"
                 )

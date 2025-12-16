@@ -691,7 +691,16 @@ class PaperSignalScanner:
         result_312 = detect_312_setups_nb(classifications, high, low)
         setup_mask, bull_trigger, bear_trigger, stop_long, stop_short, target_long, target_short = result_312
 
+        # CRITICAL: Exclude the last bar (live/incomplete bar) from 3-bar setup detection.
+        # For 3-bar patterns (X-1-?), the inside bar must be CLOSED.
+        # The NEXT bar (live) is what we watch for the break, not the setup bar itself.
+        # Without this exclusion, we'd detect a LIVE bar as the inside bar and then
+        # trigger entry when that SAME bar moves - which is incorrect.
+        last_bar_idx = len(setup_mask) - 1
         for i in range(len(setup_mask)):
+            # Skip the last bar - it's live/incomplete and cannot be a valid setup bar
+            if i == last_bar_idx:
+                continue
             if setup_mask[i]:
                 # This is a 3-1 setup at bar i (inside bar)
                 # Create TWO potential signals: bullish and bearish break
@@ -763,7 +772,12 @@ class PaperSignalScanner:
         result_212 = detect_212_setups_nb(classifications, high, low)
         setup_mask, first_bar_dir, bull_trigger, bear_trigger, stop_long, stop_short, target_long, target_short = result_212
 
+        # Same exclusion for 2-1 setups - inside bar must be CLOSED
+        last_bar_idx_212 = len(setup_mask) - 1
         for i in range(len(setup_mask)):
+            # Skip the last bar - it's live/incomplete and cannot be a valid setup bar
+            if i == last_bar_idx_212:
+                continue
             if setup_mask[i]:
                 # This is a 2-1 setup at bar i (inside bar)
                 first_dir = bar_to_str(int(first_bar_dir[i]))  # 2U or 2D
