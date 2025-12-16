@@ -1,9 +1,111 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 15, 2025 (Session CRYPTO-9)
+**Last Updated:** December 16, 2025 (Session CRYPTO-10)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Equity daemon cron fix deployed - scans now run on Mondays
+**Status:** STRAT implementation bugs fixed - live bar exclusion + stop placement
+
+---
+
+## Session CRYPTO-10: Review and Merge STRAT Bug Fixes (COMPLETE)
+
+**Date:** December 16, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Merged Claude Code for Web branch, updated tests
+
+### Objective
+
+Review and merge STRAT implementation bug fixes from Claude Code for Web session that discovered issues with:
+1. Live bar being treated as setup bar for 3-bar patterns
+2. Incorrect stop placement using inside bar instead of first directional bar
+
+### Branch Reviewed
+
+`claude/review-daemon-strategy-T4kTM` - 2 commits merged
+
+### Bug 1: Live Bar as Setup Bar
+
+**Root Cause:** The signal scanner was detecting the live (incomplete) bar as an inside bar for 3-bar setups. Entry would trigger on the SAME bar that was used as the setup.
+
+**Example:** User reported "a 2D-1 BTC trade yesterday where the entry was on the live inside bar"
+
+**Fix:** Exclude the last bar from setup detection in `crypto/scanning/signal_scanner.py`:
+```python
+last_bar_idx = len(setup_mask) - 1
+for i in range(len(setup_mask)):
+    if i == last_bar_idx:  # Skip live bar
+        continue
+```
+
+### Bug 2: Incorrect Stop Placement
+
+**Root Cause:** 2-1-2 pattern stops were placed at inside bar (index i-1) instead of first directional bar (index i-2).
+
+**Example:** User reported "stop was the high of the live inside bar, instead of the 2D directional bar before it"
+
+**Fix:** Changed stop placement in `strat/pattern_detector.py`:
+```python
+# BEFORE (incorrect):
+stops[i] = low[i-1]   # Inside bar
+
+# AFTER (per STRAT methodology):
+stops[i] = low[i-2]   # First directional bar
+```
+
+### STRAT Methodology Validation
+
+Per strat-methodology skill, for 2-1-2 patterns:
+- Stop goes at the **first directional bar's extreme** (structural support/resistance)
+- Inside bar is just consolidation; structural level comes from directional bar before it
+
+| Pattern | Stop Location |
+|---------|---------------|
+| 2U-1-2U (bullish) | First 2U bar LOW |
+| 2D-1-2D (bearish) | First 2D bar HIGH |
+| 2D-1-2U (reversal) | First 2D bar LOW |
+| 2U-1-2D (reversal) | First 2U bar HIGH |
+
+Note: 3-1-2 patterns were ALREADY correct (using outside bar for stop).
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/pattern_detector.py` | Stop placement: i-1 -> i-2 for 2-1-2 patterns |
+| `crypto/scanning/signal_scanner.py` | Live bar exclusion for 3-bar setup detection |
+| `tests/test_strat/test_pattern_detector.py` | Updated test expectations for correct stop values |
+
+### Documentation Added
+
+New file: `docs/Claude Skills/strat-methodology/IMPLEMENTATION-BUGS.md` (236 lines)
+- Live bar vs closed bar detection rules
+- 3-bar vs 2-bar pattern distinction
+- Stop placement rules with visual examples
+- Entry trigger mechanics
+- Summary checklist for future implementations
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `1b8e295` | fix(strat): exclude live bars from 3-bar setup detection and fix stop placement |
+| `276d307` | docs(strat): add implementation bugs guide for Claude Code sessions |
+| `739f2df` | test(strat): update 2-1-2 pattern tests for correct stop placement |
+
+### Test Results
+
+- 297 STRAT tests passing (2 skipped - API credentials)
+- All 16 pattern detector tests pass with updated expectations
+
+### Session CRYPTO-11 Priorities
+
+1. **Deploy to VPS** - Push merged fixes to production
+2. **Monitor crypto daemon** - Verify no more same-candle entry/exit trades
+3. **Live Trading Mode** - Enable crypto execution (deferred from CRYPTO-7)
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Monitoring and verification work.
 
 ---
 
