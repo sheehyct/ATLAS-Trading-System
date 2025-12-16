@@ -348,6 +348,8 @@ class CryptoDiscordAlerter:
         """
         Send clean entry alert for mobile notifications.
 
+        Session CRYPTO-10: Simplified format with proper pattern notation.
+
         Args:
             signal: The signal being traded
             entry_price: Actual entry price
@@ -359,9 +361,17 @@ class CryptoDiscordAlerter:
         """
         direction_str = "LONG" if signal.direction == "LONG" else "SHORT"
 
+        # Format pattern with proper direction (Session CRYPTO-10)
+        # Convert "3-1-?" to "3-1-2U" or "3-1-2D" based on trade direction
+        pattern = signal.pattern_type
+        if pattern and pattern.endswith('?'):
+            direction_suffix = '2U' if direction_str == 'LONG' else '2D'
+            pattern = pattern[:-1] + direction_suffix
+
         message = (
-            f"**Entry: {signal.symbol} {signal.pattern_type} {signal.timeframe} {direction_str}**\n"
-            f"@ ${entry_price:,.2f} | Qty: {quantity:.4f} | Leverage: {leverage}x\n"
+            f"**ENTRY: {signal.symbol} {direction_str}**\n"
+            f"Pattern: {pattern} ({signal.timeframe})\n"
+            f"@ ${entry_price:,.2f}\n"
             f"Target: ${signal.target_price:,.2f} | Stop: ${signal.stop_price:,.2f}"
         )
 
@@ -385,6 +395,8 @@ class CryptoDiscordAlerter:
         """
         Send clean exit alert for mobile notifications.
 
+        Session CRYPTO-10: Simplified to just reason and P&L.
+
         Args:
             symbol: Symbol that was closed
             direction: LONG or SHORT
@@ -397,13 +409,11 @@ class CryptoDiscordAlerter:
         Returns:
             True if sent successfully
         """
-        pnl_indicator = "PROFIT" if pnl >= 0 else "LOSS"
         pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pnl_pct_str = f"+{pnl_pct:.2f}%" if pnl_pct >= 0 else f"{pnl_pct:.2f}%"
 
         message = (
-            f"**Exit [{pnl_indicator}]: {symbol} {direction}**\n"
-            f"{exit_reason} | Entry: ${entry_price:,.2f} -> Exit: ${exit_price:,.2f}\n"
+            f"**EXIT [{exit_reason}]: {symbol}**\n"
             f"P/L: {pnl_str} ({pnl_pct_str})"
         )
 

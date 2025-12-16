@@ -270,6 +270,8 @@ class CryptoSignalDaemon:
                 username='ATLAS Crypto Bot',
             )
             logger.info("Discord alerter initialized")
+            # Send startup connection message (Session CRYPTO-10)
+            self.discord_alerter.test_connection()
         except Exception as e:
             logger.error(f"Failed to initialize Discord alerter: {e}")
 
