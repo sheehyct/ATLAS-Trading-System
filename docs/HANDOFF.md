@@ -1,9 +1,294 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 16, 2025 (Session CRYPTO-11)
+**Last Updated:** December 17, 2025 (Session CRYPTO-15)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Equity daemon bug fixes deployed - live bar exclusion + bidirectional monitoring
+**Status:** Critical SETUP detection bug fixed - X-2D/X-2U patterns now detected
+
+---
+
+## Session CRYPTO-15: Critical SETUP Detection Bug Fix (COMPLETE)
+
+**Date:** December 17, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Fix deployed to VPS
+
+### Problem Identified
+
+User reported AAPL formed a 3-2D-2U pattern today but no alerts/orders were generated. Investigation revealed:
+
+1. **Scanner detected 3-2D as COMPLETED** (historical PUT entry)
+2. **No SETUP created for potential 3-2D-2U** (CALL at 2D bar's high)
+3. When 2U formed live, nothing triggered because no SETUP was watching for it
+
+### Root Cause
+
+`_detect_setups()` in `paper_signal_scanner.py` only detected patterns ending in inside bars:
+- 3-1 setups (outside + inside)
+- 2-1 setups (directional + inside)
+
+**MISSING:** Directional bar setups waiting for OPPOSITE direction breaks:
+- 3-2D waiting for 3-2D-2U (CALL at 2D bar high)
+- 3-2U waiting for 3-2U-2D (PUT at 2U bar low)
+
+The numba functions `detect_322_setups_nb()` and `detect_22_setups_nb()` existed but were never called.
+
+### Fix Applied
+
+Added two new sections to `_detect_setups()`:
+
+1. **3-2 Setups** using `detect_322_setups_nb()`:
+   - 3-2D creates CALL SETUP (entry at 2D bar high)
+   - 3-2U creates PUT SETUP (entry at 2U bar low)
+
+2. **2-2 Setups** using `detect_22_setups_nb()`:
+   - X-2D creates CALL SETUP (entry at 2D bar high)
+   - X-2U creates PUT SETUP (entry at 2U bar low)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/paper_signal_scanner.py` | +165 lines - Added 3-2 and 2-2 SETUP detection sections |
+
+### Verification
+
+```python
+# Mock 3-2D pattern
+# Result: "3-2D-? CALL - Entry: $250.00, Signal Type: SETUP"
+```
+
+### STRAT Principle Applied
+
+"Where is the next 2?" - After any directional bar closes, we watch BOTH directions. Pattern evolution:
+- 3-2D can become 3-2D-2U (CALL entry at 2D bar high)
+- 3-2U can become 3-2U-2D (PUT entry at 2U bar low)
+
+### Commits
+
+- `2226b8f` - fix(strat): add X-2D and X-2U opposite direction SETUP detection
+
+### Deployment
+
+- Pushed to GitHub
+- Pulled on VPS
+- Restarted atlas-daemon
+
+### Session CRYPTO-16 Options
+
+| Priority | Task |
+|----------|------|
+| Monitor | Watch for proper SETUP detections in daemon logs |
+| Verify | Check if patterns like AAPL 3-2D-2U now generate alerts |
+| Decision | Tradovate API subscription still pending ($25/mo) |
+
+---
+
+## Session CRYPTO-14: Tradovate API Research and Coinbase API Verification (COMPLETE)
+
+**Date:** December 17, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Decision pending on Tradovate subscription
+
+### Objective
+
+Research Tradovate API as alternative data source for BIP futures, verify Coinbase API limitations.
+
+### Key Findings
+
+**1. Coinbase API Confirmed Limited to INTX Only**
+- Tested multiple CDX product ID formats: `BTC-PERP`, `BTC_PERP`, `BTC-PERP-CDX`
+- ALL returned 404 errors
+- API only exposes 199 INTX products
+- Web UI shows CDX products, but API does NOT
+
+**2. Tradovate Has BIP**
+- User confirmed BIP/BIPZ0 visible in Tradovate product search
+- Contract available via Coinbase Derivatives Exchange connection
+- API access requires $25/month subscription (free account doesn't include API)
+
+**3. MFF Account Limitations**
+- MyFundedFutures credentials do NOT grant Tradovate API access
+- User created separate free Tradovate account
+- API tier costs $25/month additional
+
+### API Test Results (test_cfm_products.py)
+
+| Product ID | Status |
+|------------|--------|
+| BTC-PERP | 404 Not Found |
+| BTC_PERP | 404 Not Found |
+| BTC-PERP-CDX | 404 Not Found |
+| BTC-PERP-INTX | Works ($87,836) |
+
+### Architecture Research
+
+Tradovate API characteristics:
+- WebSocket-based market data (not REST)
+- `md/getChart` subscription for OHLCV
+- Historical minute data back to 2017
+- REST only for authentication
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `scripts/test_cfm_products.py` | Added CDX product ID tests |
+
+### Plan Created
+
+Implementation plan ready at: `C:\Users\sheeh\.claude\plans\sprightly-toasting-hinton.md`
+
+Phases:
+1. Abstract ExchangeClientBase interface (~50 LOC)
+2. TradovateClient WebSocket implementation (~400-500 LOC)
+3. Daemon integration with config-driven data source
+
+### Decision Pending
+
+User needs to decide on $25/month Tradovate API subscription:
+- **Yes**: Proceed with integration (4-5 hours implementation)
+- **No**: Explore workarounds (adjust INTX filters, manual TradingView export)
+
+### Session CRYPTO-15 Options
+
+| If Decision | Next Steps |
+|-------------|------------|
+| Subscribe to Tradovate | Implement TradovateClient per plan |
+| Don't subscribe | Explore INTX filter adjustments or manual alternatives |
+
+### Plan Mode Recommendation
+
+**PLAN MODE: OFF** - Plan already exists, awaiting user decision.
+
+---
+
+## Session CRYPTO-13: CFM API Research and Non-Uniform Basis Discovery (COMPLETE)
+
+**Date:** December 16, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Critical finding: INTX has non-uniform basis vs BIP
+
+### Objective
+
+Research CFM API for BIP data and validate pattern detection accuracy.
+
+### Critical Discovery: Non-Uniform Basis Spread
+
+Comparing INTX vs BIP for the same hourly 3-2D-2U pattern (Dec 16, 08:00-10:00 EST):
+
+| Level | BIP | INTX | Spread |
+|-------|-----|------|--------|
+| 3 Bar HIGH | $89,495 | $87,800 | **$1,695** |
+| 3 Bar LOW | $86,405 | $86,413 | **$8** |
+| 2D Bar HIGH | $87,840 | $87,767 | **$73** |
+
+**Key Finding:** The basis is NOT uniform - highs differ by $1,695 but lows are nearly identical!
+
+### Why Trades Are Being Filtered
+
+**BIP Magnitude:**
+- Target: $89,495, Entry: $87,840
+- Magnitude: $1,655 (1.88%) - PASSES filter
+
+**INTX Magnitude:**
+- Target: $87,800, Entry: $87,767
+- Magnitude: $33 (0.038%) - **FAILS filter** (MIN_MAGNITUDE_PCT = 0.5%)
+
+The INTX outside bar barely clears the 2D high, creating a "compressed" geometry that fails magnitude filters even though BIP shows a valid setup.
+
+### API Research Findings
+
+1. **CFM Products NOT in Advanced Trade API**
+   - Tested: Only 199 INTX products available
+   - BTC-PERP and ETH-PERP return 404 errors
+   - CFM nano futures (BIP/EIP) not accessible
+
+2. **Alternative Data Sources Identified**
+   - **Tradovate API** (user has account via MyFundedFutures)
+     - Contract ID: BIPZ0
+     - Historical minute data available
+   - **TradingView** (user has paid account with Coinbase integration)
+     - Direct BIP charts available
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `scripts/test_cfm_products.py` | API test for product discovery |
+
+### Session CRYPTO-14 Priorities
+
+1. **Integrate Tradovate API** - Fetch BIP OHLCV data
+2. **Create data source abstraction** - Support multiple data feeds
+3. **Test pattern detection with BIP data** - Verify correct magnitude calculations
+
+### Plan Mode Recommendation
+
+**PLAN MODE: ON** - Tradovate API integration requires architectural planning.
+
+---
+
+## Session CRYPTO-12: Wrong Coinbase Product Discovery (COMPLETE)
+
+**Date:** December 16, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Led to CRYPTO-13 research
+
+### Critical Discovery
+
+The crypto daemon is fetching data for the **WRONG PRODUCT**:
+
+| Product | What Daemon Uses | What User Trades |
+|---------|------------------|------------------|
+| **BTC** | BTC-PERP-INTX (INTX venue) | BIP - Nano Bitcoin Perp (CFM venue) |
+| **ETH** | ETH-PERP-INTX (INTX venue) | EIP - Nano Ether Perp (CFM venue, TBD) |
+
+**Why This Matters:**
+- BTC-PERP-INTX is on Coinbase International Exchange (non-US users)
+- BIP (Nano Bitcoin) is on CFM (US users can access)
+- Prices differ by ~$1,695 on the same bar!
+- Pattern detection was working correctly, but on wrong data
+
+### Data Comparison (08:00 EST bar on Dec 16)
+
+| Source | HIGH |
+|--------|------|
+| BTC-PERP-INTX API | $87,800 |
+| BIP (user's chart) | $89,495 |
+
+### Investigation Steps Completed
+
+1. Verified target calculation in `pattern_detector.py` is CORRECT
+2. Compared Coinbase Advanced Trade API vs INTX API - both return same data
+3. Discovered user views "Nano Bitcoin Perp Style Futures" (BIP), not BTC-PERP-INTX
+4. CFM products (BIP, EIP) not found via Advanced Trade API - may need different endpoint
+
+### Session CRYPTO-13 Priorities
+
+1. **Find CFM API endpoint** - Locate correct API for BIP/EIP nano products
+2. **Update crypto config** - Change symbols from INTX to CFM products
+3. **Update Coinbase client** - Add CFM data fetching if needed
+4. **Test pattern detection** - Verify with correct data source
+
+### Files to Investigate
+
+| File | Purpose |
+|------|---------|
+| `crypto/config.py` | Symbol configuration (BTC-PERP-INTX -> BIP) |
+| `crypto/exchange/coinbase_client.py` | May need CFM API endpoint |
+
+### Product Details (BIP - Nano Bitcoin)
+
+- Contract size: 1/100th of Bitcoin
+- Trading code: BIP
+- Venue: CFM (Coinbase Financial Markets)
+- Hours: 24/7 with 1-hour break Friday 5-6PM ET
+- Expiry: December 2030 (5-year contract)
+
+### Plan Mode Recommendation
+
+**PLAN MODE: ON** - Need to research CFM API and update data fetching.
 
 ---
 
