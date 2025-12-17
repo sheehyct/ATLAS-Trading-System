@@ -398,22 +398,52 @@ class SignalExecutor:
             return self._create_failed_result(signal_key, str(e))
 
     def _passes_filters(self, signal: StoredSignal) -> bool:
-        """Check if signal passes quality filters."""
-        # Magnitude filter
-        if signal.magnitude_pct < self.config.min_magnitude_pct:
-            logger.debug(
-                f"Signal {signal.signal_key} failed magnitude filter: "
-                f"{signal.magnitude_pct:.2f}% < {self.config.min_magnitude_pct}%"
-            )
-            return False
+        """
+        Check if signal passes quality filters.
 
-        # R:R filter
-        if signal.risk_reward < self.config.min_risk_reward:
-            logger.debug(
-                f"Signal {signal.signal_key} failed R:R filter: "
-                f"{signal.risk_reward:.2f} < {self.config.min_risk_reward}"
-            )
-            return False
+        Session CRYPTO-14: SETUP signals (X-1-?) use relaxed thresholds
+        because their target is the prior directional bar's extreme,
+        which is naturally close to entry, resulting in low magnitude.
+        """
+        import os
+
+        # Determine if this is a SETUP signal (waiting for live break)
+        is_setup = getattr(signal, 'signal_type', 'COMPLETED') == 'SETUP'
+
+        if is_setup:
+            # Relaxed thresholds for SETUP signals
+            # These are intentionally looser to allow paper trading monitoring
+            setup_min_mag = float(os.environ.get('EXECUTOR_SETUP_MIN_MAGNITUDE', '0.1'))
+            setup_min_rr = float(os.environ.get('EXECUTOR_SETUP_MIN_RR', '0.3'))
+
+            if signal.magnitude_pct < setup_min_mag:
+                logger.info(
+                    f"SETUP signal {signal.signal_key} skipped: "
+                    f"magnitude {signal.magnitude_pct:.2f}% < {setup_min_mag}%"
+                )
+                return False
+
+            if signal.risk_reward < setup_min_rr:
+                logger.info(
+                    f"SETUP signal {signal.signal_key} skipped: "
+                    f"R:R {signal.risk_reward:.2f} < {setup_min_rr}"
+                )
+                return False
+        else:
+            # Standard thresholds for COMPLETED signals
+            if signal.magnitude_pct < self.config.min_magnitude_pct:
+                logger.debug(
+                    f"Signal {signal.signal_key} failed magnitude filter: "
+                    f"{signal.magnitude_pct:.2f}% < {self.config.min_magnitude_pct}%"
+                )
+                return False
+
+            if signal.risk_reward < self.config.min_risk_reward:
+                logger.debug(
+                    f"Signal {signal.signal_key} failed R:R filter: "
+                    f"{signal.risk_reward:.2f} < {self.config.min_risk_reward}"
+                )
+                return False
 
         return True
 
