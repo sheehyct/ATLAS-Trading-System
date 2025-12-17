@@ -358,6 +358,9 @@ class OptionsDataLoader:
                 options_only=True
             )
 
+            # Load executions to link patterns
+            executions = self._load_executions()
+
             # Enhance with display-friendly fields
             for trade in closed_trades:
                 # Parse OCC symbol for display
@@ -380,11 +383,56 @@ class OptionsDataLoader:
                 else:
                     trade['sell_time_display'] = ''
 
+                # Link pattern from execution data
+                trade['pattern'] = self._get_pattern_for_trade(
+                    trade.get('symbol', ''),
+                    executions
+                )
+
             return closed_trades
 
         except Exception as e:
             logger.error(f"Error getting closed trades: {e}")
             return []
+
+    def _load_executions(self) -> Dict:
+        """Load executions from disk to link patterns to trades."""
+        try:
+            import json
+            executions_file = Path('data/executions/executions.json')
+            if executions_file.exists():
+                with open(executions_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.debug(f"Could not load executions: {e}")
+        return {}
+
+    def _get_pattern_for_trade(self, osi_symbol: str, executions: Dict) -> str:
+        """
+        Get pattern type for a trade by matching OSI symbol to execution.
+
+        Args:
+            osi_symbol: OCC option symbol (e.g., DIA251226P00485000)
+            executions: Dictionary of executions keyed by signal_key
+
+        Returns:
+            Pattern string (e.g., '2U-1-?') or empty string if not found
+        """
+        if not executions:
+            return ''
+
+        # Find execution that matches this OSI symbol
+        for signal_key, exec_data in executions.items():
+            if exec_data.get('osi_symbol') == osi_symbol:
+                # Extract pattern from signal_key
+                # Format: SYMBOL_TIMEFRAME_PATTERN_TIMESTAMP
+                # e.g., DIA_1D_2U-1-?_202512161400
+                parts = signal_key.split('_')
+                if len(parts) >= 3:
+                    return parts[2]  # Pattern is the 3rd part
+                break
+
+        return ''
 
     def get_closed_trades_summary(self, days: int = 30) -> Dict:
         """

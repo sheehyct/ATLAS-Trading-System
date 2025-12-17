@@ -548,6 +548,9 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
         roi = trade.get('roi_percent', 0)
         pnl_color = DARK_THEME['accent_green'] if pnl >= 0 else DARK_THEME['accent_red']
 
+        # Get pattern from linked execution if available
+        pattern = trade.get('pattern', '')
+
         rows.append(
             html.Tr([
                 # Contract
@@ -566,21 +569,25 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                     'color': DARK_THEME['text_primary']
                 }),
 
-                # Entry Price
+                # Entry (price + time)
                 html.Td([
-                    f"${trade.get('buy_price', 0):.2f}"
-                ], style={
-                    'padding': '0.75rem',
-                    'color': DARK_THEME['text_secondary']
-                }),
+                    html.Div(f"${trade.get('buy_price', 0):.2f}", style={
+                        'color': DARK_THEME['text_primary']
+                    }),
+                    html.Small(trade.get('buy_time_display', '-'), style={
+                        'color': DARK_THEME['text_muted']
+                    })
+                ], style={'padding': '0.75rem'}),
 
-                # Exit Price
+                # Exit (price + time)
                 html.Td([
-                    f"${trade.get('sell_price', 0):.2f}"
-                ], style={
-                    'padding': '0.75rem',
-                    'color': DARK_THEME['text_secondary']
-                }),
+                    html.Div(f"${trade.get('sell_price', 0):.2f}", style={
+                        'color': DARK_THEME['text_primary']
+                    }),
+                    html.Small(trade.get('sell_time_display', '-'), style={
+                        'color': DARK_THEME['text_muted']
+                    })
+                ], style={'padding': '0.75rem'}),
 
                 # Realized P&L
                 html.Td([
@@ -604,11 +611,9 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                     'color': DARK_THEME['text_secondary']
                 }),
 
-                # Closed Date
+                # Pattern (if available)
                 html.Td([
-                    html.Small(trade.get('sell_time_display', '-'), style={
-                        'color': DARK_THEME['text_secondary']
-                    })
+                    dbc.Badge(pattern, color='dark', style={'fontSize': '0.8rem'}) if pattern else html.Small('-', style={'color': DARK_THEME['text_muted']})
                 ], style={'padding': '0.75rem'}),
 
             ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
@@ -623,7 +628,7 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                 html.Th('Exit', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Realized P&L', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Duration', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
-                html.Th('Closed', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Pattern', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
             ], style={'backgroundColor': DARK_THEME['card_header']})
         ]),
         html.Tbody(rows)
