@@ -95,6 +95,9 @@ class StoredSignal:
     converted_at: Optional[datetime] = None
     paper_trade_id: Optional[str] = None
 
+    # Execution tracking (for correlating closed trades with patterns)
+    executed_osi_symbol: Optional[str] = None  # OCC symbol of executed option contract
+
     # Occurrence tracking
     occurrence_count: int = 1  # How many times this signal was detected
 
@@ -411,6 +414,47 @@ class SignalStore:
         signal.paper_trade_id = paper_trade_id
         self._save()
         return True
+
+    def set_executed_osi_symbol(self, signal_key: str, osi_symbol: str) -> bool:
+        """
+        Store the OSI symbol of the executed option contract.
+
+        Used to correlate closed trades back to their originating signals
+        for pattern attribution in the dashboard.
+
+        Args:
+            signal_key: Unique signal identifier
+            osi_symbol: OCC option symbol that was executed (e.g., SPY241220C00600000)
+
+        Returns:
+            True if updated successfully
+        """
+        if signal_key not in self._signals:
+            logger.warning(f"Cannot set OSI symbol - signal not found: {signal_key}")
+            return False
+
+        signal = self._signals[signal_key]
+        signal.executed_osi_symbol = osi_symbol
+        self._save()
+        logger.debug(f"Set executed_osi_symbol for {signal_key}: {osi_symbol}")
+        return True
+
+    def get_signal_by_osi_symbol(self, osi_symbol: str) -> Optional[StoredSignal]:
+        """
+        Look up a signal by the OSI symbol of the executed option.
+
+        Used to correlate closed trades with their originating patterns.
+
+        Args:
+            osi_symbol: OCC option symbol to look up
+
+        Returns:
+            StoredSignal if found, None otherwise
+        """
+        for signal in self._signals.values():
+            if signal.executed_osi_symbol == osi_symbol:
+                return signal
+        return None
 
     def get_pending_signals(self) -> List[StoredSignal]:
         """Get signals that are detected but not yet alerted."""

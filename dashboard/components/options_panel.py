@@ -548,6 +548,10 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
         roi = trade.get('roi_percent', 0)
         pnl_color = DARK_THEME['accent_green'] if pnl >= 0 else DARK_THEME['accent_red']
 
+        # Pattern info from signal correlation
+        pattern = trade.get('pattern', '-')
+        timeframe = trade.get('timeframe', '-')
+
         rows.append(
             html.Tr([
                 # Contract
@@ -556,6 +560,16 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                         'fontWeight': 'bold',
                         'color': DARK_THEME['text_primary']
                     })
+                ], style={'padding': '0.75rem'}),
+
+                # Pattern + Timeframe
+                html.Td([
+                    html.Div(pattern, style={
+                        'color': DARK_THEME['accent_blue'] if pattern != '-' else DARK_THEME['text_muted']
+                    }),
+                    html.Small(timeframe, style={
+                        'color': DARK_THEME['text_secondary']
+                    }) if timeframe != '-' else None
                 ], style={'padding': '0.75rem'}),
 
                 # Qty
@@ -618,6 +632,7 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
         html.Thead([
             html.Tr([
                 html.Th('Contract', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Pattern', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Qty', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Entry', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Exit', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),

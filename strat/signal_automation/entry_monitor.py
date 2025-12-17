@@ -62,6 +62,16 @@ class EntryMonitorConfig:
     # Callback when trigger fires
     on_trigger: Optional[Callable[[TriggerEvent], None]] = None
 
+    # =========================================================================
+    # "Let the Market Breathe" - Hourly Pattern Time Restrictions
+    # =========================================================================
+    # For hourly (1H) patterns, we must wait for bars to close before entry:
+    # - 2-bar patterns (2U-2D, 2D-2U, etc.): First bar must close → 10:30 AM EST
+    # - 3-bar patterns (2D-1-2U, 3-1-2D, etc.): First two bars must close → 11:30 AM EST
+    # Daily/Weekly/Monthly patterns have no time restriction (larger TFs = more significance)
+    hourly_2bar_earliest: time = field(default_factory=lambda: time(10, 30))
+    hourly_3bar_earliest: time = field(default_factory=lambda: time(11, 30))
+
 
 class EntryMonitor:
     """
@@ -110,6 +120,56 @@ class EntryMonitor:
             return False
 
         return self.config.market_open <= current_time <= self.config.market_close
+
+    def is_hourly_entry_allowed(self, signal: StoredSignal) -> bool:
+        """
+        Check if entry is allowed based on "let the market breathe" rules.
+
+        For hourly (1H) patterns, we must wait for sufficient bars to close:
+        - 2-bar patterns: Earliest entry at 10:30 AM EST (after first 1H bar closes)
+        - 3-bar patterns: Earliest entry at 11:30 AM EST (after first two 1H bars close)
+
+        Daily, Weekly, Monthly patterns have no time restriction because
+        larger timeframes carry more significance.
+
+        Args:
+            signal: The signal to check
+
+        Returns:
+            True if entry is allowed, False if too early
+        """
+        # Only apply time restriction to hourly patterns
+        if signal.timeframe != '1H':
+            return True
+
+        current_time = datetime.now().time()
+
+        # Determine if this is a 2-bar or 3-bar pattern
+        # 3-bar patterns contain "-1-" (inside bar in middle): 2D-1-2U, 3-1-2D, 2U-1-?, etc.
+        # 2-bar patterns do not: 2D-2U, 2U-2D, 3-2U, 3-2D, etc.
+        pattern = signal.pattern_type
+        is_3bar_pattern = '-1-' in pattern
+
+        if is_3bar_pattern:
+            # 3-bar pattern: need two closed bars before entry
+            earliest = self.config.hourly_3bar_earliest
+            if current_time < earliest:
+                logger.debug(
+                    f"Hourly 3-bar pattern {signal.symbol} {pattern} blocked: "
+                    f"current time {current_time.strftime('%H:%M')} < {earliest.strftime('%H:%M')}"
+                )
+                return False
+        else:
+            # 2-bar pattern: need one closed bar before entry
+            earliest = self.config.hourly_2bar_earliest
+            if current_time < earliest:
+                logger.debug(
+                    f"Hourly 2-bar pattern {signal.symbol} {pattern} blocked: "
+                    f"current time {current_time.strftime('%H:%M')} < {earliest.strftime('%H:%M')}"
+                )
+                return False
+
+        return True
 
     def get_pending_signals(self) -> List[StoredSignal]:
         """Get all signals eligible for trigger monitoring."""
@@ -162,6 +222,10 @@ class EntryMonitor:
                     f"Skipping COMPLETED signal: {signal.symbol} {signal.pattern_type} "
                     "(entry already happened historically)"
                 )
+                continue
+
+            # "Let the Market Breathe" - Skip hourly patterns if too early in session
+            if not self.is_hourly_entry_allowed(signal):
                 continue
 
             current_price = prices.get(signal.symbol)

@@ -22,7 +22,7 @@ import signal
 import sys
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from typing import Optional, Dict, Any, List
 from threading import Event
 
@@ -322,6 +322,11 @@ class SignalDaemon:
                 self._execution_count += 1
 
                 if result.state == ExecutionState.ORDER_SUBMITTED:
+                    # Store OSI symbol for closed trade correlation
+                    if result.osi_symbol:
+                        self.signal_store.set_executed_osi_symbol(
+                            signal.signal_key, result.osi_symbol
+                        )
                     logger.info(
                         f"ORDER SUBMITTED: {signal.symbol} {signal.direction} "
                         f"(priority: {signal.priority})"
@@ -707,12 +712,66 @@ class SignalDaemon:
                 logger.error(f"Alert error ({alerter.name}): {e}")
                 self._error_count += 1
 
+    def _is_hourly_entry_allowed(self, signal: StoredSignal) -> bool:
+        """
+        Check if hourly pattern entry is allowed based on "let the market breathe" rules.
+
+        For hourly (1H) patterns, we must wait for sufficient bars to close:
+        - 2-bar patterns: Earliest entry at 10:30 AM EST (after first 1H bar closes)
+        - 3-bar patterns: Earliest entry at 11:30 AM EST (after first two 1H bars close)
+
+        Daily, Weekly, Monthly patterns have no time restriction because
+        larger timeframes carry more significance.
+
+        Args:
+            signal: The signal to check
+
+        Returns:
+            True if entry is allowed, False if too early
+        """
+        # Only apply time restriction to hourly patterns
+        if signal.timeframe != '1H':
+            return True
+
+        current_time = datetime.now().time()
+
+        # Time thresholds (match entry_monitor.py defaults)
+        hourly_2bar_earliest = dt_time(10, 30)
+        hourly_3bar_earliest = dt_time(11, 30)
+
+        # Determine if this is a 2-bar or 3-bar pattern
+        # 3-bar patterns contain "-1-" (inside bar in middle): 2D-1-2U, 3-1-2D, 2U-1-?, etc.
+        # 2-bar patterns do not: 2D-2U, 2U-2D, 3-2U, 3-2D, etc.
+        pattern = signal.pattern_type
+        is_3bar_pattern = '-1-' in pattern
+
+        if is_3bar_pattern:
+            if current_time < hourly_3bar_earliest:
+                logger.info(
+                    f"Hourly 3-bar pattern {signal.symbol} {pattern} blocked: "
+                    f"current time {current_time.strftime('%H:%M')} < 11:30 (let market breathe)"
+                )
+                return False
+        else:
+            if current_time < hourly_2bar_earliest:
+                logger.info(
+                    f"Hourly 2-bar pattern {signal.symbol} {pattern} blocked: "
+                    f"current time {current_time.strftime('%H:%M')} < 10:30 (let market breathe)"
+                )
+                return False
+
+        return True
+
     def _execute_signals(
         self,
         signals: List[StoredSignal]
     ) -> List[ExecutionResult]:
         """
         Execute signals via the executor (Session 83K-48).
+
+        Includes:
+        - "Let the market breathe" filtering for hourly patterns
+        - Discord entry alerts on successful order submission
 
         Args:
             signals: Signals to execute
@@ -726,6 +785,15 @@ class SignalDaemon:
         results: List[ExecutionResult] = []
 
         for signal in signals:
+            # "Let the Market Breathe" - Skip hourly patterns if too early in session
+            if not self._is_hourly_entry_allowed(signal):
+                results.append(ExecutionResult(
+                    signal_key=signal.signal_key,
+                    state=ExecutionState.SKIPPED,
+                    error="Hourly pattern blocked - too early in session (let market breathe)"
+                ))
+                continue
+
             try:
                 result = self.executor.execute_signal(signal)
                 results.append(result)
@@ -734,10 +802,26 @@ class SignalDaemon:
                     self._execution_count += 1
                     # Mark signal as triggered in store
                     self.signal_store.mark_triggered(signal.signal_key)
+                    # Store OSI symbol for closed trade correlation
+                    if result.osi_symbol:
+                        self.signal_store.set_executed_osi_symbol(
+                            signal.signal_key, result.osi_symbol
+                        )
                     logger.info(
                         f"Order submitted for {signal.signal_key}: "
                         f"{result.osi_symbol}"
                     )
+
+                    # Send Discord entry alert (was missing from this code path!)
+                    for alerter in self.alerters:
+                        try:
+                            if isinstance(alerter, DiscordAlerter):
+                                alerter.send_entry_alert(signal, result)
+                            elif isinstance(alerter, LoggingAlerter):
+                                alerter.log_execution(result)
+                        except Exception as e:
+                            logger.error(f"Entry alert error: {e}")
+
                 elif result.state == ExecutionState.SKIPPED:
                     logger.debug(
                         f"Signal skipped: {signal.signal_key} - {result.error}"

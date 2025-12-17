@@ -210,6 +210,47 @@ The `?` in `X-1-?` means "waiting for directional resolution."
 **Cause:** Not distinguishing between closed inside bar (3-bar) and live bar that starts inside then breaks (2-bar)
 **Understanding:** A live bar that starts as "inside" and then breaks is a 2-bar pattern, not 3-bar
 
+### Bug 4: Missing Discord Entry Alerts (Equity Daemon)
+
+**Symptom:** Orders fill on Alpaca but no Discord entry notification received
+**Cause:** Two code paths for execution, but only one sends Discord alerts:
+- `EntryMonitor` triggers → `_on_entry_triggered()` → sends Discord alert ✅
+- `run_scan()` → `_execute_signals()` directly → NO Discord alert ❌
+
+**Files:** `strat/signal_automation/daemon.py`
+**Fix:** Added Discord entry alert to `_execute_signals()` code path
+
+### Bug 5: Late-Day Hourly Pattern Entries ("Let the Market Breathe")
+
+**Symptom:** Hourly patterns entering at 3:30 PM and exiting at 9:31 AM next day
+**Cause:** No time-of-day filtering for hourly patterns - first bar hasn't closed
+
+**Rule:** For hourly (1H) patterns only:
+- 2-bar patterns: Earliest entry at **10:30 AM EST** (after first 1H bar closes)
+- 3-bar patterns: Earliest entry at **11:30 AM EST** (after first two 1H bars close)
+- Daily/Weekly/Monthly: No restriction (larger timeframes carry more significance)
+
+**Files:**
+- `strat/signal_automation/entry_monitor.py` - Added `is_hourly_entry_allowed()` method
+- `strat/signal_automation/daemon.py` - Added `_is_hourly_entry_allowed()` and filtering in `_execute_signals()`
+
+### Bug 6: Dashboard Closed Trades Missing Pattern Column
+
+**Symptom:** Closed trades show "-" for pattern column
+**Cause:** Alpaca doesn't store pattern info - need to correlate with signal store
+
+**Fix:**
+1. Added `executed_osi_symbol` field to `StoredSignal`
+2. Store OSI symbol when signal executes (`set_executed_osi_symbol()`)
+3. Look up pattern by OSI symbol when fetching closed trades (`get_signal_by_osi_symbol()`)
+4. Added Pattern column to closed trades table
+
+**Files:**
+- `strat/signal_automation/signal_store.py` - Added `executed_osi_symbol` field and lookup methods
+- `strat/signal_automation/daemon.py` - Store OSI symbol on execution
+- `dashboard/data_loaders/options_loader.py` - Look up pattern from signal store
+- `dashboard/components/options_panel.py` - Added Pattern column to table
+
 ---
 
 ## Summary Checklist
@@ -221,6 +262,9 @@ When implementing STRAT pattern detection:
 - [ ] **Pattern distinction:** Closed inside bar = 3-bar, live bar breaking = 2-bar
 - [ ] **Entry timing:** Entry is LIVE at break, not waiting for bar close
 - [ ] **Trigger definition:** "Inside bar break" = NEXT bar breaks PREVIOUS bar's levels
+- [ ] **Time filtering:** Hourly patterns restricted to 10:30 AM (2-bar) / 11:30 AM (3-bar)
+- [ ] **Discord alerts:** Ensure ALL execution paths send entry alerts
+- [ ] **Pattern tracking:** Store OSI symbol on execution for closed trade correlation
 
 ---
 
@@ -229,8 +273,15 @@ When implementing STRAT pattern detection:
 - `crypto/scanning/signal_scanner.py` - Setup detection with live bar exclusion
 - `strat/pattern_detector.py` - Pattern detection with correct stop placement
 - `crypto/scanning/entry_monitor.py` - Entry trigger monitoring
+- `strat/signal_automation/entry_monitor.py` - Hourly time filtering
+- `strat/signal_automation/daemon.py` - Execution with Discord alerts and time filtering
+- `strat/signal_automation/signal_store.py` - OSI symbol tracking for pattern correlation
+- `dashboard/data_loaders/options_loader.py` - Closed trades with pattern lookup
+- `dashboard/components/options_panel.py` - Pattern column in closed trades table
 
 ---
 
 **Session:** CRYPTO-10 (Review daemon strategy)
-**Commit:** `1b8e295` - fix(strat): exclude live bars from 3-bar setup detection and fix stop placement
+**Commits:**
+- `1b8e295` - fix(strat): exclude live bars from 3-bar setup detection and fix stop placement
+- `TBD` - fix(equity): add time filtering, Discord alerts, and pattern tracking
