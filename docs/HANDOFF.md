@@ -1,9 +1,100 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 18, 2025 (Session CRYPTO-16)
+**Last Updated:** December 18, 2025 (Session EQUITY-17)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** CFM venue products (BIP/ETP) now integrated - Tradovate NOT needed
+**Status:** Discord alerts fixed, premarket scanning designed
+
+---
+
+## Session EQUITY-17: Discord Alerts Fix + Premarket Analysis (COMPLETE)
+
+**Date:** December 18, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Discord working, premarket test script ready
+
+### Issues Fixed
+
+1. **Discord Webhook Routing**
+   - **Problem:** Equity options alerts were going to crypto-alerts channel
+   - **Fix:** Added `DISCORD_EQUITY_WEBHOOK_URL` env var on VPS
+   - **Config:** Updated `strat/signal_automation/config.py` to prefer equity webhook
+   - **Result:** Alerts now arrive in trade-alerts channel
+
+2. **Merged Claude Web Bug Fixes** (5 commits from `claude/review-daemon-strategy-T4kTM`)
+   - Time filtering ("Let the Market Breathe") for hourly patterns
+   - Discord alerts on ALL execution paths
+   - Pattern tracking via OSI symbol for closed trades
+   - Component count for 2-bar vs 3-bar detection
+
+3. **SSH Key Configuration**
+   - Removed passphrase from SSH key for easier VPS access
+
+### Premarket Analysis Script Created
+
+Created `scripts/premarket_pipeline_test.py` that:
+- Fetches live 15m premarket data from Alpaca
+- Classifies bars and detects patterns
+- Sends Discord alerts for verification
+- Verified 11 signals sent to correct Discord channel
+
+### Bar Classification Verified
+
+All 11 tickers verified correct classification (SPY, QQQ, IWM, DIA, AAPL, TSLA, MSFT, GOOGL, HOOD, QBTS, ACHR)
+
+### Commits
+
+- `6d4d420` - Merge branch 'claude/review-daemon-strategy-T4kTM' - bug fixes
+- `25d5142` - fix(discord): use equity-specific webhook URL for signal daemon
+- `f0e7ff4` - feat(scripts): add live premarket 15m data fetching to pipeline test
+
+---
+
+## Session EQUITY-18 Priority Tasks
+
+| Priority | Task | Details |
+|----------|------|---------|
+| **HIGH** | 15m/30m/1H Scanning | Add faster timeframes to daemon for theoretical entries |
+| Medium | Setup Validation | Add validation logic to equities scanner (consistency with crypto) |
+| Monitor | Watch daemon logs | First scan at 9:00 AM ET |
+
+### 15m/30m Scanning Design (Ready to Implement)
+
+**Data Fetching:**
+- 15m/30m: Use Alpaca direct fetch (already in premarket script)
+- 1H+: Keep existing VBT fetch
+
+**Schedule:**
+- 15m: Scan at :00, :15, :30, :45
+- 30m: Scan at :00, :30
+- 1H: Scan at :00
+
+**Time Filtering ("Let the Market Breathe"):**
+```
+15m 2-bar: 9:45 AM    15m 3-bar: 10:00 AM
+30m 2-bar: 10:00 AM   30m 3-bar: 10:30 AM
+1H 2-bar:  10:30 AM   1H 3-bar:  11:30 AM (existing)
+```
+
+### Setup Validation Enhancement (Optional)
+
+**Context:** Crypto scanner has validation logic that equities lacks.
+
+**What crypto has:**
+```python
+# For X-1 patterns: Valid if bars stay inside setup bar range
+# For X-2 patterns: Valid if entry level NOT yet triggered
+#   - LONG: valid if bar_high < entry_price
+#   - SHORT: valid if bar_low > entry_price
+```
+
+**Why it matters:** Without validation, scanner may return "stale" setups where entry was already triggered historically.
+
+**File:** `strat/paper_signal_scanner.py` around line 1075
+
+**Reference:** See commit `79bffa9` in crypto scanner for validation logic.
+
+**Priority:** Low - Not breaking anything, just consistency improvement.
 
 ---
 
