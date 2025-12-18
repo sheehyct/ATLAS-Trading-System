@@ -235,11 +235,8 @@ def analyze_patterns(df: pd.DataFrame, symbol: str, timeframe: str) -> Dict:
 def run_scanner_test(scanner: PaperSignalScanner, symbol: str, timeframe: str) -> List[DetectedSignal]:
     """Run the actual scanner to detect signals."""
     try:
-        # Map timeframe
-        tf_map = {'15m': '15Min', '30m': '30Min', '1H': '1H'}
-        scanner_tf = tf_map.get(timeframe, timeframe)
-
-        signals = scanner.scan_symbol_timeframe(symbol, scanner_tf)
+        # Session EQUITY-18: Scanner now accepts '15m' and '30m' directly
+        signals = scanner.scan_symbol_timeframe(symbol, timeframe)
         return signals
     except Exception as e:
         print(f"  Scanner error for {symbol} {timeframe}: {e}")
