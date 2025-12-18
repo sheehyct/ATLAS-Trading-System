@@ -1,9 +1,78 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 18, 2025 (Session EQUITY-17)
+**Last Updated:** December 18, 2025 (Session EQUITY-18)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Discord alerts fixed, premarket scanning designed
+**Status:** 15m/30m scanning implemented, daemon deployed
+
+---
+
+## Session EQUITY-18: 15m/30m Timeframe Scanning (COMPLETE)
+
+**Date:** December 18, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 15m/30m scanning deployed to VPS
+
+### Changes Implemented
+
+1. **Setup Validation (ported from crypto scanner)**
+   - File: `strat/paper_signal_scanner.py` around line 1082
+   - Validates X-1 patterns: bars must stay inside setup bar range
+   - Validates X-2 patterns: entry level must not be already triggered
+
+2. **15m/30m Data Fetching**
+   - Added `'15m'` and `'30m'` support to `_fetch_data()` method
+   - Uses Alpaca VBT `15Min` and `30Min` timeframes
+   - Market hours filtering applied to all intraday data
+
+3. **Config Updates** (`strat/signal_automation/config.py`)
+   - Added `fifteen_min_cron`: `'0,15,30,45 9-15 * * mon-fri'`
+   - Added `thirty_min_cron`: `'0,30 9-15 * * mon-fri'`
+   - Added `scan_15m` and `scan_30m` enable flags
+   - Updated `valid_timeframes` to include `'15m'` and `'30m'`
+
+4. **Scheduler Updates** (`strat/signal_automation/scheduler.py`)
+   - Added `add_15m_job()` method
+   - Added `add_30m_job()` method
+
+5. **Daemon Updates** (`strat/signal_automation/daemon.py`)
+   - Added 15m/30m scan job registration in legacy mode
+   - Extended `_is_intraday_entry_allowed()` with time thresholds:
+     - 15m: 2-bar 9:45 AM, 3-bar 10:00 AM
+     - 30m: 2-bar 10:00 AM, 3-bar 10:30 AM
+     - 1H: 2-bar 10:30 AM, 3-bar 11:30 AM
+
+### Test Results
+
+- All tests pass: 311 passed, 2 skipped
+- 15m data fetch verified: 594 bars for SPY
+- 30m data fetch verified: 308 bars for SPY
+
+### Commits
+
+- `e631970` - feat(strat): add 15m/30m timeframe scanning support
+
+### VPS Deployment
+
+Daemon restarted with new code. Running with `--execute` flag.
+
+---
+
+## Session EQUITY-19 Priority Tasks
+
+| Priority | Task | Details |
+|----------|------|---------|
+| **HIGH** | Enable 15m/30m scanning | Set `enable_htf_resampling=False` in config to use new jobs |
+| Monitor | Watch daemon logs | Look for 15m/30m scans during market hours |
+| Low | Dashboard integration | Show 15m/30m signals on dashboard |
+
+### Note on HTF Resampling Mode
+
+Currently, the daemon uses `enable_htf_resampling=True` by default, which uses a single 15-min base scan that resamples to all higher timeframes. The new 15m/30m scan jobs are in the "legacy" mode (`enable_htf_resampling=False`).
+
+To enable the new dedicated 15m/30m scan jobs, either:
+1. Set `enable_htf_resampling=False` in config
+2. Or set env var `SIGNAL_ENABLE_HTF_RESAMPLING=false`
 
 ---
 
