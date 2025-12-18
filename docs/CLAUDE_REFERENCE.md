@@ -232,7 +232,8 @@ class NewStrategy(BaseStrategy):
 1. Commit completed work
 2. Update HANDOFF.md
 3. Store in OpenMemory
-4. Update .session_startup_prompt.md
+4. Backup OpenMemory: cp "C:/Dev/openmemory/data/atlas_memory.sqlite" "C:/Dev/openmemory/backups/atlas_memory_YYYY-MM-DD.sqlite"
+5. Update .session_startup_prompt.md
 ```
 
 ### Session Startup Prompt Template

@@ -1,9 +1,81 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 17, 2025 (Session CRYPTO-15)
+**Last Updated:** December 18, 2025 (Session CRYPTO-16)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Critical SETUP detection bug fixed - X-2D/X-2U patterns now detected
+**Status:** CFM venue products (BIP/ETP) now integrated - Tradovate NOT needed
+
+---
+
+## Session CRYPTO-16: CFM Product Discovery - No Tradovate Needed (COMPLETE)
+
+**Date:** December 18, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Deployed to VPS
+
+### Major Breakthrough
+
+**Coinbase API DOES have BIP data** - just under a different product ID format than expected.
+
+### Discovery Process
+
+1. GPT 5.2 research suggested CFM-specific endpoints might exist
+2. Tested `/api/v3/brokerage/cfm/balance_summary` - WORKS (user has CFM account)
+3. Found FCM venue products in API product listing
+4. **BIP-20DEC30-CDE** is the correct product ID (not BTC-PERP)
+
+### Key Finding
+
+| Product | Format | Venue | API Access |
+|---------|--------|-------|------------|
+| BTC-PERP-INTX | BTC-PERP-{VENUE} | INTX (International) | Works |
+| BIP | BIP-{EXPIRY}-CDE | FCM/CDE (US Derivatives) | Works |
+| ETP | ETP-{EXPIRY}-CDE | FCM/CDE (US Derivatives) | Works |
+
+### Config Changes
+
+Updated `crypto/config.py`:
+- `CRYPTO_SYMBOLS` changed from `["BTC-PERP-INTX", "ETH-PERP-INTX"]` to `["BIP-20DEC30-CDE", "ETP-20DEC30-CDE"]`
+- Added `SYMBOL_TO_BASE_ASSET` mapping (BIP->BTC, ETP->ETH)
+- Added `FUTURES_EXPIRY` with expiration dates (2025-12-30)
+
+### Pattern Detection Verified
+
+| Symbol | Signals | Sample Magnitude |
+|--------|---------|------------------|
+| BIP-20DEC30-CDE | 9 | 16.47% (vs old 0.038%) |
+| ETP-20DEC30-CDE | 9 | 24.28% |
+
+**This solves the original problem** - patterns now have proper magnitudes and will pass filters.
+
+### Commits
+
+- `f080419` - feat(crypto): switch to CFM venue products (BIP/ETP) for pattern detection
+
+### Deployment
+
+- Pushed to GitHub
+- Pulled on VPS
+- Restarted atlas-crypto-daemon
+- Daemon logs confirm: `NEW SIGNAL: BIP-20DEC30-CDE 3-2U LONG (1w) [COMPLETED]`
+
+### Tradovate Decision
+
+**NOT NEEDED** - $25/month subscription can be avoided. Coinbase API provides all required data.
+
+### Contract Rollover Note
+
+BIP/ETP are dated futures (expire Dec 30, 2025). Before expiration:
+1. Check for next contract (e.g., BIP-20MAR31-CDE)
+2. Update `CRYPTO_SYMBOLS` and `FUTURES_EXPIRY` in config
+
+### Session CRYPTO-17 Options
+
+| Priority | Task |
+|----------|------|
+| Monitor | Verify BIP/ETP SETUP signals generate alerts |
+| Observe | Watch for TRIGGER entries with proper magnitudes |
+| Future | Contract rollover before Dec 30, 2025 expiration |
 
 ---
 

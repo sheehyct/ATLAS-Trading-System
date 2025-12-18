@@ -149,3 +149,4 @@ matplotlib_mcp/
 # .claude/ - NOW TRACKED (Claude configuration, except local settings)
 # *.html - NOW TRACKED (reports)
 # *.ipynb - NOW TRACKED (notebooks)
+.mcp.json

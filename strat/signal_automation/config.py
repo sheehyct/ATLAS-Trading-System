@@ -176,7 +176,11 @@ class AlertConfig:
     def __post_init__(self):
         """Load Discord webhook from environment if not provided."""
         if self.discord_webhook_url is None:
-            self.discord_webhook_url = os.environ.get('DISCORD_WEBHOOK_URL', '')
+            # Prefer equity-specific webhook, fall back to generic
+            self.discord_webhook_url = (
+                os.environ.get('DISCORD_EQUITY_WEBHOOK_URL') or
+                os.environ.get('DISCORD_WEBHOOK_URL', '')
+            )
 
         # Disable Discord if no URL configured
         if not self.discord_webhook_url:
@@ -336,8 +340,11 @@ class SignalAutomationConfig:
             'SIGNAL_SCAN_MONTHLY', 'true'
         ).lower() == 'true'
 
-        # Alert configuration
-        alert_config.discord_webhook_url = os.environ.get('DISCORD_WEBHOOK_URL', '')
+        # Alert configuration - prefer equity-specific webhook for signal daemon
+        alert_config.discord_webhook_url = (
+            os.environ.get('DISCORD_EQUITY_WEBHOOK_URL') or
+            os.environ.get('DISCORD_WEBHOOK_URL', '')
+        )
         alert_config.discord_enabled = bool(alert_config.discord_webhook_url)
         alert_config.log_level = os.environ.get('SIGNAL_LOG_LEVEL', 'INFO')
 

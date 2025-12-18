@@ -65,9 +65,9 @@ MAGNITUDE_EPSILON = 0.01  # 1 cent tolerance
 # Configuration
 VALIDATION_CONFIG = {
     'backtest_period': {
-        'start': '2020-01-01',
+        'start': '2017-01-01',
         'end': '2025-01-01',
-        'rationale': '5 years including March 2020 crash for stress testing'
+        'rationale': '8 years covering multiple regimes: bull (2017-19), COVID (2020), volatility (2021), bear (2022), recovery (2023-24)'
     },
     'stock_universe': {
         'symbols': [
@@ -851,14 +851,33 @@ class EquityValidationBacktest:
 
         # Convert PatternSignal objects to dict format (for compatibility with rest of script)
         for signal in signals:
-            # Map PatternType to pattern_type string
+            # Map PatternType to pattern_type string (comprehensive mapping)
             pattern_type_map = {
+                # 3-1-2 patterns
                 PatternType.PATTERN_312_UP: '3-1-2 Up',
                 PatternType.PATTERN_312_DOWN: '3-1-2 Down',
+                # 2-1-2 patterns (legacy simple)
                 PatternType.PATTERN_212_UP: '2-1-2 Up',
                 PatternType.PATTERN_212_DOWN: '2-1-2 Down',
+                # 2-1-2 patterns (detailed variants)
+                PatternType.PATTERN_212_2U12U: '2U-1-2U',  # Bullish continuation
+                PatternType.PATTERN_212_2D12D: '2D-1-2D',  # Bearish continuation
+                PatternType.PATTERN_212_2D12U: '2D-1-2U',  # Bullish reversal
+                PatternType.PATTERN_212_2U12D: '2U-1-2D',  # Bearish reversal
+                # 2-2 patterns
                 PatternType.PATTERN_22_UP: '2-2 Up',
                 PatternType.PATTERN_22_DOWN: '2-2 Down',
+                # 3-2 patterns
+                PatternType.PATTERN_32_UP: '3-2 Up',
+                PatternType.PATTERN_32_DOWN: '3-2 Down',
+                # 3-2-2 patterns (detailed variants)
+                PatternType.PATTERN_322_32U2U: '3-2U-2U',
+                PatternType.PATTERN_322_32D2D: '3-2D-2D',
+                PatternType.PATTERN_322_32D2U: '3-2D-2U',
+                PatternType.PATTERN_322_32U2D: '3-2U-2D',
+                # 3-2-2 patterns (legacy)
+                PatternType.PATTERN_322_UP: '3-2-2 Up',
+                PatternType.PATTERN_322_DOWN: '3-2-2 Down',
             }
             pattern_type_str = pattern_type_map.get(signal.pattern_type, 'Unknown')
 
@@ -1281,11 +1300,13 @@ def main():
     Run STRAT equity validation backtest.
 
     Session 83K-53: Added CLI support for expanded universe.
+    Session 83K-83: Added CLI support for timeframe filtering.
 
     Usage:
         python scripts/backtest_strat_equity_validation.py                    # Default 50 stocks
         python scripts/backtest_strat_equity_validation.py --universe expanded  # 16 ETFs/mega caps
         python scripts/backtest_strat_equity_validation.py --universe index     # 4 index ETFs only
+        python scripts/backtest_strat_equity_validation.py --timeframes 1D,1W,1M  # Non-hourly only
     """
     import argparse
 
@@ -1297,10 +1318,26 @@ def main():
         default='default',
         help='Symbol universe: default (50 stocks), expanded (16 ETFs/mega caps), index (4 ETFs), sector (4 sector ETFs)'
     )
+    parser.add_argument(
+        '--timeframes',
+        type=str,
+        default=None,
+        help='Comma-separated timeframes to run (e.g., "1D,1W,1M"). Default: all (1H,1D,1W,1M)'
+    )
+    parser.add_argument(
+        '--symbols',
+        type=str,
+        default=None,
+        help='Comma-separated symbols to run (e.g., "SPY,QQQ"). Overrides --universe'
+    )
     args = parser.parse_args()
 
-    # Select symbols based on universe choice
-    if args.universe == 'expanded':
+    # Select symbols based on --symbols or --universe choice
+    if args.symbols:
+        # Custom symbols override everything
+        symbols = [s.strip() for s in args.symbols.split(',')]
+        print(f"[INFO] Using CUSTOM symbols: {symbols}")
+    elif args.universe == 'expanded':
         symbols = EXPANDED_SYMBOLS
         print(f"[INFO] Using EXPANDED universe: {len(symbols)} symbols")
     elif args.universe == 'index':
@@ -1313,17 +1350,28 @@ def main():
         symbols = None  # Use default from VALIDATION_CONFIG
         print("[INFO] Using DEFAULT universe (50 stocks)")
 
-    # Create config with selected symbols
+    # Create config with selected symbols and timeframes
+    config = VALIDATION_CONFIG.copy()
+
     if symbols:
-        config = VALIDATION_CONFIG.copy()
         config['stock_universe'] = {
             'symbols': symbols,
             'count': len(symbols),
         }
-        backtest = EquityValidationBacktest(config)
-    else:
-        backtest = EquityValidationBacktest()
 
+    # Handle timeframes filter
+    if args.timeframes:
+        timeframes_list = [tf.strip() for tf in args.timeframes.split(',')]
+        valid_tfs = ['1H', '1D', '1W', '1M']
+        for tf in timeframes_list:
+            if tf not in valid_tfs:
+                print(f"WARNING: Invalid timeframe '{tf}'. Valid options: {valid_tfs}")
+                return None
+        config['timeframes'] = config['timeframes'].copy()
+        config['timeframes']['detection'] = timeframes_list
+        print(f"[INFO] Using TIMEFRAMES: {timeframes_list}")
+
+    backtest = EquityValidationBacktest(config)
     results = backtest.run_validation()
 
     return results

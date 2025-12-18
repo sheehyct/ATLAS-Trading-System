@@ -10,7 +10,20 @@
 3. Verify tests: uv run pytest tests/ -q
 ```
 
-## 2. Communication Standards
+## 2. MANDATORY Skills (ZERO TOLERANCE)
+
+**MUST invoke these skills before writing related code. No exceptions.**
+
+| Skill | Location | Invoke When |
+|-------|----------|-------------|
+| `strat-methodology` | `C:/Users/sheeh/.claude/skills/strat-methodology/` | ANY STRAT pattern detection, bar classification, options entry/exit, timeframe analysis |
+| `thetadata-api` | `C:/Users/sheeh/.claude/skills/thetadata-api/` | ANY ThetaData API call, debugging 472/500 errors, Greeks endpoints, options data fetching |
+
+**Why mandatory:** Previous sessions repeatedly made the same mistakes (wrong endpoints, wrong formats, wrong error handling) that these skills prevent. Skipping skill invocation = bugs that waste hours to debug.
+
+**How to invoke:** Use the Skill tool with skill name (e.g., `Skill: strat-methodology`)
+
+## 3. Communication Standards
 
 - NO emojis or unicode characters (Windows compatibility requirement)
 - NO AI attribution in commits or docs
@@ -18,7 +31,7 @@
 - Professional tone (third person, declarative)
 - Plain ASCII only
 
-## 3. Brutal Honesty Policy
+## 4. Brutal Honesty Policy
 
 - If you don't know, say "I don't know"
 - If guessing, say "I'm guessing"
@@ -26,7 +39,7 @@
 - If simpler way exists, suggest it
 - If task adds complexity without value, say so
 
-## 4. Data Sources (ZERO TOLERANCE)
+## 5. Data Sources (ZERO TOLERANCE)
 
 | Source | Use Case |
 |--------|----------|
@@ -38,7 +51,7 @@
 
 **NEVER:** Synthetic data, mock OHLCV generators, yfinance for equities
 
-## 5. VectorBT Pro Workflow (5 Steps)
+## 6. VectorBT Pro Workflow (5 Steps)
 
 Every VBT implementation MUST follow:
 
@@ -52,21 +65,21 @@ IMPLEMENT -> Only after steps 1-4 pass
 
 **Skip any step = implementation will fail.**
 
-## 6. Market Data Rules
+## 7. Market Data Rules
 
 - Filter weekends: `data.index.dayofweek < 5`
 - Filter NYSE holidays: use `pandas_market_calendars`
 - Verify no Saturday/Sunday bars before any analysis
 - All backtests use `fees=0.001, slippage=0.001` minimum
 
-## 7. Quality Gates
+## 8. Quality Gates
 
 Before claiming ANY functionality works:
 - Test it (run the actual code)
 - Verify output (check results are correct)
 - Show evidence (paste actual output)
 
-## 8. Project Structure
+## 9. Project Structure
 
 ```
 validation/     - ATLAS compliance validators (walk-forward, Monte Carlo, bias)
@@ -75,7 +88,7 @@ tests/          - Test suite (913 tests)
 docs/           - HANDOFF.md, CLAUDE.md, CLAUDE_REFERENCE.md
 ```
 
-## 9. Key Commands
+## 10. Key Commands
 
 ```bash
 # Run all tests
@@ -91,7 +104,7 @@ uv run pytest tests/test_strat/ -v
 uv run python -c "import vectorbtpro as vbt; print(vbt.__version__)"
 ```
 
-## 10. Multi-Session Plans
+## 11. Multi-Session Plans
 
 For implementations spanning 3+ sessions:
 - Create plan file: `C:\Users\sheeh\.claude\plans\<name>.md`
@@ -99,16 +112,17 @@ For implementations spanning 3+ sessions:
 - Store facts in OpenMemory at session end
 - Reference: See `docs/CLAUDE_REFERENCE.md` Section 7
 
-## 11. Session End Protocol
+## 12. Session End Protocol
 
 ```
 1. Commit with conventional commit message
 2. Update docs/HANDOFF.md (new session entry at TOP)
 3. Store session facts in OpenMemory
-4. Update .session_startup_prompt.md for next session
+4. Backup OpenMemory: cp "C:/Dev/openmemory/data/atlas_memory.sqlite" "C:/Dev/openmemory/backups/atlas_memory_YYYY-MM-DD.sqlite"
+5. Update .session_startup_prompt.md for next session
 ```
 
-## 12. STRAT Bar Classification (MANDATORY)
+## 13. STRAT Bar Classification (MANDATORY)
 
 Every directional bar MUST be classified as 2U (bullish) or 2D (bearish). Never use just "2".
 
@@ -122,9 +136,10 @@ Every directional bar MUST be classified as 2U (bullish) or 2D (bearish). Never 
 
 Bar types: 1=inside, 2U=up, 2D=down, 3=outside
 
-## 13. DO NOT
+## 14. DO NOT
 
 - Skip HANDOFF.md at session start
+- Skip mandatory skills (strat-methodology, thetadata-api) when writing related code
 - Skip VBT 5-step workflow
 - Use yfinance for non-VIX data
 - Generate synthetic/mock OHLCV data
@@ -135,7 +150,7 @@ Bar types: 1=inside, 2U=up, 2D=down, 3=outside
 - Create breakout strategies without 2x volume confirmation
 - Use unclassified "2" bars in STRAT patterns (must be 2U or 2D)
 
-## 14. File Tiers
+## 15. File Tiers
 
 | Tier | Files | When to Read |
 |------|-------|--------------|
@@ -143,7 +158,7 @@ Bar types: 1=inside, 2U=up, 2D=down, 3=outside
 | 2 | CLAUDE_REFERENCE.md | When need detailed examples |
 | 3 | VectorBT Pro Official Documentation/ | VBT implementation |
 
-## 15. Account Constraints
+## 16. Account Constraints
 
 Schwab Level 1 Options (cash account):
 - CAN: Long stock, long calls/puts, cash-secured puts
@@ -151,6 +166,6 @@ Schwab Level 1 Options (cash account):
 
 ---
 
-**Version:** 3.1 (December 7, 2025)
+**Version:** 3.2 (December 14, 2025)
 **Status:** PRODUCTION - Token-optimized
 **Details:** See `docs/CLAUDE_REFERENCE.md` for verbose examples

@@ -200,11 +200,15 @@ def main():
 
     if not args.dry_run:
         try:
-            webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
+            # Prefer equity-specific webhook for this test
+            webhook_url = (
+                os.environ.get('DISCORD_EQUITY_WEBHOOK_URL') or
+                os.environ.get('DISCORD_WEBHOOK_URL')
+            )
             if not webhook_url:
-                raise ValueError("DISCORD_WEBHOOK_URL not set in environment or .env file")
+                raise ValueError("DISCORD_EQUITY_WEBHOOK_URL or DISCORD_WEBHOOK_URL not set")
             alerter = DiscordAlerter(webhook_url=webhook_url)
-            print(f"Discord alerter initialized (webhook configured)")
+            print(f"Discord alerter initialized (equity webhook)")
         except Exception as e:
             print(f"Warning: Could not initialize Discord alerter: {e}")
             print("Continuing in dry-run mode")
