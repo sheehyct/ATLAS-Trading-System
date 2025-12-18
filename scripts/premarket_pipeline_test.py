@@ -175,7 +175,7 @@ def send_test_alert(alerter: DiscordAlerter, signal: DetectedSignal) -> bool:
             status='DETECTED'
         )
 
-        alerter.send_signal_alert(stored)
+        alerter.send_alert(stored)
         return True
     except Exception as e:
         print(f"  Alert error: {e}")
