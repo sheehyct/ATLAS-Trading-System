@@ -1,78 +1,67 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 18, 2025 (Session EQUITY-18)
+**Last Updated:** December 18, 2025 (Session EQUITY-19)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** CRITICAL BUG IDENTIFIED - Entry logic fundamentally wrong
+**Status:** CRITICAL BUG FIXED - Bidirectional entry logic implemented
 
 ---
 
-## CRITICAL: STRAT Entry Logic Bug (MUST FIX NEXT SESSION)
+## Session EQUITY-19: CRITICAL Entry Logic Bug Fix (COMPLETE)
 
-### The Problem
+**Date:** December 18, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Bidirectional setup detection deployed to VPS
 
-Our entry logic waits for bars to CLOSE before entering. This is **fundamentally wrong**.
+### The Bug (Now Fixed)
 
-### Core Concept: Every Bar Starts as "1"
+Our entry logic was detecting COMPLETED patterns (both bars closed) instead of SETUPS (forming bar as implicit "1"). This caused entries to be one bar late.
 
-When a new bar opens, it has no range yet (open = prior close). By definition, it's an inside bar ("1") until it breaks the prior bar's high or low.
+### The Fix: Bidirectional Setup Detection
 
-### Correct Entry Logic for ALL Patterns
+Per STRAT methodology: "The forming bar is always treated as '1' until it breaks."
 
-**The forming bar is always treated as "1" until it breaks.**
+**Changes Made:**
 
-| Pattern Type | Setup (with forming bar) | Entry Trigger |
-|--------------|--------------------------|---------------|
-| **3-1-2** | 3-1-**1** | INSTANT bar breaks inside bar high (→2U LONG) or low (→2D SHORT) |
-| **2U-1-2** | 2U-1-**1** | INSTANT bar breaks inside bar high (→2U LONG) or low (→2D SHORT) |
-| **2D-1-2** | 2D-1-**1** | INSTANT bar breaks inside bar high (→2U LONG) or low (→2D SHORT) |
-| **2U-2D** (reversal) | 2U-**1** | INSTANT bar breaks 2U bar's low (→2D SHORT) |
-| **2D-2U** (reversal) | 2D-**1** | INSTANT bar breaks 2D bar's high (→2U LONG) |
-| **2U-2U** (continuation) | 2U-**1** | INSTANT bar breaks 2U bar's high (→2U LONG) |
-| **2D-2D** (continuation) | 2D-**1** | INSTANT bar breaks 2D bar's low (→2D SHORT) |
-| **3-2U** | 3-**1** | INSTANT bar breaks outside bar's high (→2U LONG) |
-| **3-2D** | 3-**1** | INSTANT bar breaks outside bar's low (→2D SHORT) |
+1. **`detect_22_setups_nb()` (pattern_detector.py:1127-1233)**
+   - Now returns 8 values instead of 5 (bidirectional triggers)
+   - For 2U bar: `long_trigger = HIGH`, `short_trigger = LOW`
+   - For 2D bar: `long_trigger = HIGH`, `short_trigger = LOW`
+   - Entry monitor detects which bound breaks first
 
-### "Where is the next 2?"
+2. **`detect_322_setups_nb()` (pattern_detector.py:1236-1345)**
+   - Same bidirectional returns for 3-2 patterns
+   - Both continuation and reversal triggers returned
 
-This is the core STRAT concept:
-1. We have a setup (closed bars + forming bar as implicit "1")
-2. Watch the forming bar in real-time
-3. Ask "where is the next 2?" - will it break up or down?
-4. Enter the **INSTANT** it breaks (becomes 2U or 2D)
+3. **`detect_outside_bar_setups_nb()` (pattern_detector.py:1348-1433) - NEW**
+   - Detects pure 3-? setups (outside bar with forming bar as implicit "1")
+   - Bidirectional: LONG trigger = bar HIGH, SHORT trigger = bar LOW
 
-### What We Were Doing Wrong
+4. **Crypto Scanner (signal_scanner.py:674-860)**
+   - Now creates TWO signals per directional/outside bar
+   - One LONG signal, one SHORT signal
+   - Entry monitor handles which triggers first
 
-1. Detecting CLOSED patterns (e.g., 2U-2D with both bars closed)
-2. Then waiting for price to break the closed bar's extreme
-3. This adds an extra bar of delay and misses the actual entry
-4. Applied to ALL patterns - 3-1-2, 2-1-2, 2-2, 3-2, etc.
+5. **Equities Scanner (paper_signal_scanner.py:858-1021)**
+   - Same bidirectional signal creation (CALL/PUT)
 
-### What We Should Do
+### Test Results
 
-1. Detect SETUP patterns where final bar is forming (treated as "1")
-2. Monitor the forming bar's high/low in real-time
-3. Enter the INSTANT it breaks the trigger level (becomes 2U or 2D)
-4. Apply this logic to ALL pattern types consistently
+- 297 STRAT tests passing (2 skipped)
+- 14 signal automation tests passing
+- Both daemons running on VPS
 
-### Implementation Notes
+### Commits
 
-- Scanner should detect setups with forming bar as implicit "1"
-- Entry monitor should watch for breaks during bar formation
-- Do NOT wait for bar close to confirm pattern
-- The break IS the confirmation AND the entry
+- `3710c32` - fix(strat): implement bidirectional setup detection for correct entry timing
 
-### Files to Fix
+### Next Session Priorities
 
-- `crypto/scanning/signal_scanner.py` - Detect setups (forming bar as "1")
-- `crypto/scanning/entry_monitor.py` - Monitor forming bar for break
-- `strat/paper_signal_scanner.py` - Same fixes for equities
-- `strat/signal_automation/entry_monitor.py` - Same fixes
-
-### Reference
-
-- OpenMemory ID: 53e83631-46fd-4a75-8415-b4c0a77c6164
-- strat-methodology skill: EXECUTION.md, PATTERNS.md
+| Priority | Task | Details |
+|----------|------|---------|
+| Monitor | Watch daemon logs | Verify bidirectional signals generating correctly |
+| Monitor | Test entry timing | Confirm entries on forming bar break, not bar close |
+| Optional | Add 3-? outside bar setups | Use new `detect_outside_bar_setups_nb()` in scanners |
 
 ---
 
