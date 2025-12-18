@@ -1126,65 +1126,85 @@ def detect_212_setups_nb(classifications, high, low):
 @njit
 def detect_22_setups_nb(classifications, high, low):
     """
-    Detect 2D and 2U bars that could become 2-2 reversals.
+    Detect 2D and 2U bars as BIDIRECTIONAL setups.
 
-    Session 83K-68: Setup-based detection for live trading.
+    Session EQUITY-19: CRITICAL FIX - Return BOTH directions per STRAT methodology.
+
+    Per STRAT: "The forming bar is always treated as '1' until it breaks."
 
     Setup Structure:
         - Bar at i-1: Any bar (reference for target)
         - Bar at i: Directional bar (2D or 2U) <-- SETUP detected here
+        - FORMING bar: Treated as implicit "1" until it breaks
 
-    The NEXT bar will determine if this becomes:
-        - 2D-2U (bullish reversal) if next bar breaks above 2D bar high
-        - 2U-2D (bearish reversal) if next bar breaks below 2U bar low
+    The NEXT bar (forming bar) will determine direction by which bound breaks FIRST:
+        - For 2U bar: Break HIGH = 2U-2U continuation LONG, Break LOW = 2U-2D reversal SHORT
+        - For 2D bar: Break HIGH = 2D-2U reversal LONG, Break LOW = 2D-2D continuation SHORT
 
     Returns:
     --------
-    tuple of 7 np.ndarray:
+    tuple of 8 np.ndarray:
         setups : Boolean array (True where 2D or 2U setup exists)
         setup_dir : Direction of setup bar (2 for 2U, -2 for 2D)
-        reversal_trigger : Price to break for reversal entry
-        stop_price : Stop for reversal trade
-        target_price : Target for reversal trade (bar i-1 extreme)
+        long_trigger : Price to break for LONG entry (bar HIGH)
+        short_trigger : Price to break for SHORT entry (bar LOW)
+        stop_long : Stop for LONG trade (bar LOW)
+        stop_short : Stop for SHORT trade (bar HIGH)
+        target_long : Target for LONG trade (prior bar HIGH)
+        target_short : Target for SHORT trade (prior bar LOW)
     """
     if classifications.ndim == 1:
         n = len(classifications)
         setups = np.zeros(n, dtype=np.bool_)
         setup_dir = np.zeros(n, dtype=np.int8)
-        reversal_trigger = np.full(n, np.nan, dtype=np.float64)
-        stop_price = np.full(n, np.nan, dtype=np.float64)
-        target_price = np.full(n, np.nan, dtype=np.float64)
+        long_trigger = np.full(n, np.nan, dtype=np.float64)
+        short_trigger = np.full(n, np.nan, dtype=np.float64)
+        stop_long = np.full(n, np.nan, dtype=np.float64)
+        stop_short = np.full(n, np.nan, dtype=np.float64)
+        target_long = np.full(n, np.nan, dtype=np.float64)
+        target_short = np.full(n, np.nan, dtype=np.float64)
 
         for i in range(1, n):
             bar_class = classifications[i]
 
-            # 2D bar: Could become 2D-2U bullish reversal
+            # 2D bar: Bidirectional setup
+            # - LONG (reversal 2D-2U): Break above 2D bar high
+            # - SHORT (continuation 2D-2D): Break below 2D bar low
             if bar_class == -2:
                 setups[i] = True
                 setup_dir[i] = -2
 
-                # Bullish reversal: Break above 2D bar high
-                reversal_trigger[i] = high[i]  # 2D bar high
-                stop_price[i] = low[i]         # 2D bar low
-                target_price[i] = high[i-1]    # Previous bar high (magnitude)
+                long_trigger[i] = high[i]   # Break HIGH for LONG
+                short_trigger[i] = low[i]   # Break LOW for SHORT
+                stop_long[i] = low[i]       # LONG stop at bar LOW
+                stop_short[i] = high[i]     # SHORT stop at bar HIGH
+                target_long[i] = high[i-1]  # LONG target = prior bar HIGH
+                target_short[i] = low[i-1]  # SHORT target = prior bar LOW
 
-            # 2U bar: Could become 2U-2D bearish reversal
+            # 2U bar: Bidirectional setup
+            # - LONG (continuation 2U-2U): Break above 2U bar high
+            # - SHORT (reversal 2U-2D): Break below 2U bar low
             elif bar_class == 2:
                 setups[i] = True
                 setup_dir[i] = 2
 
-                # Bearish reversal: Break below 2U bar low
-                reversal_trigger[i] = low[i]   # 2U bar low
-                stop_price[i] = high[i]        # 2U bar high
-                target_price[i] = low[i-1]     # Previous bar low (magnitude)
+                long_trigger[i] = high[i]   # Break HIGH for LONG
+                short_trigger[i] = low[i]   # Break LOW for SHORT
+                stop_long[i] = low[i]       # LONG stop at bar LOW
+                stop_short[i] = high[i]     # SHORT stop at bar HIGH
+                target_long[i] = high[i-1]  # LONG target = prior bar HIGH
+                target_short[i] = low[i-1]  # SHORT target = prior bar LOW
 
     else:  # 2D arrays
         n = classifications.shape[0]
         setups = np.zeros((n, 1), dtype=np.bool_)
         setup_dir = np.zeros((n, 1), dtype=np.int8)
-        reversal_trigger = np.full((n, 1), np.nan, dtype=np.float64)
-        stop_price = np.full((n, 1), np.nan, dtype=np.float64)
-        target_price = np.full((n, 1), np.nan, dtype=np.float64)
+        long_trigger = np.full((n, 1), np.nan, dtype=np.float64)
+        short_trigger = np.full((n, 1), np.nan, dtype=np.float64)
+        stop_long = np.full((n, 1), np.nan, dtype=np.float64)
+        stop_short = np.full((n, 1), np.nan, dtype=np.float64)
+        target_long = np.full((n, 1), np.nan, dtype=np.float64)
+        target_short = np.full((n, 1), np.nan, dtype=np.float64)
 
         for i in range(1, n):
             bar_class = classifications[i, 0]
@@ -1192,83 +1212,110 @@ def detect_22_setups_nb(classifications, high, low):
             if bar_class == -2:
                 setups[i, 0] = True
                 setup_dir[i, 0] = -2
-                reversal_trigger[i, 0] = high[i, 0]
-                stop_price[i, 0] = low[i, 0]
-                target_price[i, 0] = high[i-1, 0]
+                long_trigger[i, 0] = high[i, 0]
+                short_trigger[i, 0] = low[i, 0]
+                stop_long[i, 0] = low[i, 0]
+                stop_short[i, 0] = high[i, 0]
+                target_long[i, 0] = high[i-1, 0]
+                target_short[i, 0] = low[i-1, 0]
 
             elif bar_class == 2:
                 setups[i, 0] = True
                 setup_dir[i, 0] = 2
-                reversal_trigger[i, 0] = low[i, 0]
-                stop_price[i, 0] = high[i, 0]
-                target_price[i, 0] = low[i-1, 0]
+                long_trigger[i, 0] = high[i, 0]
+                short_trigger[i, 0] = low[i, 0]
+                stop_long[i, 0] = low[i, 0]
+                stop_short[i, 0] = high[i, 0]
+                target_long[i, 0] = high[i-1, 0]
+                target_short[i, 0] = low[i-1, 0]
 
-    return (setups, setup_dir, reversal_trigger, stop_price, target_price)
+    return (setups, setup_dir, long_trigger, short_trigger,
+            stop_long, stop_short, target_long, target_short)
 
 
 @njit
 def detect_322_setups_nb(classifications, high, low):
     """
-    Detect 3-2 setups (Outside-Directional) that could become 3-2-2 reversals.
+    Detect 3-2 setups (Outside-Directional) as BIDIRECTIONAL setups.
 
-    Session 83K-68: Setup-based detection for live trading.
+    Session EQUITY-19: CRITICAL FIX - Return BOTH directions per STRAT methodology.
+
+    Per STRAT: "The forming bar is always treated as '1' until it breaks."
 
     Setup Structure:
         - Bar at i-1: Outside bar (classification = 3)
         - Bar at i: First directional bar (2D or 2U) <-- SETUP detected here
+        - FORMING bar: Treated as implicit "1" until it breaks
 
-    The NEXT bar will determine if this becomes:
-        - 3-2D-2U (bullish reversal) if next bar breaks above 2D bar high
-        - 3-2U-2D (bearish reversal) if next bar breaks below 2U bar low
+    The NEXT bar (forming bar) will determine direction by which bound breaks FIRST:
+        - For 3-2D: Break HIGH = 3-2D-2U reversal LONG, Break LOW = 3-2D-2D continuation SHORT
+        - For 3-2U: Break HIGH = 3-2U-2U continuation LONG, Break LOW = 3-2U-2D reversal SHORT
 
     Returns:
     --------
-    tuple of 6 np.ndarray:
+    tuple of 8 np.ndarray:
         setups : Boolean array (True where 3-2 setup exists)
         setup_dir : Direction of directional bar (2 for 2U, -2 for 2D)
-        reversal_trigger : Price to break for reversal entry
-        stop_price : Stop for reversal trade
-        target_price : Target for reversal trade (outside bar extreme)
+        long_trigger : Price to break for LONG entry (directional bar HIGH)
+        short_trigger : Price to break for SHORT entry (directional bar LOW)
+        stop_long : Stop for LONG trade (directional bar LOW)
+        stop_short : Stop for SHORT trade (directional bar HIGH)
+        target_long : Target for LONG trade (outside bar HIGH)
+        target_short : Target for SHORT trade (outside bar LOW)
     """
     if classifications.ndim == 1:
         n = len(classifications)
         setups = np.zeros(n, dtype=np.bool_)
         setup_dir = np.zeros(n, dtype=np.int8)
-        reversal_trigger = np.full(n, np.nan, dtype=np.float64)
-        stop_price = np.full(n, np.nan, dtype=np.float64)
-        target_price = np.full(n, np.nan, dtype=np.float64)
+        long_trigger = np.full(n, np.nan, dtype=np.float64)
+        short_trigger = np.full(n, np.nan, dtype=np.float64)
+        stop_long = np.full(n, np.nan, dtype=np.float64)
+        stop_short = np.full(n, np.nan, dtype=np.float64)
+        target_long = np.full(n, np.nan, dtype=np.float64)
+        target_short = np.full(n, np.nan, dtype=np.float64)
 
         for i in range(1, n):
             bar_outside = classifications[i-1]
             bar_dir = classifications[i]
 
-            # 3-2D setup: Outside followed by 2D
+            # 3-2D setup: Outside followed by 2D (bidirectional)
+            # - LONG (reversal 3-2D-2U): Break above 2D bar high
+            # - SHORT (continuation 3-2D-2D): Break below 2D bar low
             if bar_outside == 3 and bar_dir == -2:
                 setups[i] = True
                 setup_dir[i] = -2
 
-                # Bullish reversal: Break above 2D bar high
-                reversal_trigger[i] = high[i]  # 2D bar high
-                stop_price[i] = low[i]         # 2D bar low
-                target_price[i] = high[i-1]    # Outside bar high
+                long_trigger[i] = high[i]    # Break HIGH for LONG
+                short_trigger[i] = low[i]    # Break LOW for SHORT
+                stop_long[i] = low[i]        # LONG stop at 2D bar LOW
+                stop_short[i] = high[i]      # SHORT stop at 2D bar HIGH
+                target_long[i] = high[i-1]   # LONG target = outside bar HIGH
+                target_short[i] = low[i-1]   # SHORT target = outside bar LOW
 
-            # 3-2U setup: Outside followed by 2U
+            # 3-2U setup: Outside followed by 2U (bidirectional)
+            # - LONG (continuation 3-2U-2U): Break above 2U bar high
+            # - SHORT (reversal 3-2U-2D): Break below 2U bar low
             elif bar_outside == 3 and bar_dir == 2:
                 setups[i] = True
                 setup_dir[i] = 2
 
-                # Bearish reversal: Break below 2U bar low
-                reversal_trigger[i] = low[i]   # 2U bar low
-                stop_price[i] = high[i]        # 2U bar high
-                target_price[i] = low[i-1]     # Outside bar low
+                long_trigger[i] = high[i]    # Break HIGH for LONG
+                short_trigger[i] = low[i]    # Break LOW for SHORT
+                stop_long[i] = low[i]        # LONG stop at 2U bar LOW
+                stop_short[i] = high[i]      # SHORT stop at 2U bar HIGH
+                target_long[i] = high[i-1]   # LONG target = outside bar HIGH
+                target_short[i] = low[i-1]   # SHORT target = outside bar LOW
 
     else:  # 2D arrays
         n = classifications.shape[0]
         setups = np.zeros((n, 1), dtype=np.bool_)
         setup_dir = np.zeros((n, 1), dtype=np.int8)
-        reversal_trigger = np.full((n, 1), np.nan, dtype=np.float64)
-        stop_price = np.full((n, 1), np.nan, dtype=np.float64)
-        target_price = np.full((n, 1), np.nan, dtype=np.float64)
+        long_trigger = np.full((n, 1), np.nan, dtype=np.float64)
+        short_trigger = np.full((n, 1), np.nan, dtype=np.float64)
+        stop_long = np.full((n, 1), np.nan, dtype=np.float64)
+        stop_short = np.full((n, 1), np.nan, dtype=np.float64)
+        target_long = np.full((n, 1), np.nan, dtype=np.float64)
+        target_short = np.full((n, 1), np.nan, dtype=np.float64)
 
         for i in range(1, n):
             bar_outside = classifications[i-1, 0]
@@ -1277,18 +1324,113 @@ def detect_322_setups_nb(classifications, high, low):
             if bar_outside == 3 and bar_dir == -2:
                 setups[i, 0] = True
                 setup_dir[i, 0] = -2
-                reversal_trigger[i, 0] = high[i, 0]
-                stop_price[i, 0] = low[i, 0]
-                target_price[i, 0] = high[i-1, 0]
+                long_trigger[i, 0] = high[i, 0]
+                short_trigger[i, 0] = low[i, 0]
+                stop_long[i, 0] = low[i, 0]
+                stop_short[i, 0] = high[i, 0]
+                target_long[i, 0] = high[i-1, 0]
+                target_short[i, 0] = low[i-1, 0]
 
             elif bar_outside == 3 and bar_dir == 2:
                 setups[i, 0] = True
                 setup_dir[i, 0] = 2
-                reversal_trigger[i, 0] = low[i, 0]
-                stop_price[i, 0] = high[i, 0]
-                target_price[i, 0] = low[i-1, 0]
+                long_trigger[i, 0] = high[i, 0]
+                short_trigger[i, 0] = low[i, 0]
+                stop_long[i, 0] = low[i, 0]
+                stop_short[i, 0] = high[i, 0]
+                target_long[i, 0] = high[i-1, 0]
+                target_short[i, 0] = low[i-1, 0]
 
-    return (setups, setup_dir, reversal_trigger, stop_price, target_price)
+    return (setups, setup_dir, long_trigger, short_trigger,
+            stop_long, stop_short, target_long, target_short)
+
+
+@njit
+def detect_outside_bar_setups_nb(classifications, high, low):
+    """
+    Detect outside bars (Type 3) as BIDIRECTIONAL setups.
+
+    Session EQUITY-19: NEW - Detects pure 3-? setups per STRAT methodology.
+
+    Per STRAT: "The forming bar is always treated as '1' until it breaks."
+
+    Setup Structure:
+        - Bar at i: Outside bar (classification = 3) <-- SETUP detected here
+        - FORMING bar: Treated as implicit "1" until it breaks
+
+    The NEXT bar (forming bar) will determine direction by which bound breaks FIRST:
+        - Break HIGH = 3-2U pattern LONG
+        - Break LOW = 3-2D pattern SHORT
+
+    This complements detect_322_setups_nb() which requires BOTH outside + directional
+    bars to be closed. This function fires on the outside bar itself.
+
+    Returns:
+    --------
+    tuple of 7 np.ndarray:
+        setups : Boolean array (True where outside bar exists)
+        long_trigger : Price to break for LONG entry (outside bar HIGH)
+        short_trigger : Price to break for SHORT entry (outside bar LOW)
+        stop_long : Stop for LONG trade (outside bar LOW)
+        stop_short : Stop for SHORT trade (outside bar HIGH)
+        target_long : Target for LONG trade (measured move HIGH)
+        target_short : Target for SHORT trade (measured move LOW)
+    """
+    if classifications.ndim == 1:
+        n = len(classifications)
+        setups = np.zeros(n, dtype=np.bool_)
+        long_trigger = np.full(n, np.nan, dtype=np.float64)
+        short_trigger = np.full(n, np.nan, dtype=np.float64)
+        stop_long = np.full(n, np.nan, dtype=np.float64)
+        stop_short = np.full(n, np.nan, dtype=np.float64)
+        target_long = np.full(n, np.nan, dtype=np.float64)
+        target_short = np.full(n, np.nan, dtype=np.float64)
+
+        for i in range(n):
+            bar_class = classifications[i]
+
+            # Outside bar: Bidirectional setup
+            # - LONG (3-2U): Break above outside bar high
+            # - SHORT (3-2D): Break below outside bar low
+            if bar_class == 3:
+                setups[i] = True
+
+                long_trigger[i] = high[i]   # Break HIGH for LONG
+                short_trigger[i] = low[i]   # Break LOW for SHORT
+                stop_long[i] = low[i]       # LONG stop at outside bar LOW
+                stop_short[i] = high[i]     # SHORT stop at outside bar HIGH
+
+                # Target = measured move (bar range projected)
+                bar_range = high[i] - low[i]
+                target_long[i] = high[i] + bar_range   # 1R above entry
+                target_short[i] = low[i] - bar_range   # 1R below entry
+
+    else:  # 2D arrays
+        n = classifications.shape[0]
+        setups = np.zeros((n, 1), dtype=np.bool_)
+        long_trigger = np.full((n, 1), np.nan, dtype=np.float64)
+        short_trigger = np.full((n, 1), np.nan, dtype=np.float64)
+        stop_long = np.full((n, 1), np.nan, dtype=np.float64)
+        stop_short = np.full((n, 1), np.nan, dtype=np.float64)
+        target_long = np.full((n, 1), np.nan, dtype=np.float64)
+        target_short = np.full((n, 1), np.nan, dtype=np.float64)
+
+        for i in range(n):
+            bar_class = classifications[i, 0]
+
+            if bar_class == 3:
+                setups[i, 0] = True
+                long_trigger[i, 0] = high[i, 0]
+                short_trigger[i, 0] = low[i, 0]
+                stop_long[i, 0] = low[i, 0]
+                stop_short[i, 0] = high[i, 0]
+
+                bar_range = high[i, 0] - low[i, 0]
+                target_long[i, 0] = high[i, 0] + bar_range
+                target_short[i, 0] = low[i, 0] - bar_range
+
+    return (setups, long_trigger, short_trigger,
+            stop_long, stop_short, target_long, target_short)
 
 
 @njit
