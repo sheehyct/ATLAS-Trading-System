@@ -680,9 +680,9 @@ class CryptoSignalScanner:
         (setup_mask_322, setup_dir_322, long_trigger_322, short_trigger_322,
          stop_long_322, stop_short_322, target_long_322, target_short_322) = result_322
 
+        # Session EQUITY-20: INCLUDE last closed bar for bidirectional setups
+        # The last bar in data is the LAST CLOSED bar, NOT the forming bar
         for i in range(len(setup_mask_322)):
-            if i == last_bar_idx:
-                continue
             if setup_mask_322[i]:
                 prev_bar_class = classifications[i - 1] if i > 0 else 0
                 first_bar_str = bar_to_str(int(prev_bar_class))
@@ -771,9 +771,8 @@ class CryptoSignalScanner:
         (setup_mask_22, setup_dir_22, long_trigger_22, short_trigger_22,
          stop_long_22, stop_short_22, target_long_22, target_short_22) = result_22
 
+        # Session EQUITY-20: INCLUDE last closed bar for bidirectional setups
         for i in range(len(setup_mask_22)):
-            if i == last_bar_idx:
-                continue
             if setup_mask_22[i]:
                 prev_bar_class = classifications[i - 1] if i > 0 else 0
                 first_bar_str = bar_to_str(int(prev_bar_class))
@@ -854,6 +853,90 @@ class CryptoSignalScanner:
                             "prior_bar_type": int(prev_bar_class),
                             "prior_bar_high": high[i - 1] if i > 0 else 0.0,
                             "prior_bar_low": low[i - 1] if i > 0 else 0.0,
+                        }
+                    )
+
+        # =====================================================================
+        # 3-? Setups: Pure Outside bar BIDIRECTIONAL setup
+        # Session EQUITY-20: If last bar was a 3 (outside), create bidirectional setup
+        # =====================================================================
+        result_3 = detect_outside_bar_setups_nb(classifications, high, low)
+        (setup_mask_3, long_trigger_3, short_trigger_3,
+         stop_long_3, stop_short_3, target_long_3, target_short_3) = result_3
+
+        for i in range(len(setup_mask_3)):
+            if setup_mask_3[i]:
+                setup_bar_high = high[i]
+                setup_bar_low = low[i]
+                has_gap = bool(df["is_maintenance_gap"].iloc[i])
+
+                # Create LONG setup (break above outside bar high)
+                entry_long = long_trigger_3[i]
+                stop_long = stop_long_3[i]
+                target_long = target_long_3[i]
+
+                if entry_long > 0 and not np.isnan(target_long) and target_long > 0:
+                    risk = entry_long - stop_long if stop_long > 0 else 0
+                    reward = target_long - entry_long
+                    magnitude = (target_long - entry_long) / entry_long * 100 if entry_long > 0 else 0
+                    rr = reward / risk if risk > 0 else 0
+
+                    setups.append(
+                        {
+                            "index": i,
+                            "timestamp": df.index[i],
+                            "signal": 1,
+                            "direction": "LONG",
+                            "entry": entry_long,
+                            "stop": stop_long,
+                            "target": target_long,
+                            "magnitude_pct": magnitude,
+                            "risk_reward": rr,
+                            "bar_sequence": "3-?",
+                            "signal_type": "SETUP",
+                            "setup_bar_high": setup_bar_high,
+                            "setup_bar_low": setup_bar_low,
+                            "setup_bar_timestamp": df.index[i],
+                            "setup_pattern": "3-2",
+                            "has_maintenance_gap": has_gap,
+                            "prior_bar_type": 3,
+                            "prior_bar_high": setup_bar_high,
+                            "prior_bar_low": setup_bar_low,
+                        }
+                    )
+
+                # Create SHORT setup (break below outside bar low)
+                entry_short = short_trigger_3[i]
+                stop_short = stop_short_3[i]
+                target_short = target_short_3[i]
+
+                if entry_short > 0 and not np.isnan(target_short) and target_short > 0:
+                    risk = stop_short - entry_short if stop_short > 0 else 0
+                    reward = entry_short - target_short
+                    magnitude = (entry_short - target_short) / entry_short * 100 if entry_short > 0 else 0
+                    rr = reward / risk if risk > 0 else 0
+
+                    setups.append(
+                        {
+                            "index": i,
+                            "timestamp": df.index[i],
+                            "signal": -1,
+                            "direction": "SHORT",
+                            "entry": entry_short,
+                            "stop": stop_short,
+                            "target": target_short,
+                            "magnitude_pct": magnitude,
+                            "risk_reward": rr,
+                            "bar_sequence": "3-?",
+                            "signal_type": "SETUP",
+                            "setup_bar_high": setup_bar_high,
+                            "setup_bar_low": setup_bar_low,
+                            "setup_bar_timestamp": df.index[i],
+                            "setup_pattern": "3-2",
+                            "has_maintenance_gap": has_gap,
+                            "prior_bar_type": 3,
+                            "prior_bar_high": setup_bar_high,
+                            "prior_bar_low": setup_bar_low,
                         }
                     )
 
