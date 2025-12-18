@@ -1,9 +1,81 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 18, 2025 (Session EQUITY-22)
+**Last Updated:** December 18, 2025 (Session EQUITY-23)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** 2-2 and 3-2 pattern direction fixes COMPLETE and DEPLOYED
+**Status:** R:R filter disabled for testing, direction logging bug fixed
+
+---
+
+## Session EQUITY-23: Crypto Daemon Monitoring Investigation (COMPLETE)
+
+**Date:** December 18, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Fixes deployed to VPS
+
+### Investigation Summary
+
+User observed STRAT patterns (BIP, ETP) at 1400, 1500, 1600 hourly bars EST that did not show up in alerts or trades. Investigation revealed:
+
+### Root Causes Found
+
+**1. R:R Filter Blocking Valid Patterns**
+
+Patterns were being filtered out due to `MIN_SIGNAL_RISK_REWARD = 1.0`:
+
+| Symbol | Pattern | R:R | Required | Status |
+|--------|---------|-----|----------|--------|
+| BIP | 2D-2U LONG (1h) | 0.92 | 1.0 | FILTERED |
+| ETP | 2D-1-2U LONG (1h) | 0.43 | 1.0 | FILTERED |
+
+**Fix:** Temporarily disabled R:R filter (`MIN_SIGNAL_RISK_REWARD = 0.0`) to capture more trade data during testing.
+
+**2. Direction Logging Mismatch**
+
+Entry monitor correctly detected direction changes (e.g., SETUP changed to SHORT), but daemon logging and Discord alerts used the original signal direction (LONG).
+
+**Fix:** Updated daemon and Discord alerter to use `event._actual_direction` instead of `signal.direction`.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/config.py` | Set `MIN_SIGNAL_RISK_REWARD = 0.0` (line 271) |
+| `crypto/scanning/daemon.py` | Use `_actual_direction` in logging (line 317) |
+| `crypto/alerters/discord_alerter.py` | Use `_actual_direction` (line 314) |
+
+### Pattern Analysis (1400-1600 EST)
+
+**BIP 1h:**
+- 1400: 2D, 1500: 2D, 1600: 2U
+- Pattern: 2D-2D-2U (reversal to LONG)
+
+**ETP 1h:**
+- 1400: 2D, 1500: 1 (inside), 1600: 2U
+- Pattern: 2D-1-2U (reversal to LONG)
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `d47a428` | fix(crypto): disable R:R filter and fix direction logging (EQUITY-23) |
+
+### Test Results
+
+- 297 STRAT tests passing (2 skipped)
+- No regressions
+
+### Deployment
+
+- Pushed to GitHub
+- Pulled on VPS
+- Crypto daemon restarted with new settings
+
+### Next Session Priorities
+
+1. Monitor crypto daemon with disabled R:R filter
+2. Verify patterns are now being detected and traded
+3. Consider appropriate R:R threshold after collecting more data
 
 ---
 
