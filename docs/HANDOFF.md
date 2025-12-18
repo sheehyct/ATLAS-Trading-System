@@ -1,9 +1,135 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 18, 2025 (Session EQUITY-20)
+**Last Updated:** December 18, 2025 (Session EQUITY-22)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** Entry timing fix deployed - bidirectional setups on last closed bar
+**Status:** 2-2 and 3-2 pattern direction fixes COMPLETE and DEPLOYED
+
+---
+
+## Session EQUITY-22: 2-2 Pattern Rules Review + Fix (COMPLETE)
+
+**Date:** December 18, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 2-2 reversal-only fix applied to both scanners, deployed to VPS
+
+### Pattern Rules Review with User
+
+Extensive review of STRAT cheat sheets and methodology confirmed:
+
+**Continuation patterns (2U-2U, 2D-2D) = Position Management, NOT entry**
+- Used to ride momentum while already in a trade
+- Exit when reversal (opposite bar) forms
+- Do NOT create new entry signals
+
+**Reversal patterns = New Entry Signals**
+- (X)-2D-2U: CALL entry @ 2D HIGH, Target = X bar HIGH
+- (X)-2U-2D: PUT entry @ 2U LOW, Target = X bar LOW
+
+### CONFIRMED STRAT Pattern Rules
+
+| Category | Pattern | Direction | Entry | Target |
+|----------|---------|-----------|-------|--------|
+| **X-1-?** | Bidirectional | Both | 1 bar HIGH/LOW | Based on pattern |
+| **3-2D-?** | CALL only | Reversal up | 2D bar HIGH | 3 bar HIGH |
+| **3-2U-?** | PUT only | Reversal down | 2U bar LOW | 3 bar LOW |
+| **(X)-2D-?** | CALL only | Reversal up | 2D bar HIGH | X bar HIGH |
+| **(X)-2U-?** | PUT only | Reversal down | 2U bar LOW | X bar LOW |
+| **2U-2U, 2D-2D** | NO entry | Continuation | - | Position mgmt |
+
+### Fix Applied
+
+Changed 2-2 setup detection from BIDIRECTIONAL to REVERSAL-ONLY:
+- Match 3-2 logic from EQUITY-21
+- (X)-2D-? = CALL/LONG only (waiting for X-2D-2U reversal)
+- (X)-2U-? = PUT/SHORT only (waiting for X-2U-2D reversal)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/paper_signal_scanner.py` | 2-2 setups: reversal-only (~lines 941-1026) |
+| `crypto/scanning/signal_scanner.py` | 2-2 setups: reversal-only (~lines 765-862) |
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `a5425d2` | fix(strat): apply reversal-only logic to 2-2 setups (EQUITY-22) |
+
+### Test Results
+
+- 297 STRAT tests passing (2 skipped)
+- No regressions
+
+### Deployment
+
+- Pushed to GitHub
+- Pulled on VPS
+- Both daemons restarted (atlas-daemon, atlas-crypto-daemon)
+
+---
+
+## Session EQUITY-21: 3-2 Pattern Direction Bug Fix (COMPLETE)
+
+**Date:** December 18, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 3-2 fix applied and deployed
+
+### Critical Bug Found and Fixed
+
+**Bug:** Scanner was creating BOTH CALL and PUT for 3-2 patterns (bidirectional). This is WRONG because 3-2 patterns have direction established.
+
+**Fix Applied:** 3-2 patterns now only trade the REVERSAL:
+- **3-2D-? = CALL** (entry at 2D bar HIGH, waiting for 3-2D-2U reversal up)
+- **3-2U-? = PUT** (entry at 2U bar LOW, waiting for 3-2U-2D reversal down)
+
+### STRAT Pattern Entry Rules (Documented)
+
+**3-Bar Reversal Patterns (3-2-2):**
+| Setup | Entry Trigger | Direction | Resulting Pattern |
+|-------|---------------|-----------|-------------------|
+| 3-2D-? | 2D bar's HIGH | CALL | 3-2D-2U |
+| 3-2U-? | 2U bar's LOW | PUT | 3-2U-2D |
+
+**Key Insight:** We do NOT trade 3-2D-2D or 3-2U-2U (continuations). We trade the REVERSAL only.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/paper_signal_scanner.py` | Fixed 3-2 setup detection (~lines 858-939) |
+
+### Test Results
+
+- 297 STRAT tests passing (2 skipped)
+- Fix does not break existing functionality
+
+### Session EQUITY-22 Priorities
+
+| Priority | Task |
+|----------|------|
+| **HIGH** | Review 2-2 pattern rules (2U-2D-?, 2D-2U-?, 2U-2U-?, 2D-2D-?) |
+| **HIGH** | Apply same logic to crypto scanner |
+| HIGH | Deploy 3-2 fix to VPS |
+| Medium | Verify no regressions in signal detection |
+
+### 2-2 Pattern Question for Next Session
+
+Current 2-2 setups create BOTH CALL and PUT for all patterns. Need to clarify:
+
+| Setup | Reversal Logic? | Trade? |
+|-------|-----------------|--------|
+| 2U-2D-? | 2U-2D-2U reversal | CALL @ 2D HIGH? |
+| 2D-2U-? | 2D-2U-2D reversal | PUT @ 2U LOW? |
+| 2U-2U-? | Continuation 2U-2U-2U? | CALL @ 2U HIGH? |
+| 2D-2D-? | Continuation 2D-2D-2D? | PUT @ 2D LOW? |
+
+### Reference: STRAT Entry Timing (from CLAUDE.md Section 14)
+
+- Entry happens ON THE BREAK, not at bar close
+- Scanner last bar = yesterday's CLOSED bar
+- Today's forming bar is LIVE (not in data)
 
 ---
 
