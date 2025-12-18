@@ -31,14 +31,37 @@ from strat.bar_classifier import classify_bars_nb
 from strat.signal_automation.signal_store import SignalStore, StoredSignal
 from strat.signal_automation.alerters.discord_alerter import DiscordAlerter
 
+# Alpaca for premarket data
+try:
+    from alpaca.data import StockHistoricalDataClient
+    from alpaca.data.requests import StockBarsRequest
+    from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+    ALPACA_AVAILABLE = True
+except ImportError:
+    ALPACA_AVAILABLE = False
+
+import pytz
+
 # Load environment variables from .env file if present
-from dotenv import load_dotenv
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except:
+    # Load manually if dotenv fails
+    if os.path.exists('.env'):
+        with open('.env', 'r') as f:
+            for line in f:
+                if '=' in line and not line.startswith('#'):
+                    key, val = line.strip().split('=', 1)
+                    os.environ[key] = val.strip('"').strip("'")
 
 
 # Test configuration
 TEST_SYMBOLS = ['SPY', 'QQQ', 'TSLA']
-TEST_TIMEFRAMES = ['15m', '30m', '1H']  # Faster timeframes for more signals
+TEST_TIMEFRAMES = ['15m', '1H']  # 15m for premarket, 1H for regular
+
+# Premarket configuration
+PREMARKET_LOOKBACK_HOURS = 4  # Hours of premarket data to fetch
 
 BAR_TYPE_MAP = {
     1: '1 (Inside)',
@@ -48,14 +71,82 @@ BAR_TYPE_MAP = {
 }
 
 
+def fetch_premarket_data(symbol: str, timeframe_minutes: int = 15, lookback_hours: int = 4) -> Optional[pd.DataFrame]:
+    """
+    Fetch premarket/extended hours data directly from Alpaca.
+
+    Args:
+        symbol: Stock symbol
+        timeframe_minutes: Bar size in minutes (15 or 30)
+        lookback_hours: Hours of data to fetch
+
+    Returns:
+        DataFrame with OHLCV data or None
+    """
+    if not ALPACA_AVAILABLE:
+        print("    Alpaca SDK not available for premarket data")
+        return None
+
+    api_key = os.environ.get('ALPACA_API_KEY_SMALL') or os.environ.get('ALPACA_API_KEY')
+    api_secret = os.environ.get('ALPACA_SECRET_KEY_SMALL') or os.environ.get('ALPACA_SECRET_KEY')
+
+    if not api_key or not api_secret:
+        print("    Alpaca credentials not configured")
+        return None
+
+    try:
+        client = StockHistoricalDataClient(api_key, api_secret)
+
+        et = pytz.timezone('America/New_York')
+        now = datetime.now(et)
+
+        request = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=TimeFrame(timeframe_minutes, TimeFrameUnit.Minute),
+            start=now - timedelta(hours=lookback_hours),
+            end=now
+        )
+
+        bars = client.get_stock_bars(request)
+        df = bars.df
+
+        if len(df) == 0:
+            return None
+
+        # Reset index and rename columns to match scanner format
+        df = df.reset_index()
+        df = df.rename(columns={
+            'timestamp': 'time',
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume'
+        })
+        df = df.set_index('time')
+        df.index = df.index.tz_convert('America/New_York')
+
+        return df[['Open', 'High', 'Low', 'Close', 'Volume']]
+
+    except Exception as e:
+        print(f"    Error fetching premarket data: {e}")
+        return None
+
+
 def fetch_and_classify(scanner: PaperSignalScanner, symbol: str, timeframe: str, bars: int = 20) -> Optional[pd.DataFrame]:
     """Fetch data and add bar classification."""
     try:
-        # Map timeframe for Alpaca
-        tf_map = {'15m': '15Min', '30m': '30Min', '1H': '1H', '1D': '1D'}
-        alpaca_tf = tf_map.get(timeframe, timeframe)
+        # Use premarket fetch for 15m timeframe
+        if timeframe == '15m':
+            df = fetch_premarket_data(symbol, timeframe_minutes=15, lookback_hours=PREMARKET_LOOKBACK_HOURS)
+        elif timeframe == '30m':
+            df = fetch_premarket_data(symbol, timeframe_minutes=30, lookback_hours=PREMARKET_LOOKBACK_HOURS)
+        else:
+            # Use scanner for 1H and higher timeframes
+            tf_map = {'1H': '1H', '1D': '1D', '1W': '1W'}
+            alpaca_tf = tf_map.get(timeframe, timeframe)
+            df = scanner._fetch_data(symbol, alpaca_tf, bars)
 
-        df = scanner._fetch_data(symbol, alpaca_tf, bars)
         if df is None or len(df) < 4:
             return None
 
