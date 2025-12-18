@@ -39,6 +39,8 @@ from strat.pattern_detector import (
     # Setup detectors for patterns waiting for live break
     detect_212_setups_nb,
     detect_312_setups_nb,
+    detect_322_setups_nb,
+    detect_22_setups_nb,
 )
 
 logger = logging.getLogger(__name__)
@@ -668,6 +670,194 @@ class CryptoSignalScanner:
                             }
                         )
 
+        # =====================================================================
+        # 3-2 Setups: Outside bar followed by Directional bar
+        # WAITING for OPPOSITE direction break (3-2D-2U or 3-2U-2D)
+        # Session CRYPTO-16: Ported from equities scanner
+        # =====================================================================
+        result_322 = detect_322_setups_nb(classifications, high, low)
+        setup_mask_322, setup_dir_322, reversal_trigger, stop_price, target_price = result_322
+
+        for i in range(len(setup_mask_322)):
+            if i == last_bar_idx:
+                continue
+            if setup_mask_322[i]:
+                prev_bar_class = classifications[i - 1] if i > 0 else 0
+                first_bar_str = bar_to_str(int(prev_bar_class))
+                dir_bar_str = bar_to_str(int(setup_dir_322[i]))
+
+                setup_bar_high = high[i]
+                setup_bar_low = low[i]
+                has_gap = bool(df["is_maintenance_gap"].iloc[i])
+
+                # For 3-2D setup: Create LONG setup (waiting for 3-2D-2U break)
+                if setup_dir_322[i] == -2:
+                    entry = reversal_trigger[i]
+                    stop = stop_price[i]
+                    target = target_price[i]
+
+                    if entry > 0 and not np.isnan(target) and target > 0:
+                        risk = entry - stop if stop > 0 else 0
+                        reward = target - entry
+                        magnitude = (target - entry) / entry * 100 if entry > 0 else 0
+                        rr = reward / risk if risk > 0 else 0
+
+                        setups.append(
+                            {
+                                "index": i,
+                                "timestamp": df.index[i],
+                                "signal": 1,
+                                "direction": "LONG",
+                                "entry": entry,
+                                "stop": stop,
+                                "target": target,
+                                "magnitude_pct": magnitude,
+                                "risk_reward": rr,
+                                "bar_sequence": f"{first_bar_str}-{dir_bar_str}-?",
+                                "signal_type": "SETUP",
+                                "setup_bar_high": setup_bar_high,
+                                "setup_bar_low": setup_bar_low,
+                                "setup_bar_timestamp": df.index[i],
+                                "setup_pattern": "3-2-2",
+                                "has_maintenance_gap": has_gap,
+                                "prior_bar_type": int(prev_bar_class),
+                                "prior_bar_high": high[i - 1] if i > 0 else 0.0,
+                                "prior_bar_low": low[i - 1] if i > 0 else 0.0,
+                            }
+                        )
+
+                # For 3-2U setup: Create SHORT setup (waiting for 3-2U-2D break)
+                elif setup_dir_322[i] == 2:
+                    entry = reversal_trigger[i]
+                    stop = stop_price[i]
+                    target = target_price[i]
+
+                    if entry > 0 and not np.isnan(target) and target > 0:
+                        risk = stop - entry if stop > 0 else 0
+                        reward = entry - target
+                        magnitude = (entry - target) / entry * 100 if entry > 0 else 0
+                        rr = reward / risk if risk > 0 else 0
+
+                        setups.append(
+                            {
+                                "index": i,
+                                "timestamp": df.index[i],
+                                "signal": -1,
+                                "direction": "SHORT",
+                                "entry": entry,
+                                "stop": stop,
+                                "target": target,
+                                "magnitude_pct": magnitude,
+                                "risk_reward": rr,
+                                "bar_sequence": f"{first_bar_str}-{dir_bar_str}-?",
+                                "signal_type": "SETUP",
+                                "setup_bar_high": setup_bar_high,
+                                "setup_bar_low": setup_bar_low,
+                                "setup_bar_timestamp": df.index[i],
+                                "setup_pattern": "3-2-2",
+                                "has_maintenance_gap": has_gap,
+                                "prior_bar_type": int(prev_bar_class),
+                                "prior_bar_high": high[i - 1] if i > 0 else 0.0,
+                                "prior_bar_low": low[i - 1] if i > 0 else 0.0,
+                            }
+                        )
+
+        # =====================================================================
+        # 2-2 Setups: Directional bar followed by OPPOSITE direction potential
+        # WAITING for reversal break (2D-2U or 2U-2D patterns)
+        # Session CRYPTO-16: Ported from equities scanner
+        # =====================================================================
+        result_22 = detect_22_setups_nb(classifications, high, low)
+        setup_mask_22, setup_dir_22, rev_trigger_22, stop_22, target_22 = result_22
+
+        for i in range(len(setup_mask_22)):
+            if i == last_bar_idx:
+                continue
+            if setup_mask_22[i]:
+                prev_bar_class = classifications[i - 1] if i > 0 else 0
+                first_bar_str = bar_to_str(int(prev_bar_class))
+                dir_bar_str = bar_to_str(int(setup_dir_22[i]))
+
+                # Skip if previous bar was outside (already handled by 3-2 setups)
+                if prev_bar_class == 3:
+                    continue
+
+                setup_bar_high = high[i]
+                setup_bar_low = low[i]
+                has_gap = bool(df["is_maintenance_gap"].iloc[i])
+
+                # For 2D bar: Create LONG setup (waiting for X-2D-2U break)
+                if setup_dir_22[i] == -2:
+                    entry = rev_trigger_22[i]
+                    stop = stop_22[i]
+                    target = target_22[i]
+
+                    if entry > 0 and not np.isnan(target) and target > 0:
+                        risk = entry - stop if stop > 0 else 0
+                        reward = target - entry
+                        magnitude = (target - entry) / entry * 100 if entry > 0 else 0
+                        rr = reward / risk if risk > 0 else 0
+
+                        setups.append(
+                            {
+                                "index": i,
+                                "timestamp": df.index[i],
+                                "signal": 1,
+                                "direction": "LONG",
+                                "entry": entry,
+                                "stop": stop,
+                                "target": target,
+                                "magnitude_pct": magnitude,
+                                "risk_reward": rr,
+                                "bar_sequence": f"{first_bar_str}-{dir_bar_str}-?",
+                                "signal_type": "SETUP",
+                                "setup_bar_high": setup_bar_high,
+                                "setup_bar_low": setup_bar_low,
+                                "setup_bar_timestamp": df.index[i],
+                                "setup_pattern": "2-2",
+                                "has_maintenance_gap": has_gap,
+                                "prior_bar_type": int(prev_bar_class),
+                                "prior_bar_high": high[i - 1] if i > 0 else 0.0,
+                                "prior_bar_low": low[i - 1] if i > 0 else 0.0,
+                            }
+                        )
+
+                # For 2U bar: Create SHORT setup (waiting for X-2U-2D break)
+                elif setup_dir_22[i] == 2:
+                    entry = rev_trigger_22[i]
+                    stop = stop_22[i]
+                    target = target_22[i]
+
+                    if entry > 0 and not np.isnan(target) and target > 0:
+                        risk = stop - entry if stop > 0 else 0
+                        reward = entry - target
+                        magnitude = (entry - target) / entry * 100 if entry > 0 else 0
+                        rr = reward / risk if risk > 0 else 0
+
+                        setups.append(
+                            {
+                                "index": i,
+                                "timestamp": df.index[i],
+                                "signal": -1,
+                                "direction": "SHORT",
+                                "entry": entry,
+                                "stop": stop,
+                                "target": target,
+                                "magnitude_pct": magnitude,
+                                "risk_reward": rr,
+                                "bar_sequence": f"{first_bar_str}-{dir_bar_str}-?",
+                                "signal_type": "SETUP",
+                                "setup_bar_high": setup_bar_high,
+                                "setup_bar_low": setup_bar_low,
+                                "setup_bar_timestamp": df.index[i],
+                                "setup_pattern": "2-2",
+                                "has_maintenance_gap": has_gap,
+                                "prior_bar_type": int(prev_bar_class),
+                                "prior_bar_high": high[i - 1] if i > 0 else 0.0,
+                                "prior_bar_low": low[i - 1] if i > 0 else 0.0,
+                            }
+                        )
+
         return setups
 
     # =========================================================================
@@ -730,23 +920,44 @@ class CryptoSignalScanner:
                     )
                     signals.append(signal)
 
-        # Detect SETUP patterns (still valid - inside bar not yet broken)
+        # Detect SETUP patterns (still valid - entry not yet triggered)
         setups = self._detect_setups(df)
         for p in setups:
             setup_idx = p["index"]
             setup_high = p.get("setup_bar_high", 0.0)
             setup_low = p.get("setup_bar_low", 0.0)
+            setup_pattern = p.get("setup_pattern", "")
+            entry_price = p.get("entry", 0.0)
+            direction = p.get("direction", "")
 
-            # Check if setup is still valid (no subsequent bar broke inside bar)
-            # Setup is valid if all bars after setup_idx are inside the setup bar range
+            # Check if setup is still valid
+            # For X-1 patterns (3-1-2, 2-1-2): Valid if bars stay inside the setup bar range
+            # For X-2 patterns (3-2-2, 2-2): Valid if entry level not yet triggered
             setup_still_valid = True
             for j in range(setup_idx + 1, len(df)):
                 bar_high = df["High"].iloc[j]
                 bar_low = df["Low"].iloc[j]
-                if bar_high > setup_high or bar_low < setup_low:
-                    # Setup was broken by a subsequent bar
-                    setup_still_valid = False
-                    break
+
+                if setup_pattern in ("3-1-2", "2-1-2"):
+                    # Inside bar patterns: check if range was broken
+                    if bar_high > setup_high or bar_low < setup_low:
+                        setup_still_valid = False
+                        break
+                elif setup_pattern in ("3-2-2", "2-2"):
+                    # Directional bar patterns: check if entry was triggered
+                    if direction == "LONG" and bar_high >= entry_price:
+                        # Long entry triggered (broke above)
+                        setup_still_valid = False
+                        break
+                    elif direction == "SHORT" and bar_low <= entry_price:
+                        # Short entry triggered (broke below)
+                        setup_still_valid = False
+                        break
+                else:
+                    # Default: check if range was broken
+                    if bar_high > setup_high or bar_low < setup_low:
+                        setup_still_valid = False
+                        break
 
             if setup_still_valid:
                 setup_ts = p.get("setup_bar_timestamp")
