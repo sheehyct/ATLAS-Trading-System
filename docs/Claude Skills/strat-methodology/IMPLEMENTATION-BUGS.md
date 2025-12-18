@@ -210,6 +210,47 @@ The `?` in `X-1-?` means "waiting for directional resolution."
 **Cause:** Not distinguishing between closed inside bar (3-bar) and live bar that starts inside then breaks (2-bar)
 **Understanding:** A live bar that starts as "inside" and then breaks is a 2-bar pattern, not 3-bar
 
+### Bug 4: Missing Discord Entry Alerts (Equity Daemon)
+
+**Symptom:** Orders fill on Alpaca but no Discord entry notification received
+**Cause:** Two code paths for execution, but only one sends Discord alerts:
+- `EntryMonitor` triggers → `_on_entry_triggered()` → sends Discord alert ✅
+- `run_scan()` → `_execute_signals()` directly → NO Discord alert ❌
+
+**Files:** `strat/signal_automation/daemon.py`
+**Fix:** Added Discord entry alert to `_execute_signals()` code path
+
+### Bug 5: Late-Day Hourly Pattern Entries ("Let the Market Breathe")
+
+**Symptom:** Hourly patterns entering at 3:30 PM and exiting at 9:31 AM next day
+**Cause:** No time-of-day filtering for hourly patterns - first bar hasn't closed
+
+**Rule:** For hourly (1H) patterns only:
+- 2-bar patterns: Earliest entry at **10:30 AM EST** (after first 1H bar closes)
+- 3-bar patterns: Earliest entry at **11:30 AM EST** (after first two 1H bars close)
+- Daily/Weekly/Monthly: No restriction (larger timeframes carry more significance)
+
+**Files:**
+- `strat/signal_automation/entry_monitor.py` - Added `is_hourly_entry_allowed()` method
+- `strat/signal_automation/daemon.py` - Added `_is_hourly_entry_allowed()` and filtering in `_execute_signals()`
+
+### Bug 6: Dashboard Closed Trades Missing Pattern Column
+
+**Symptom:** Closed trades show "-" for pattern column
+**Cause:** Alpaca doesn't store pattern info - need to correlate with signal store
+
+**Fix:**
+1. Added `executed_osi_symbol` field to `StoredSignal`
+2. Store OSI symbol when signal executes (`set_executed_osi_symbol()`)
+3. Look up pattern by OSI symbol when fetching closed trades (`get_signal_by_osi_symbol()`)
+4. Added Pattern column to closed trades table
+
+**Files:**
+- `strat/signal_automation/signal_store.py` - Added `executed_osi_symbol` field and lookup methods
+- `strat/signal_automation/daemon.py` - Store OSI symbol on execution
+- `dashboard/data_loaders/options_loader.py` - Look up pattern from signal store
+- `dashboard/components/options_panel.py` - Added Pattern column to table
+
 ---
 
 ## Summary Checklist
@@ -221,6 +262,9 @@ When implementing STRAT pattern detection:
 - [ ] **Pattern distinction:** Closed inside bar = 3-bar, live bar breaking = 2-bar
 - [ ] **Entry timing:** Entry is LIVE at break, not waiting for bar close
 - [ ] **Trigger definition:** "Inside bar break" = NEXT bar breaks PREVIOUS bar's levels
+- [ ] **Time filtering:** Hourly patterns restricted to 10:30 AM (2-bar) / 11:30 AM (3-bar)
+- [ ] **Discord alerts:** Ensure ALL execution paths send entry alerts
+- [ ] **Pattern tracking:** Store OSI symbol on execution for closed trade correlation
 
 ---
 
@@ -229,8 +273,140 @@ When implementing STRAT pattern detection:
 - `crypto/scanning/signal_scanner.py` - Setup detection with live bar exclusion
 - `strat/pattern_detector.py` - Pattern detection with correct stop placement
 - `crypto/scanning/entry_monitor.py` - Entry trigger monitoring
+- `strat/signal_automation/entry_monitor.py` - Hourly time filtering
+- `strat/signal_automation/daemon.py` - Execution with Discord alerts and time filtering
+- `strat/signal_automation/signal_store.py` - OSI symbol tracking for pattern correlation
+- `dashboard/data_loaders/options_loader.py` - Closed trades with pattern lookup
+- `dashboard/components/options_panel.py` - Pattern column in closed trades table
+
+---
+
+## 6. Complete Pattern Reference
+
+### Pattern Naming Convention
+
+**ALWAYS use full directional naming** per CLAUDE.md:
+- ✅ `2D-1-2U` (correct - full directional verbiage)
+- ❌ `2-1-2` (incorrect - missing directions)
+
+### All Patterns with Entry Rules
+
+#### Setup Patterns (Awaiting Break - Monitor for Entry)
+
+| Pattern | Structure | Trigger | Direction | Hourly Entry |
+|---------|-----------|---------|-----------|--------------|
+| `3-1-?` | Outside → Inside | Watch NEXT bar | TBD | 11:30 AM |
+| `2D-1-?` | Bearish → Inside | Watch NEXT bar | TBD | 11:30 AM |
+| `2U-1-?` | Bullish → Inside | Watch NEXT bar | TBD | 11:30 AM |
+| `2D-?` | Bearish bar | Watch NEXT bar | TBD | 10:30 AM |
+| `2U-?` | Bullish bar | Watch NEXT bar | TBD | 10:30 AM |
+| `3-2D-?` | Outside → Bearish | Watch NEXT bar | TBD | 11:30 AM |
+| `3-2U-?` | Outside → Bullish | Watch NEXT bar | TBD | 11:30 AM |
+
+**Setup Entry Rule:** Entry is **LIVE** when price breaks the setup bar's high/low:
+- Bullish break: `current_price > setup_bar_high` → becomes 2U pattern
+- Bearish break: `current_price < setup_bar_low` → becomes 2D pattern
+
+#### 3-Bar Completed Patterns (3 components: X-Y-Z)
+
+| Pattern | Structure | Entry | Direction | Hourly Entry |
+|---------|-----------|-------|-----------|--------------|
+| `3-1-2U` | Outside → Inside → Bullish | On break above inside bar high | CALL | 11:30 AM |
+| `3-1-2D` | Outside → Inside → Bearish | On break below inside bar low | PUT | 11:30 AM |
+| `2U-1-2U` | Bullish → Inside → Bullish (continuation) | On break above inside bar high | CALL | 11:30 AM |
+| `2D-1-2D` | Bearish → Inside → Bearish (continuation) | On break below inside bar low | PUT | 11:30 AM |
+| `2D-1-2U` | Bearish → Inside → Bullish (reversal) | On break above inside bar high | CALL | 11:30 AM |
+| `2U-1-2D` | Bullish → Inside → Bearish (reversal) | On break below inside bar low | PUT | 11:30 AM |
+| `3-2D-2U` | Outside → Bearish → Bullish (reversal) | On break above 2D bar high | CALL | 11:30 AM |
+| `3-2U-2D` | Outside → Bullish → Bearish (reversal) | On break below 2U bar low | PUT | 11:30 AM |
+| `3-2D-2D` | Outside → Bearish → Bearish (continuation) | On break below 2D bar low | PUT | 11:30 AM |
+| `3-2U-2U` | Outside → Bullish → Bullish (continuation) | On break above 2U bar high | CALL | 11:30 AM |
+
+#### 2-Bar Completed Patterns (2 components: X-Y)
+
+| Pattern | Structure | Entry | Direction | Hourly Entry |
+|---------|-----------|-------|-----------|--------------|
+| `2D-2U` | Bearish → Bullish (reversal) | On break above 2D bar high | CALL | 10:30 AM |
+| `2U-2D` | Bullish → Bearish (reversal) | On break below 2U bar low | PUT | 10:30 AM |
+| `3-2U` | Outside → Bullish | On break above outside bar high | CALL | 10:30 AM |
+| `3-2D` | Outside → Bearish | On break below outside bar low | PUT | 10:30 AM |
+
+### CRITICAL: Entry Timing Rules
+
+#### ❌ WRONG: Entry when pattern bar closes
+```
+Bar closes as 2U completing 2D-1-2U → DO NOT enter just because bar closed
+This is the bug that keeps recurring!
+```
+
+#### ✅ CORRECT: Entry when price breaks trigger level
+
+**For SETUP patterns (X-1-? or X-?):**
+1. Setup bar (inside or directional) is **CLOSED**
+2. Monitor the **LIVE** bar for price breaks
+3. Entry is **IMMEDIATE** when price breaks trigger level
+4. Entry price = current market price at break moment
+
+**For COMPLETED patterns (detected historically):**
+- The pattern already completed (break already happened)
+- Signal type = `COMPLETED` or `HISTORICAL_TRIGGERED`
+- These should NOT be executed (entry already passed)
+
+### Visual Entry Example: 2D-1-2U Pattern
+
+```
+TIME    BAR     HIGH    LOW     ACTION
+────────────────────────────────────────────────────────
+9:30    2D      $100    $95     Bearish directional bar
+10:30   1       $99     $96     Inside bar (CLOSED at 10:30)
+                                 Trigger: break above $99
+11:00   [LIVE]  ...     ...     Monitoring...
+11:15   [LIVE]  $99.50  $97     Still inside, no break
+11:23   [LIVE]  $99.15  $97     Price hits $99.15 < $99, no break
+11:31   [LIVE]  $100.50 $98     Price hits $99.01 > $99 ← ENTRY!
+                                 Pattern becomes 2D-1-2U
+                                 Entry @ $99.01 (live market price)
+
+Entry is NOT at 11:30 (bar close).
+Entry is at 11:31 (moment of break).
+```
+
+### Hourly Pattern Time Restrictions ("Let the Market Breathe")
+
+| Timeframe | Pattern Type | Earliest Entry | Rationale |
+|-----------|--------------|----------------|-----------|
+| 1H | 2-bar (X-Y) | **10:30 AM EST** | First bar closed at 10:30 |
+| 1H | 3-bar (X-Y-Z) | **11:30 AM EST** | First two bars closed at 11:30 |
+| 1D | Any | No restriction | Daily bars have 24h significance |
+| 1W | Any | No restriction | Weekly bars have week significance |
+| 1M | Any | No restriction | Monthly bars have month significance |
+
+### Pattern Component Count Logic
+
+```python
+pattern_parts = pattern.split('-')
+if len(pattern_parts) >= 3:
+    # 3-bar pattern: 11:30 AM for hourly
+    # Examples: 3-1-2U, 2D-1-2U, 3-2D-2U
+else:
+    # 2-bar pattern: 10:30 AM for hourly
+    # Examples: 2D-2U, 3-2D
+```
+
+### Common Entry Mistakes to Avoid
+
+| Mistake | Why It's Wrong | Correct Behavior |
+|---------|----------------|------------------|
+| Enter when pattern bar closes | Entry timing wrong | Enter when price breaks trigger level |
+| Enter on LIVE setup bar | Bar not complete | Wait for setup bar to close, then monitor |
+| Enter 3-bar pattern at 10:00 AM (hourly) | First bar not closed | Wait until 11:30 AM |
+| Execute COMPLETED signals | Entry already happened | Only execute SETUP signals with live breaks |
+| Enter 3-1-2U when "2U" bar closes | Pattern already complete | Entry was at the moment of the break, not close |
 
 ---
 
 **Session:** CRYPTO-10 (Review daemon strategy)
-**Commit:** `1b8e295` - fix(strat): exclude live bars from 3-bar setup detection and fix stop placement
+**Commits:**
+- `1b8e295` - fix(strat): exclude live bars from 3-bar setup detection and fix stop placement
+- `997d536` - fix(equity): add time filtering, Discord alerts, and pattern tracking
+- `63dd87e` - fix(strat): use component count for 2-bar vs 3-bar pattern detection

@@ -336,11 +336,14 @@ class OptionsDataLoader:
         Fetches fill activities from Alpaca and matches sells to buys
         to calculate realized P&L for closed positions.
 
+        Also correlates trades with originating STRAT signals to include
+        pattern information.
+
         Args:
             days: Number of days to look back (default: 30)
 
         Returns:
-            List of closed trade dictionaries with realized P&L
+            List of closed trade dictionaries with realized P&L and pattern info
         """
         if not self._connected:
             self.connect()
@@ -363,10 +366,19 @@ class OptionsDataLoader:
 
             # Enhance with display-friendly fields
             for trade in closed_trades:
+                osi_symbol = trade.get('symbol', '')
+
                 # Parse OCC symbol for display
-                trade['display_contract'] = self._parse_occ_symbol(
-                    trade.get('symbol', '')
-                )
+                trade['display_contract'] = self._parse_occ_symbol(osi_symbol)
+
+                # Look up pattern from signal store
+                trade['pattern'] = '-'
+                trade['timeframe'] = '-'
+                if self.signal_store and osi_symbol:
+                    signal = self.signal_store.get_signal_by_osi_symbol(osi_symbol)
+                    if signal:
+                        trade['pattern'] = signal.pattern_type
+                        trade['timeframe'] = signal.timeframe
 
                 # Format timestamps for display
                 if trade.get('buy_time_dt'):
