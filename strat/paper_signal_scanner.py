@@ -175,11 +175,11 @@ class PaperSignalScanner:
         Fetch OHLCV data for pattern detection.
 
         Primary: Alpaca (all timeframes)
-        Fallback: Tiingo (daily/weekly/monthly only, no hourly)
+        Fallback: Tiingo (daily/weekly/monthly only, no hourly/intraday)
 
         Args:
             symbol: Stock symbol
-            timeframe: '1H', '1D', '1W', '1M'
+            timeframe: '15m', '30m', '1H', '1D', '1W', '1M'
             lookback_bars: Number of bars to fetch
 
         Returns:
@@ -188,7 +188,16 @@ class PaperSignalScanner:
         vbt = self._get_vbt()
 
         # Calculate start date based on timeframe
-        if timeframe == '1H':
+        # Session EQUITY-18: Add 15m and 30m support for faster timeframe scanning
+        if timeframe == '15m':
+            days = lookback_bars // 26 + 30  # ~26 15-min bars per day, add buffer
+            tf_alpaca = '15Min'
+            tf_tiingo = None  # Tiingo doesn't support intraday
+        elif timeframe == '30m':
+            days = lookback_bars // 13 + 30  # ~13 30-min bars per day, add buffer
+            tf_alpaca = '30Min'
+            tf_tiingo = None  # Tiingo doesn't support intraday
+        elif timeframe == '1H':
             days = lookback_bars // 7 + 30  # ~7 bars per day, add buffer
             tf_alpaca = '1Hour'
             tf_tiingo = None  # Tiingo doesn't support hourly
@@ -214,7 +223,9 @@ class PaperSignalScanner:
         try:
             # Session 83K-72: For intraday timeframes, add 1 day to end date
             # to include today's bars (Alpaca end date is exclusive)
-            end_date = end + timedelta(days=1) if timeframe == '1H' else end
+            # Session EQUITY-18: Include 15m and 30m as intraday timeframes
+            is_intraday = timeframe in ('15m', '30m', '1H')
+            end_date = end + timedelta(days=1) if is_intraday else end
 
             data = vbt.AlpacaData.pull(
                 symbol,
@@ -225,8 +236,9 @@ class PaperSignalScanner:
             )
             df = data.get()
 
-            # Handle hourly bar alignment for 1H (market-open-aligned)
-            if timeframe == '1H':
+            # Session EQUITY-18: Filter to market hours for all intraday timeframes
+            # This ensures consistent behavior for 15m, 30m, and 1H
+            if is_intraday:
                 df = self._align_hourly_bars(df)
 
             return df
@@ -234,7 +246,7 @@ class PaperSignalScanner:
         except Exception as e:
             # Alpaca failed, try Tiingo fallback (daily/weekly/monthly only)
             if tf_tiingo is None:
-                warnings.warn(f"Failed to fetch {symbol} {timeframe} (no Tiingo fallback for hourly): {e}")
+                warnings.warn(f"Failed to fetch {symbol} {timeframe} (no Tiingo fallback for intraday): {e}")
                 return None
 
             tiingo = self._get_tiingo()
@@ -1069,6 +1081,7 @@ class PaperSignalScanner:
         # =================================================================
         # Session 83K-71: SETUP patterns (waiting for live break)
         # Only consider the LAST bar as a valid setup (current actionable)
+        # Session EQUITY-18: Add setup validity checking (port from crypto scanner)
         # =================================================================
         setups = self._detect_setups(df)
 
@@ -1078,6 +1091,45 @@ class PaperSignalScanner:
             # recent actionable setup is at index len(df) - 2
             # Also include slightly older setups (up to 3 bars back) that haven't been broken yet
             if p['index'] >= len(df) - 4:
+                # Session EQUITY-18: Validate setup is still active
+                # For X-1 patterns (3-1-2, 2-1-2): Valid if bars stay inside setup bar range
+                # For X-2 patterns (3-2-2, 2-2): Valid if entry level not yet triggered
+                setup_idx = p['index']
+                setup_high = p.get('setup_bar_high', 0.0)
+                setup_low = p.get('setup_bar_low', 0.0)
+                setup_pattern = p.get('setup_pattern', '')
+                entry_price = p.get('entry', 0.0)
+                direction = p.get('direction', '')
+
+                setup_still_valid = True
+                for j in range(setup_idx + 1, len(df)):
+                    bar_high = df['High'].iloc[j]
+                    bar_low = df['Low'].iloc[j]
+
+                    if setup_pattern in ('3-1-2', '2-1-2'):
+                        # Inside bar patterns: check if range was broken
+                        if bar_high > setup_high or bar_low < setup_low:
+                            setup_still_valid = False
+                            break
+                    elif setup_pattern in ('3-2-2', '2-2'):
+                        # Directional bar patterns: check if entry was triggered
+                        if direction == 'CALL' and bar_high >= entry_price:
+                            # Long entry triggered (broke above)
+                            setup_still_valid = False
+                            break
+                        elif direction == 'PUT' and bar_low <= entry_price:
+                            # Short entry triggered (broke below)
+                            setup_still_valid = False
+                            break
+                    else:
+                        # Default: check if range was broken
+                        if bar_high > setup_high or bar_low < setup_low:
+                            setup_still_valid = False
+                            break
+
+                if not setup_still_valid:
+                    continue  # Skip this invalidated setup
+
                 setup_ts = p.get('setup_bar_timestamp')
                 if hasattr(setup_ts, 'to_pydatetime'):
                     setup_ts = setup_ts.to_pydatetime()

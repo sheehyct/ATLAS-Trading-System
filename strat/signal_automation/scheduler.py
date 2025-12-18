@@ -259,6 +259,104 @@ class SignalScheduler:
         logger.info(f"Added 15-min base scan job: {job.id} (HTF resampling enabled)")
         return job.id
 
+    # =========================================================================
+    # Session EQUITY-18: 15m and 30m Timeframe Scan Jobs
+    # =========================================================================
+
+    def add_15m_job(
+        self,
+        callback: Callable,
+        job_id: str = 'scan_15m'
+    ) -> Optional[str]:
+        """
+        Add 15-minute scan job during market hours.
+
+        Session EQUITY-18: Faster timeframe scanning.
+
+        Runs at :00, :15, :30, :45 each hour from 9-15 ET, Mon-Fri.
+
+        Args:
+            callback: Function to call on trigger
+            job_id: Unique job identifier
+
+        Returns:
+            Job ID if added, None if disabled
+        """
+        if not self.config.scan_15m:
+            logger.info("15m scanning disabled in config")
+            return None
+
+        cron_kwargs = self._parse_cron(self.config.fifteen_min_cron)
+
+        job = self._scheduler.add_job(
+            callback,
+            trigger=CronTrigger(**cron_kwargs, timezone=self.timezone),
+            id=job_id,
+            name='15-Minute Signal Scan',
+            replace_existing=True,
+        )
+
+        self._jobs['15m'] = job.id
+        self._job_stats[job.id] = {
+            'name': '15m Scan',
+            'run_count': 0,
+            'error_count': 0,
+            'missed_count': 0,
+            'last_run': None,
+            'last_status': 'pending',
+            'last_error': None,
+        }
+
+        logger.info(f"Added 15m job: {job.id}")
+        return job.id
+
+    def add_30m_job(
+        self,
+        callback: Callable,
+        job_id: str = 'scan_30m'
+    ) -> Optional[str]:
+        """
+        Add 30-minute scan job during market hours.
+
+        Session EQUITY-18: Faster timeframe scanning.
+
+        Runs at :00, :30 each hour from 9-15 ET, Mon-Fri.
+
+        Args:
+            callback: Function to call on trigger
+            job_id: Unique job identifier
+
+        Returns:
+            Job ID if added, None if disabled
+        """
+        if not self.config.scan_30m:
+            logger.info("30m scanning disabled in config")
+            return None
+
+        cron_kwargs = self._parse_cron(self.config.thirty_min_cron)
+
+        job = self._scheduler.add_job(
+            callback,
+            trigger=CronTrigger(**cron_kwargs, timezone=self.timezone),
+            id=job_id,
+            name='30-Minute Signal Scan',
+            replace_existing=True,
+        )
+
+        self._jobs['30m'] = job.id
+        self._job_stats[job.id] = {
+            'name': '30m Scan',
+            'run_count': 0,
+            'error_count': 0,
+            'missed_count': 0,
+            'last_run': None,
+            'last_status': 'pending',
+            'last_error': None,
+        }
+
+        logger.info(f"Added 30m job: {job.id}")
+        return job.id
+
     def add_daily_job(
         self,
         callback: Callable,

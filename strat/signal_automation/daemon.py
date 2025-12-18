@@ -726,13 +726,25 @@ class SignalDaemon:
                 logger.error(f"Alert error ({alerter.name}): {e}")
                 self._error_count += 1
 
-    def _is_hourly_entry_allowed(self, signal: StoredSignal) -> bool:
+    def _is_intraday_entry_allowed(self, signal: StoredSignal) -> bool:
         """
-        Check if hourly pattern entry is allowed based on "let the market breathe" rules.
+        Check if intraday pattern entry is allowed based on "let the market breathe" rules.
 
-        For hourly (1H) patterns, we must wait for sufficient bars to close:
-        - 2-bar patterns: Earliest entry at 10:30 AM EST (after first 1H bar closes)
-        - 3-bar patterns: Earliest entry at 11:30 AM EST (after first two 1H bars close)
+        Session EQUITY-18: Extended to support 15m, 30m, and 1H timeframes.
+
+        For intraday patterns, we must wait for sufficient bars to close:
+
+        15m timeframe:
+        - 2-bar patterns: Earliest entry at 9:45 AM ET
+        - 3-bar patterns: Earliest entry at 10:00 AM ET
+
+        30m timeframe:
+        - 2-bar patterns: Earliest entry at 10:00 AM ET
+        - 3-bar patterns: Earliest entry at 10:30 AM ET
+
+        1H timeframe:
+        - 2-bar patterns: Earliest entry at 10:30 AM ET
+        - 3-bar patterns: Earliest entry at 11:30 AM ET
 
         Daily, Weekly, Monthly patterns have no time restriction because
         larger timeframes carry more significance.
@@ -743,15 +755,31 @@ class SignalDaemon:
         Returns:
             True if entry is allowed, False if too early
         """
-        # Only apply time restriction to hourly patterns
-        if signal.timeframe != '1H':
+        # Only apply time restriction to intraday patterns
+        intraday_timeframes = ('15m', '30m', '1H')
+        if signal.timeframe not in intraday_timeframes:
             return True
 
         current_time = datetime.now().time()
 
-        # Time thresholds (match entry_monitor.py defaults)
-        hourly_2bar_earliest = dt_time(10, 30)
-        hourly_3bar_earliest = dt_time(11, 30)
+        # Session EQUITY-18: Time thresholds per timeframe
+        # Based on "Let the Market Breathe" design from HANDOFF.md
+        time_thresholds = {
+            '15m': {
+                '2bar': dt_time(9, 45),   # After first 15m bar closes
+                '3bar': dt_time(10, 0),   # After first two 15m bars close
+            },
+            '30m': {
+                '2bar': dt_time(10, 0),   # After first 30m bar closes
+                '3bar': dt_time(10, 30),  # After first two 30m bars close
+            },
+            '1H': {
+                '2bar': dt_time(10, 30),  # After first 1H bar closes
+                '3bar': dt_time(11, 30),  # After first two 1H bars close
+            },
+        }
+
+        thresholds = time_thresholds[signal.timeframe]
 
         # Determine if this is a 2-bar or 3-bar pattern by counting components
         # 3-bar patterns have 3 components: X-Y-Z (e.g., 3-2D-2U, 2D-1-2U, 2U-1-?)
@@ -760,20 +788,16 @@ class SignalDaemon:
         pattern_parts = pattern.split('-')
         is_3bar_pattern = len(pattern_parts) >= 3
 
-        if is_3bar_pattern:
-            if current_time < hourly_3bar_earliest:
-                logger.info(
-                    f"Hourly 3-bar pattern {signal.symbol} {pattern} blocked: "
-                    f"current time {current_time.strftime('%H:%M')} < 11:30 (let market breathe)"
-                )
-                return False
-        else:
-            if current_time < hourly_2bar_earliest:
-                logger.info(
-                    f"Hourly 2-bar pattern {signal.symbol} {pattern} blocked: "
-                    f"current time {current_time.strftime('%H:%M')} < 10:30 (let market breathe)"
-                )
-                return False
+        earliest_time = thresholds['3bar'] if is_3bar_pattern else thresholds['2bar']
+        pattern_type_str = '3-bar' if is_3bar_pattern else '2-bar'
+
+        if current_time < earliest_time:
+            logger.info(
+                f"{signal.timeframe} {pattern_type_str} pattern {signal.symbol} {pattern} blocked: "
+                f"current time {current_time.strftime('%H:%M')} < {earliest_time.strftime('%H:%M')} "
+                f"(let market breathe)"
+            )
+            return False
 
         return True
 
@@ -800,12 +824,12 @@ class SignalDaemon:
         results: List[ExecutionResult] = []
 
         for signal in signals:
-            # "Let the Market Breathe" - Skip hourly patterns if too early in session
-            if not self._is_hourly_entry_allowed(signal):
+            # "Let the Market Breathe" - Skip intraday patterns if too early in session
+            if not self._is_intraday_entry_allowed(signal):
                 results.append(ExecutionResult(
                     signal_key=signal.signal_key,
                     state=ExecutionState.SKIPPED,
-                    error="Hourly pattern blocked - too early in session (let market breathe)"
+                    error=f"Intraday {signal.timeframe} pattern blocked - too early in session (let market breathe)"
                 ))
                 continue
 
@@ -1026,6 +1050,13 @@ class SignalDaemon:
             )
         else:
             # LEGACY: Separate jobs per timeframe
+            # Session EQUITY-18: Add 15m and 30m scan jobs
+            self.scheduler.add_15m_job(
+                self._create_scan_callback('15m')
+            )
+            self.scheduler.add_30m_job(
+                self._create_scan_callback('30m')
+            )
             self.scheduler.add_hourly_job(
                 self._create_scan_callback('1H')
             )
@@ -1038,7 +1069,7 @@ class SignalDaemon:
             self.scheduler.add_monthly_job(
                 self._create_scan_callback('1M')
             )
-            logger.info("Using legacy separate scan jobs per timeframe")
+            logger.info("Using separate scan jobs per timeframe (15m, 30m, 1H, 1D, 1W, 1M)")
 
         # Health check job
         self.scheduler.add_health_check_job(

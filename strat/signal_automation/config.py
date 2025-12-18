@@ -20,6 +20,8 @@ import os
 
 class ScanInterval(str, Enum):
     """Scan interval presets matching trading timeframes."""
+    FIFTEEN_MIN = '15m'    # For 15m timeframe patterns (Session EQUITY-18)
+    THIRTY_MIN = '30m'     # For 30m timeframe patterns (Session EQUITY-18)
     HOURLY = 'hourly'      # For 1H timeframe patterns
     DAILY = 'daily'        # For 1D timeframe patterns
     WEEKLY = 'weekly'      # For 1W timeframe patterns
@@ -79,16 +81,31 @@ class ScheduleConfig:
     Uses cron expressions for precise scheduling.
 
     Attributes:
+        fifteen_min_cron: Cron for 15m scans (every 15 min during market hours)
+        thirty_min_cron: Cron for 30m scans (every 30 min during market hours)
         hourly_cron: Cron for hourly scans (9:30-15:30 ET Mon-Fri)
         daily_cron: Cron for daily scans (after market close)
         weekly_cron: Cron for weekly scans (Friday after close)
         monthly_cron: Cron for monthly scans (last trading day)
+        scan_15m: Enable/disable 15m timeframe scanning
+        scan_30m: Enable/disable 30m timeframe scanning
         scan_hourly: Enable/disable hourly timeframe scanning
         scan_daily: Enable/disable daily timeframe scanning
         scan_weekly: Enable/disable weekly timeframe scanning
         scan_monthly: Enable/disable monthly timeframe scanning
         timezone: Timezone for all schedules
     """
+    # =========================================================================
+    # Session EQUITY-18: 15m and 30m Timeframe Scanning
+    # =========================================================================
+    # 15m: Scan at :00, :15, :30, :45 during market hours
+    # Note: :00,:15,:30,:45 at hours 9-15 gives us scans at market-aligned times
+    fifteen_min_cron: str = '0,15,30,45 9-15 * * mon-fri'
+
+    # 30m: Scan at :00, :30 during market hours
+    thirty_min_cron: str = '0,30 9-15 * * mon-fri'
+
+    # =========================================================================
     # Cron expressions (minute hour day month day_of_week)
     # NOTE: APScheduler uses 0=Mon, 1=Tue, ..., 6=Sun. Use 'mon-fri' for clarity.
     # Hourly: Run at :30 each hour from 9:30-15:30 ET, Mon-Fri
@@ -123,8 +140,11 @@ class ScheduleConfig:
 
     # =========================================================================
     # Legacy: Individual timeframe scans (used when enable_htf_resampling=False)
+    # Session EQUITY-18: Added scan_15m and scan_30m flags
     # =========================================================================
     # Enable/disable individual timeframe scans
+    scan_15m: bool = True      # 15-minute timeframe scanning
+    scan_30m: bool = True      # 30-minute timeframe scanning
     scan_hourly: bool = True
     scan_daily: bool = True
     scan_weekly: bool = True
@@ -402,7 +422,8 @@ class SignalAutomationConfig:
             issues.append('No symbols configured for scanning')
 
         # Check timeframes
-        valid_timeframes = {'1H', '1D', '1W', '1M'}
+        # Session EQUITY-18: Added 15m and 30m as valid timeframes
+        valid_timeframes = {'15m', '30m', '1H', '1D', '1W', '1M'}
         for tf in self.scan.timeframes:
             if tf not in valid_timeframes:
                 issues.append(f'Invalid timeframe: {tf}')
