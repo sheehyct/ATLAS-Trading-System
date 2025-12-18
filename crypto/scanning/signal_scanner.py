@@ -763,15 +763,17 @@ class CryptoSignalScanner:
                     )
 
         # =====================================================================
-        # 2-2 Setups: Directional bar as BIDIRECTIONAL setup
-        # Session EQUITY-19: BIDIRECTIONAL - Create BOTH LONG and SHORT setups
-        # Per STRAT: "The forming bar is always '1' until it breaks"
+        # 2-2 Setups: Directional bar REVERSAL setups
+        # Session EQUITY-22: REVERSAL ONLY - match 3-2 logic from EQUITY-21
+        #   - (X)-2D-? = LONG (entry at 2D bar HIGH, waiting for X-2D-2U reversal)
+        #   - (X)-2U-? = SHORT (entry at 2U bar LOW, waiting for X-2U-2D reversal)
+        # Continuations (2U-2U, 2D-2D) do NOT create new entries
         # =====================================================================
         result_22 = detect_22_setups_nb(classifications, high, low)
         (setup_mask_22, setup_dir_22, long_trigger_22, short_trigger_22,
          stop_long_22, stop_short_22, target_long_22, target_short_22) = result_22
 
-        # Session EQUITY-20: INCLUDE last closed bar for bidirectional setups
+        # Session EQUITY-20: INCLUDE last closed bar for setups
         for i in range(len(setup_mask_22)):
             if setup_mask_22[i]:
                 prev_bar_class = classifications[i - 1] if i > 0 else 0
@@ -786,75 +788,78 @@ class CryptoSignalScanner:
                 setup_bar_low = low[i]
                 has_gap = bool(df["is_maintenance_gap"].iloc[i])
 
-                # Create LONG setup (break above directional bar high)
-                entry_long = long_trigger_22[i]
-                stop_long = stop_long_22[i]
-                target_long = target_long_22[i]
+                # EQUITY-22: 2-2 patterns trade the REVERSAL (like 3-2 patterns)
+                # (X)-2D-? = waiting for X-2D-2U (reversal up) -> LONG
+                # (X)-2U-? = waiting for X-2U-2D (reversal down) -> SHORT
+                if setup_dir_22[i] == -2:  # 2D bar -> LONG (reversal up)
+                    entry_long = long_trigger_22[i]  # 2D bar's HIGH
+                    stop_long = stop_long_22[i]
+                    target_long = target_long_22[i]
 
-                if entry_long > 0 and not np.isnan(target_long) and target_long > 0:
-                    risk = entry_long - stop_long if stop_long > 0 else 0
-                    reward = target_long - entry_long
-                    magnitude = (target_long - entry_long) / entry_long * 100 if entry_long > 0 else 0
-                    rr = reward / risk if risk > 0 else 0
+                    if entry_long > 0 and not np.isnan(target_long) and target_long > 0:
+                        risk = entry_long - stop_long if stop_long > 0 else 0
+                        reward = target_long - entry_long
+                        magnitude = (target_long - entry_long) / entry_long * 100 if entry_long > 0 else 0
+                        rr = reward / risk if risk > 0 else 0
 
-                    setups.append(
-                        {
-                            "index": i,
-                            "timestamp": df.index[i],
-                            "signal": 1,
-                            "direction": "LONG",
-                            "entry": entry_long,
-                            "stop": stop_long,
-                            "target": target_long,
-                            "magnitude_pct": magnitude,
-                            "risk_reward": rr,
-                            "bar_sequence": f"{first_bar_str}-{dir_bar_str}-?",
-                            "signal_type": "SETUP",
-                            "setup_bar_high": setup_bar_high,
-                            "setup_bar_low": setup_bar_low,
-                            "setup_bar_timestamp": df.index[i],
-                            "setup_pattern": "2-2",
-                            "has_maintenance_gap": has_gap,
-                            "prior_bar_type": int(prev_bar_class),
-                            "prior_bar_high": high[i - 1] if i > 0 else 0.0,
-                            "prior_bar_low": low[i - 1] if i > 0 else 0.0,
-                        }
-                    )
+                        setups.append(
+                            {
+                                "index": i,
+                                "timestamp": df.index[i],
+                                "signal": 1,
+                                "direction": "LONG",
+                                "entry": entry_long,
+                                "stop": stop_long,
+                                "target": target_long,
+                                "magnitude_pct": magnitude,
+                                "risk_reward": rr,
+                                "bar_sequence": f"{first_bar_str}-{dir_bar_str}-?",
+                                "signal_type": "SETUP",
+                                "setup_bar_high": setup_bar_high,
+                                "setup_bar_low": setup_bar_low,
+                                "setup_bar_timestamp": df.index[i],
+                                "setup_pattern": "2-2",
+                                "has_maintenance_gap": has_gap,
+                                "prior_bar_type": int(prev_bar_class),
+                                "prior_bar_high": high[i - 1] if i > 0 else 0.0,
+                                "prior_bar_low": low[i - 1] if i > 0 else 0.0,
+                            }
+                        )
 
-                # Create SHORT setup (break below directional bar low)
-                entry_short = short_trigger_22[i]
-                stop_short = stop_short_22[i]
-                target_short = target_short_22[i]
+                elif setup_dir_22[i] == 2:  # 2U bar -> SHORT (reversal down)
+                    entry_short = short_trigger_22[i]  # 2U bar's LOW
+                    stop_short = stop_short_22[i]
+                    target_short = target_short_22[i]
 
-                if entry_short > 0 and not np.isnan(target_short) and target_short > 0:
-                    risk = stop_short - entry_short if stop_short > 0 else 0
-                    reward = entry_short - target_short
-                    magnitude = (entry_short - target_short) / entry_short * 100 if entry_short > 0 else 0
-                    rr = reward / risk if risk > 0 else 0
+                    if entry_short > 0 and not np.isnan(target_short) and target_short > 0:
+                        risk = stop_short - entry_short if stop_short > 0 else 0
+                        reward = entry_short - target_short
+                        magnitude = (entry_short - target_short) / entry_short * 100 if entry_short > 0 else 0
+                        rr = reward / risk if risk > 0 else 0
 
-                    setups.append(
-                        {
-                            "index": i,
-                            "timestamp": df.index[i],
-                            "signal": -1,
-                            "direction": "SHORT",
-                            "entry": entry_short,
-                            "stop": stop_short,
-                            "target": target_short,
-                            "magnitude_pct": magnitude,
-                            "risk_reward": rr,
-                            "bar_sequence": f"{first_bar_str}-{dir_bar_str}-?",
-                            "signal_type": "SETUP",
-                            "setup_bar_high": setup_bar_high,
-                            "setup_bar_low": setup_bar_low,
-                            "setup_bar_timestamp": df.index[i],
-                            "setup_pattern": "2-2",
-                            "has_maintenance_gap": has_gap,
-                            "prior_bar_type": int(prev_bar_class),
-                            "prior_bar_high": high[i - 1] if i > 0 else 0.0,
-                            "prior_bar_low": low[i - 1] if i > 0 else 0.0,
-                        }
-                    )
+                        setups.append(
+                            {
+                                "index": i,
+                                "timestamp": df.index[i],
+                                "signal": -1,
+                                "direction": "SHORT",
+                                "entry": entry_short,
+                                "stop": stop_short,
+                                "target": target_short,
+                                "magnitude_pct": magnitude,
+                                "risk_reward": rr,
+                                "bar_sequence": f"{first_bar_str}-{dir_bar_str}-?",
+                                "signal_type": "SETUP",
+                                "setup_bar_high": setup_bar_high,
+                                "setup_bar_low": setup_bar_low,
+                                "setup_bar_timestamp": df.index[i],
+                                "setup_pattern": "2-2",
+                                "has_maintenance_gap": has_gap,
+                                "prior_bar_type": int(prev_bar_class),
+                                "prior_bar_high": high[i - 1] if i > 0 else 0.0,
+                                "prior_bar_low": low[i - 1] if i > 0 else 0.0,
+                            }
+                        )
 
         # =====================================================================
         # 3-? Setups: Pure Outside bar BIDIRECTIONAL setup
