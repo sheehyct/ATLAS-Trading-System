@@ -310,9 +310,11 @@ class CryptoDiscordAlerter:
             True if sent successfully
         """
         signal = event.signal
-        color = COLORS.get(signal.direction, COLORS['INFO'])
+        # Use actual direction from entry monitor (may differ if setup changed direction)
+        actual_direction = getattr(event, '_actual_direction', signal.direction)
+        color = COLORS.get(actual_direction, COLORS['INFO'])
 
-        direction_str = "LONG" if signal.direction == "LONG" else "SHORT"
+        direction_str = "LONG" if actual_direction == "LONG" else "SHORT"
 
         # Clean, mobile-friendly message
         message = (

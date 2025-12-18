@@ -313,9 +313,11 @@ class CryptoSignalDaemon:
         """
         self._trigger_count += 1
         signal = event.signal
+        # Use actual direction from entry monitor (may differ if setup changed direction)
+        actual_direction = getattr(event, '_actual_direction', signal.direction)
 
         logger.info(
-            f"TRIGGER FIRED: {signal.symbol} {signal.pattern_type} {signal.direction} "
+            f"TRIGGER FIRED: {signal.symbol} {signal.pattern_type} {actual_direction} "
             f"@ ${event.current_price:,.2f} (trigger: ${event.trigger_price:,.2f})"
         )
 
