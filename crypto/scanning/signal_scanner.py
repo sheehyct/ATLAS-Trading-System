@@ -944,15 +944,28 @@ class CryptoSignalScanner:
                         setup_still_valid = False
                         break
                 elif setup_pattern in ("3-2-2", "2-2"):
-                    # Directional bar patterns: check if entry was triggered
-                    if direction == "LONG" and bar_high >= entry_price:
-                        # Long entry triggered (broke above)
-                        setup_still_valid = False
-                        break
-                    elif direction == "SHORT" and bar_low <= entry_price:
-                        # Short entry triggered (broke below)
-                        setup_still_valid = False
-                        break
+                    # Directional bar patterns (reversal setups):
+                    # Session EQUITY-18 FIX: Check BOTH conditions:
+                    # 1. Entry triggered (pattern completed)
+                    # 2. Opposite side broken (pattern failed - continuation not reversal)
+                    if direction == "LONG":
+                        if bar_high >= entry_price:
+                            # Long entry triggered (broke above) - pattern completed
+                            setup_still_valid = False
+                            break
+                        elif bar_low < setup_low:
+                            # Broke below setup bar low - pattern failed (price continuing down)
+                            setup_still_valid = False
+                            break
+                    elif direction == "SHORT":
+                        if bar_low <= entry_price:
+                            # Short entry triggered (broke below) - pattern completed
+                            setup_still_valid = False
+                            break
+                        elif bar_high > setup_high:
+                            # Broke above setup bar high - pattern failed (price continuing up)
+                            setup_still_valid = False
+                            break
                 else:
                     # Default: check if range was broken
                     if bar_high > setup_high or bar_low < setup_low:
