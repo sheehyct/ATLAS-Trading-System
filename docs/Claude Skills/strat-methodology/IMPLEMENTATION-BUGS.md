@@ -281,7 +281,132 @@ When implementing STRAT pattern detection:
 
 ---
 
+## 6. Complete Pattern Reference
+
+### Pattern Naming Convention
+
+**ALWAYS use full directional naming** per CLAUDE.md:
+- ✅ `2D-1-2U` (correct - full directional verbiage)
+- ❌ `2-1-2` (incorrect - missing directions)
+
+### All Patterns with Entry Rules
+
+#### Setup Patterns (Awaiting Break - Monitor for Entry)
+
+| Pattern | Structure | Trigger | Direction | Hourly Entry |
+|---------|-----------|---------|-----------|--------------|
+| `3-1-?` | Outside → Inside | Watch NEXT bar | TBD | 11:30 AM |
+| `2D-1-?` | Bearish → Inside | Watch NEXT bar | TBD | 11:30 AM |
+| `2U-1-?` | Bullish → Inside | Watch NEXT bar | TBD | 11:30 AM |
+| `2D-?` | Bearish bar | Watch NEXT bar | TBD | 10:30 AM |
+| `2U-?` | Bullish bar | Watch NEXT bar | TBD | 10:30 AM |
+| `3-2D-?` | Outside → Bearish | Watch NEXT bar | TBD | 11:30 AM |
+| `3-2U-?` | Outside → Bullish | Watch NEXT bar | TBD | 11:30 AM |
+
+**Setup Entry Rule:** Entry is **LIVE** when price breaks the setup bar's high/low:
+- Bullish break: `current_price > setup_bar_high` → becomes 2U pattern
+- Bearish break: `current_price < setup_bar_low` → becomes 2D pattern
+
+#### 3-Bar Completed Patterns (3 components: X-Y-Z)
+
+| Pattern | Structure | Entry | Direction | Hourly Entry |
+|---------|-----------|-------|-----------|--------------|
+| `3-1-2U` | Outside → Inside → Bullish | On break above inside bar high | CALL | 11:30 AM |
+| `3-1-2D` | Outside → Inside → Bearish | On break below inside bar low | PUT | 11:30 AM |
+| `2U-1-2U` | Bullish → Inside → Bullish (continuation) | On break above inside bar high | CALL | 11:30 AM |
+| `2D-1-2D` | Bearish → Inside → Bearish (continuation) | On break below inside bar low | PUT | 11:30 AM |
+| `2D-1-2U` | Bearish → Inside → Bullish (reversal) | On break above inside bar high | CALL | 11:30 AM |
+| `2U-1-2D` | Bullish → Inside → Bearish (reversal) | On break below inside bar low | PUT | 11:30 AM |
+| `3-2D-2U` | Outside → Bearish → Bullish (reversal) | On break above 2D bar high | CALL | 11:30 AM |
+| `3-2U-2D` | Outside → Bullish → Bearish (reversal) | On break below 2U bar low | PUT | 11:30 AM |
+| `3-2D-2D` | Outside → Bearish → Bearish (continuation) | On break below 2D bar low | PUT | 11:30 AM |
+| `3-2U-2U` | Outside → Bullish → Bullish (continuation) | On break above 2U bar high | CALL | 11:30 AM |
+
+#### 2-Bar Completed Patterns (2 components: X-Y)
+
+| Pattern | Structure | Entry | Direction | Hourly Entry |
+|---------|-----------|-------|-----------|--------------|
+| `2D-2U` | Bearish → Bullish (reversal) | On break above 2D bar high | CALL | 10:30 AM |
+| `2U-2D` | Bullish → Bearish (reversal) | On break below 2U bar low | PUT | 10:30 AM |
+| `3-2U` | Outside → Bullish | On break above outside bar high | CALL | 10:30 AM |
+| `3-2D` | Outside → Bearish | On break below outside bar low | PUT | 10:30 AM |
+
+### CRITICAL: Entry Timing Rules
+
+#### ❌ WRONG: Entry when pattern bar closes
+```
+Bar closes as 2U completing 2D-1-2U → DO NOT enter just because bar closed
+This is the bug that keeps recurring!
+```
+
+#### ✅ CORRECT: Entry when price breaks trigger level
+
+**For SETUP patterns (X-1-? or X-?):**
+1. Setup bar (inside or directional) is **CLOSED**
+2. Monitor the **LIVE** bar for price breaks
+3. Entry is **IMMEDIATE** when price breaks trigger level
+4. Entry price = current market price at break moment
+
+**For COMPLETED patterns (detected historically):**
+- The pattern already completed (break already happened)
+- Signal type = `COMPLETED` or `HISTORICAL_TRIGGERED`
+- These should NOT be executed (entry already passed)
+
+### Visual Entry Example: 2D-1-2U Pattern
+
+```
+TIME    BAR     HIGH    LOW     ACTION
+────────────────────────────────────────────────────────
+9:30    2D      $100    $95     Bearish directional bar
+10:30   1       $99     $96     Inside bar (CLOSED at 10:30)
+                                 Trigger: break above $99
+11:00   [LIVE]  ...     ...     Monitoring...
+11:15   [LIVE]  $99.50  $97     Still inside, no break
+11:23   [LIVE]  $99.15  $97     Price hits $99.15 < $99, no break
+11:31   [LIVE]  $100.50 $98     Price hits $99.01 > $99 ← ENTRY!
+                                 Pattern becomes 2D-1-2U
+                                 Entry @ $99.01 (live market price)
+
+Entry is NOT at 11:30 (bar close).
+Entry is at 11:31 (moment of break).
+```
+
+### Hourly Pattern Time Restrictions ("Let the Market Breathe")
+
+| Timeframe | Pattern Type | Earliest Entry | Rationale |
+|-----------|--------------|----------------|-----------|
+| 1H | 2-bar (X-Y) | **10:30 AM EST** | First bar closed at 10:30 |
+| 1H | 3-bar (X-Y-Z) | **11:30 AM EST** | First two bars closed at 11:30 |
+| 1D | Any | No restriction | Daily bars have 24h significance |
+| 1W | Any | No restriction | Weekly bars have week significance |
+| 1M | Any | No restriction | Monthly bars have month significance |
+
+### Pattern Component Count Logic
+
+```python
+pattern_parts = pattern.split('-')
+if len(pattern_parts) >= 3:
+    # 3-bar pattern: 11:30 AM for hourly
+    # Examples: 3-1-2U, 2D-1-2U, 3-2D-2U
+else:
+    # 2-bar pattern: 10:30 AM for hourly
+    # Examples: 2D-2U, 3-2D
+```
+
+### Common Entry Mistakes to Avoid
+
+| Mistake | Why It's Wrong | Correct Behavior |
+|---------|----------------|------------------|
+| Enter when pattern bar closes | Entry timing wrong | Enter when price breaks trigger level |
+| Enter on LIVE setup bar | Bar not complete | Wait for setup bar to close, then monitor |
+| Enter 3-bar pattern at 10:00 AM (hourly) | First bar not closed | Wait until 11:30 AM |
+| Execute COMPLETED signals | Entry already happened | Only execute SETUP signals with live breaks |
+| Enter 3-1-2U when "2U" bar closes | Pattern already complete | Entry was at the moment of the break, not close |
+
+---
+
 **Session:** CRYPTO-10 (Review daemon strategy)
 **Commits:**
 - `1b8e295` - fix(strat): exclude live bars from 3-bar setup detection and fix stop placement
-- `TBD` - fix(equity): add time filtering, Discord alerts, and pattern tracking
+- `997d536` - fix(equity): add time filtering, Discord alerts, and pattern tracking
+- `63dd87e` - fix(strat): use component count for 2-bar vs 3-bar pattern detection
