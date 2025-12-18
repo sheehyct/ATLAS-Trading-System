@@ -25,11 +25,22 @@ PRIMARY_EXCHANGE: str = "coinbase_spot"  # Start with spot, upgrade later
 # Format depends on exchange:
 #   - coinbase_spot: "BTC-USD", "ETH-USD", "SOL-USD"
 #   - coinbase_intx: "BTC-PERP-INTX", "ETH-PERP-INTX"
+#   - coinbase_cfm: "BIP-20DEC30-CDE", "ETP-20DEC30-CDE" (US CFM venue)
 #   - hyperliquid: "BTC", "ETH", "SOL"
+#
+# NOTE: CFM products have expiration dates in format: SYMBOL-DDMMMYY-CDE
+# BIP = Nano Bitcoin Perp Style Futures (CFM - what user trades)
+# ETP = Nano Ether Perp Style Futures (CFM)
+# Contract rollover: Update symbols when approaching expiration
 CRYPTO_SYMBOLS: List[str] = [
-    "BTC-PERP-INTX",  # Bitcoin Perpetual (primary)
-    "ETH-PERP-INTX",  # Ethereum Perpetual
-    # "SOL-PERP-INTX",  # Add if available
+    "BIP-20DEC30-CDE",  # Nano Bitcoin Perp Style (CFM - primary)
+    "ETP-20DEC30-CDE",  # Nano Ether Perp Style (CFM)
+]
+
+# Legacy INTX symbols (for reference/fallback)
+INTX_SYMBOLS: List[str] = [
+    "BTC-PERP-INTX",  # Bitcoin Perpetual (INTX)
+    "ETH-PERP-INTX",  # Ethereum Perpetual (INTX)
 ]
 
 # Spot symbols (for data fallback)
@@ -118,12 +129,27 @@ CONTRACT_TYPES: Dict[str, str] = {
     "SOL-USD": "spot",
     "BTC-PERP-INTX": "perpetual", # INTX Perpetual futures (no expiry)
     "ETH-PERP-INTX": "perpetual",
+    # CFM Nano Perp Style Futures (dated contracts that roll)
+    "BIP-20DEC30-CDE": "dated_future",  # Nano Bitcoin - expires Dec 30, 2025
+    "ETP-20DEC30-CDE": "dated_future",  # Nano Ether - expires Dec 30, 2025
 }
 
-# Dated futures expiration (for future support)
+# Dated futures expiration
 # Format: "SYMBOL": "YYYY-MM-DD"
+# NOTE: These are "Perp Style" futures - they roll quarterly but have expiration
 FUTURES_EXPIRY: Dict[str, str] = {
-    # "BTC-26DEC25-CDE": "2025-12-26",
+    "BIP-20DEC30-CDE": "2025-12-30",  # Nano Bitcoin Dec contract
+    "ETP-20DEC30-CDE": "2025-12-30",  # Nano Ether Dec contract
+}
+
+# Symbol to base asset mapping (for leverage lookups)
+# Maps CFM product codes to their underlying asset
+SYMBOL_TO_BASE_ASSET: Dict[str, str] = {
+    "BIP": "BTC",  # Nano Bitcoin Perp Style -> BTC
+    "ETP": "ETH",  # Nano Ether Perp Style -> ETH
+    "BTC": "BTC",  # Direct mapping
+    "ETH": "ETH",
+    "SOL": "SOL",
 }
 
 # =============================================================================
@@ -317,7 +343,7 @@ def get_max_leverage_for_symbol(
     Get the maximum leverage for a symbol based on current time.
 
     Args:
-        symbol: Trading symbol (e.g., "BTC-PERP-INTX")
+        symbol: Trading symbol (e.g., "BTC-PERP-INTX" or "BIP-20DEC30-CDE")
         now_et: Current datetime in ET timezone
 
     Returns:
@@ -325,8 +351,11 @@ def get_max_leverage_for_symbol(
     """
     tier = get_current_leverage_tier(now_et)
 
-    # Extract base asset from symbol (BTC-PERP-INTX -> BTC)
-    base_asset = symbol.split("-")[0]
+    # Extract base asset from symbol (BTC-PERP-INTX -> BTC, BIP-20DEC30-CDE -> BIP)
+    symbol_prefix = symbol.split("-")[0]
+
+    # Map CFM symbols to base assets (BIP -> BTC, ETP -> ETH)
+    base_asset = SYMBOL_TO_BASE_ASSET.get(symbol_prefix, symbol_prefix)
 
     return LEVERAGE_TIERS.get(tier, {}).get(base_asset, DEFAULT_MAX_LEVERAGE)
 
