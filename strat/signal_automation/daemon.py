@@ -739,11 +739,12 @@ class SignalDaemon:
         hourly_2bar_earliest = dt_time(10, 30)
         hourly_3bar_earliest = dt_time(11, 30)
 
-        # Determine if this is a 2-bar or 3-bar pattern
-        # 3-bar patterns contain "-1-" (inside bar in middle): 2D-1-2U, 3-1-2D, 2U-1-?, etc.
-        # 2-bar patterns do not: 2D-2U, 2U-2D, 3-2U, 3-2D, etc.
+        # Determine if this is a 2-bar or 3-bar pattern by counting components
+        # 3-bar patterns have 3 components: X-Y-Z (e.g., 3-2D-2U, 2D-1-2U, 2U-1-?)
+        # 2-bar patterns have 2 components: X-Y (e.g., 2D-2U, 3-2D)
         pattern = signal.pattern_type
-        is_3bar_pattern = '-1-' in pattern
+        pattern_parts = pattern.split('-')
+        is_3bar_pattern = len(pattern_parts) >= 3
 
         if is_3bar_pattern:
             if current_time < hourly_3bar_earliest:
