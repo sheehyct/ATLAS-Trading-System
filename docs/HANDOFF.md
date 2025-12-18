@@ -3,7 +3,76 @@
 **Last Updated:** December 18, 2025 (Session EQUITY-18)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** 15m/30m scanning implemented, daemon deployed
+**Status:** CRITICAL BUG IDENTIFIED - Entry logic fundamentally wrong
+
+---
+
+## CRITICAL: STRAT Entry Logic Bug (MUST FIX NEXT SESSION)
+
+### The Problem
+
+Our entry logic waits for bars to CLOSE before entering. This is **fundamentally wrong**.
+
+### Core Concept: Every Bar Starts as "1"
+
+When a new bar opens, it has no range yet (open = prior close). By definition, it's an inside bar ("1") until it breaks the prior bar's high or low.
+
+### Correct Entry Logic for ALL Patterns
+
+**The forming bar is always treated as "1" until it breaks.**
+
+| Pattern Type | Setup (with forming bar) | Entry Trigger |
+|--------------|--------------------------|---------------|
+| **3-1-2** | 3-1-**1** | INSTANT bar breaks inside bar high (→2U LONG) or low (→2D SHORT) |
+| **2U-1-2** | 2U-1-**1** | INSTANT bar breaks inside bar high (→2U LONG) or low (→2D SHORT) |
+| **2D-1-2** | 2D-1-**1** | INSTANT bar breaks inside bar high (→2U LONG) or low (→2D SHORT) |
+| **2U-2D** (reversal) | 2U-**1** | INSTANT bar breaks 2U bar's low (→2D SHORT) |
+| **2D-2U** (reversal) | 2D-**1** | INSTANT bar breaks 2D bar's high (→2U LONG) |
+| **2U-2U** (continuation) | 2U-**1** | INSTANT bar breaks 2U bar's high (→2U LONG) |
+| **2D-2D** (continuation) | 2D-**1** | INSTANT bar breaks 2D bar's low (→2D SHORT) |
+| **3-2U** | 3-**1** | INSTANT bar breaks outside bar's high (→2U LONG) |
+| **3-2D** | 3-**1** | INSTANT bar breaks outside bar's low (→2D SHORT) |
+
+### "Where is the next 2?"
+
+This is the core STRAT concept:
+1. We have a setup (closed bars + forming bar as implicit "1")
+2. Watch the forming bar in real-time
+3. Ask "where is the next 2?" - will it break up or down?
+4. Enter the **INSTANT** it breaks (becomes 2U or 2D)
+
+### What We Were Doing Wrong
+
+1. Detecting CLOSED patterns (e.g., 2U-2D with both bars closed)
+2. Then waiting for price to break the closed bar's extreme
+3. This adds an extra bar of delay and misses the actual entry
+4. Applied to ALL patterns - 3-1-2, 2-1-2, 2-2, 3-2, etc.
+
+### What We Should Do
+
+1. Detect SETUP patterns where final bar is forming (treated as "1")
+2. Monitor the forming bar's high/low in real-time
+3. Enter the INSTANT it breaks the trigger level (becomes 2U or 2D)
+4. Apply this logic to ALL pattern types consistently
+
+### Implementation Notes
+
+- Scanner should detect setups with forming bar as implicit "1"
+- Entry monitor should watch for breaks during bar formation
+- Do NOT wait for bar close to confirm pattern
+- The break IS the confirmation AND the entry
+
+### Files to Fix
+
+- `crypto/scanning/signal_scanner.py` - Detect setups (forming bar as "1")
+- `crypto/scanning/entry_monitor.py` - Monitor forming bar for break
+- `strat/paper_signal_scanner.py` - Same fixes for equities
+- `strat/signal_automation/entry_monitor.py` - Same fixes
+
+### Reference
+
+- OpenMemory ID: 53e83631-46fd-4a75-8415-b4c0a77c6164
+- strat-methodology skill: EXECUTION.md, PATTERNS.md
 
 ---
 
