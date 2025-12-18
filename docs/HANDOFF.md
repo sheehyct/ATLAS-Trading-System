@@ -7,13 +7,13 @@
 
 ---
 
-## Session CRYPTO-16: CFM Product Discovery - No Tradovate Needed (COMPLETE)
+## Session CRYPTO-16: CFM Products + X-2 SETUP Detection (COMPLETE)
 
 **Date:** December 18, 2025
 **Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Deployed to VPS
+**Status:** COMPLETE - Both fixes deployed to VPS
 
-### Major Breakthrough
+### Part 1: CFM Product Discovery
 
 **Coinbase API DOES have BIP data** - just under a different product ID format than expected.
 
@@ -69,12 +69,59 @@ BIP/ETP are dated futures (expire Dec 30, 2025). Before expiration:
 1. Check for next contract (e.g., BIP-20MAR31-CDE)
 2. Update `CRYPTO_SYMBOLS` and `FUTURES_EXPIRY` in config
 
+---
+
+### Part 2: X-2 SETUP Detection for Crypto Scanner
+
+**Problem:** User noticed 2U-2U-2D pattern forming on BIP but no alert fired.
+
+**Root Cause:** Crypto scanner (`crypto/scanning/signal_scanner.py`) only detected X-1 setups (inside bar patterns), not X-2 setups (directional bar patterns).
+
+**Additional Bug:** Setup validation logic checked if subsequent bars stayed "inside" the setup bar range - this was WRONG for X-2 patterns where entry is at a specific price level, not a range break.
+
+### Fixes Applied
+
+1. **Added 3-2 and 2-2 SETUP detection** (ported from equities scanner):
+   - `detect_322_setups_nb()` - 3-2D waiting for 3-2D-2U, 3-2U waiting for 3-2U-2D
+   - `detect_22_setups_nb()` - X-2D waiting for X-2D-2U, X-2U waiting for X-2U-2D
+
+2. **Fixed setup validation logic**:
+   - X-1 patterns: Valid if bars stay inside setup bar range
+   - X-2 patterns: Valid if entry level not yet triggered
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/scanning/signal_scanner.py` | +218 lines - Added X-2 setup detection and fixed validation |
+
+### Commits
+
+- `f080419` - feat(crypto): switch to CFM venue products (BIP/ETP) for pattern detection
+- `79bffa9` - feat(crypto): add 3-2 and 2-2 SETUP detection to signal scanner
+
+### Verification
+
+Daemon now detects SETUP signals:
+```
+NEW SIGNAL: BIP-20DEC30-CDE 3-2D-? LONG (4h) [SETUP]
+NEW SIGNAL: BIP-20DEC30-CDE 2U-2D-? LONG (4h) [SETUP]
+Added 4 SETUP signals to entry monitor
+```
+
+### Pending: Equities Scanner
+
+The equities scanner (`strat/paper_signal_scanner.py`) does NOT have the same bug (it doesn't reject X-2 setups), but it also lacks validation. Adding the same validation would be a consistency improvement but is not critical.
+
+---
+
 ### Session CRYPTO-17 Options
 
 | Priority | Task |
 |----------|------|
 | Monitor | Verify BIP/ETP SETUP signals generate alerts |
 | Observe | Watch for TRIGGER entries with proper magnitudes |
+| Optional | Add setup validation to equities scanner for consistency |
 | Future | Contract rollover before Dec 30, 2025 expiration |
 
 ---
