@@ -1,9 +1,70 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 18, 2025 (Session EQUITY-19)
+**Last Updated:** December 18, 2025 (Session EQUITY-20)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** CRITICAL BUG FIXED - Bidirectional entry logic implemented
+**Status:** Entry timing fix deployed - bidirectional setups on last closed bar
+
+---
+
+## Session EQUITY-20: Entry Timing Fix (COMPLETE)
+
+**Date:** December 18, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Both scanners fixed and deployed to VPS
+
+### Critical Concept Added
+
+**Entry happens ON THE BREAK, not at bar close.**
+
+- A forming bar is only "1" if it stays INSIDE prior range - NOT automatic
+- Pre/post market gaps can complete patterns at open (AAPL opened as 2D today)
+- Scanner must include last CLOSED bar for bidirectional setups
+- Entry monitor watches LIVE price for breaks
+
+### Fixes Applied
+
+| Fix | Files Changed |
+|-----|--------------|
+| Remove `last_bar_idx` exclusion from 3-2 setups | Both scanners |
+| Remove `last_bar_idx` exclusion from 2-2 setups | Both scanners |
+| Add `detect_outside_bar_setups_nb()` for 3-? setups | Both scanners |
+
+**Equities:** `strat/paper_signal_scanner.py`
+**Crypto:** `crypto/scanning/signal_scanner.py`
+
+### Documentation Updated
+
+- `CLAUDE.md` - Added Section 14 "STRAT Entry Timing (ZERO TOLERANCE)"
+- `strat-methodology/SKILL.md` - Added "CRITICAL: Entry Timing" section
+- `strat-methodology/EXECUTION.md` - Added "CRITICAL: Entry Timing" at top
+
+### Test Results
+
+- 297 STRAT tests passing (2 skipped)
+- 14 signal automation tests passing
+- Both daemons deployed to VPS
+
+### Commits
+
+- `91ba645` - fix(strat): include last closed bar and 3-? setups for bidirectional detection
+- `43b9a53` - fix(crypto): include last closed bar and 3-? setups for bidirectional detection
+
+### Bidirectional Setups Now Generated
+
+| Symbol | Last Bar | CALL Trigger | PUT Trigger |
+|--------|----------|--------------|-------------|
+| SPY | 2D | $680.43 | $671.20 |
+| QQQ | 3 | $613.65 | $600.28 |
+| IWM | 2D | $252.16 | $246.69 |
+| AAPL | 3 | $276.16 | $271.64 |
+
+### Next Session Priorities
+
+| Priority | Task |
+|----------|------|
+| Monitor | Watch daemon logs for bidirectional signals and executions |
+| Verify | Check that entry timing is correct (on break, not bar close) |
 
 ---
 

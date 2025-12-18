@@ -136,7 +136,36 @@ Every directional bar MUST be classified as 2U (bullish) or 2D (bearish). Never 
 
 Bar types: 1=inside, 2U=up, 2D=down, 3=outside
 
-## 14. DO NOT
+## 14. STRAT Entry Timing (ZERO TOLERANCE)
+
+**Entry happens ON THE BREAK, not at bar close. This is the most common implementation error.**
+
+| Concept | Rule |
+|---------|------|
+| Entry is LIVE | When price breaks trigger level, enter IMMEDIATELY |
+| Forming bar classification | Only "1" if it stays INSIDE prior range - NOT automatic |
+| Pre/post market gaps | Bar can OPEN as 2U/2D due to overnight action |
+| Pattern completion | Happens the MOMENT price breaks, not at bar close |
+
+**Scanner Implementation:**
+- Last bar in data = yesterday's CLOSED bar (NOT today's forming bar)
+- Today's forming bar is NOT in the data - it's LIVE
+- Create bidirectional setups based on last CLOSED bar
+- Entry monitor watches LIVE price for breaks
+
+**Example:** Yesterday = 3 (H=$280, L=$273), Today opens at $271 (below $273)
+- Today is ALREADY 2D at open due to gap down
+- Pattern 3-2D is COMPLETE at market open
+- Entry is IMMEDIATE, not waiting for today to close
+
+**DO NOT:**
+- Exclude last bar from bidirectional setup detection (it's the setup bar)
+- Wait for forming bar to close before entering
+- Assume forming bar is always "1"
+
+See strat-methodology skill `EXECUTION.md` "CRITICAL: Entry Timing" section.
+
+## 15. DO NOT
 
 - Skip HANDOFF.md at session start
 - Skip mandatory skills (strat-methodology, thetadata-api) when writing related code
@@ -149,8 +178,10 @@ Bar types: 1=inside, 2U=up, 2D=down, 3=outside
 - Archive files (DELETE redundant files)
 - Create breakout strategies without 2x volume confirmation
 - Use unclassified "2" bars in STRAT patterns (must be 2U or 2D)
+- Wait for bar close to enter STRAT trades (entry is ON THE BREAK)
+- Exclude last closed bar from bidirectional setup detection
 
-## 15. File Tiers
+## 16. File Tiers
 
 | Tier | Files | When to Read |
 |------|-------|--------------|
@@ -158,7 +189,7 @@ Bar types: 1=inside, 2U=up, 2D=down, 3=outside
 | 2 | CLAUDE_REFERENCE.md | When need detailed examples |
 | 3 | VectorBT Pro Official Documentation/ | VBT implementation |
 
-## 16. Account Constraints
+## 17. Account Constraints
 
 Schwab Level 1 Options (cash account):
 - CAN: Long stock, long calls/puts, cash-secured puts
@@ -166,6 +197,6 @@ Schwab Level 1 Options (cash account):
 
 ---
 
-**Version:** 3.2 (December 14, 2025)
+**Version:** 3.3 (December 18, 2025)
 **Status:** PRODUCTION - Token-optimized
 **Details:** See `docs/CLAUDE_REFERENCE.md` for verbose examples
