@@ -969,7 +969,7 @@ class CryptoSignalScanner:
         if df is None or df.empty:
             return []
 
-        context = self._get_market_context(df)
+        base_context = self._get_market_context(df)
         signals = []
 
         # Detect COMPLETED patterns
@@ -982,6 +982,21 @@ class CryptoSignalScanner:
                     setup_ts = p.get("setup_bar_timestamp")
                     if hasattr(setup_ts, "to_pydatetime"):
                         setup_ts = setup_ts.to_pydatetime()
+
+                    # Calculate TFC score based on signal direction (EQUITY-23 fix)
+                    # LONG = 1 (want 2U bars), SHORT = -1 (want 2D bars)
+                    direction_int = 1 if p["direction"] == "LONG" else -1
+                    tfc_score = self.get_tfc_score(symbol, direction_int)
+                    tfc_alignment = f"{tfc_score}/4 {'BULLISH' if direction_int == 1 else 'BEARISH'}"
+
+                    # Create context with TFC for this signal
+                    context = CryptoSignalContext(
+                        atr_14=base_context.atr_14,
+                        atr_percent=base_context.atr_percent,
+                        volume_ratio=base_context.volume_ratio,
+                        tfc_score=tfc_score,
+                        tfc_alignment=tfc_alignment,
+                    )
 
                     signal = CryptoDetectedSignal(
                         pattern_type=p["bar_sequence"],
@@ -1063,6 +1078,21 @@ class CryptoSignalScanner:
                 setup_ts = p.get("setup_bar_timestamp")
                 if hasattr(setup_ts, "to_pydatetime"):
                     setup_ts = setup_ts.to_pydatetime()
+
+                # Calculate TFC score based on signal direction (EQUITY-23 fix)
+                # LONG = 1 (want 2U bars), SHORT = -1 (want 2D bars)
+                direction_int = 1 if p["direction"] == "LONG" else -1
+                tfc_score = self.get_tfc_score(symbol, direction_int)
+                tfc_alignment = f"{tfc_score}/4 {'BULLISH' if direction_int == 1 else 'BEARISH'}"
+
+                # Create context with TFC for this signal
+                context = CryptoSignalContext(
+                    atr_14=base_context.atr_14,
+                    atr_percent=base_context.atr_percent,
+                    volume_ratio=base_context.volume_ratio,
+                    tfc_score=tfc_score,
+                    tfc_alignment=tfc_alignment,
+                )
 
                 signal = CryptoDetectedSignal(
                     pattern_type=p["bar_sequence"],

@@ -467,6 +467,39 @@ class PaperSignalScanner:
             volume_ratio=volume_ratio,
         )
 
+    def get_tfc_score(self, symbol: str, direction: int) -> int:
+        """
+        Calculate Full Timeframe Continuity (FTFC) score.
+
+        Checks alignment of bar classifications across timeframes.
+        Score of 4 = all timeframes aligned (strongest setup).
+
+        Args:
+            symbol: Trading symbol
+            direction: 1 for bullish (want 2U bars), -1 for bearish (want 2D bars)
+
+        Returns:
+            Score from 0-4
+        """
+        score = 0
+        target_class = 2 * direction  # 2 for bull (2U), -2 for bear (2D)
+
+        # Check each timeframe (1H, 1D, 1W, 1M)
+        for tf in ["1H", "1D", "1W", "1M"]:
+            df = self._fetch_data(symbol, tf, lookback_bars=5)
+            if df is not None and not df.empty:
+                high = df["High"].values.astype(np.float64)
+                low = df["Low"].values.astype(np.float64)
+                classifications = classify_bars_nb(high, low)
+
+                # Check last bar classification
+                if len(classifications) > 0:
+                    last_class = int(classifications[-1])
+                    if last_class == target_class:
+                        score += 1
+
+        return score
+
     def _get_full_bar_sequence(self, pattern_type: str, classifications: np.ndarray,
                                 idx: int, direction: int) -> str:
         """
@@ -1116,7 +1149,7 @@ class PaperSignalScanner:
         if df is None or df.empty:
             return []
 
-        context = self._get_market_context(df)
+        base_context = self._get_market_context(df)
         signals = []
 
         # =================================================================
@@ -1135,6 +1168,22 @@ class PaperSignalScanner:
                     setup_ts = p.get('setup_bar_timestamp')
                     if hasattr(setup_ts, 'to_pydatetime'):
                         setup_ts = setup_ts.to_pydatetime()
+
+                    # Calculate TFC score based on signal direction (EQUITY-23 fix)
+                    # CALL = 1 (want 2U bars), PUT = -1 (want 2D bars)
+                    direction_int = 1 if p['direction'] == 'CALL' else -1
+                    tfc_score = self.get_tfc_score(symbol, direction_int)
+                    tfc_alignment = f"{tfc_score}/4 {'BULLISH' if direction_int == 1 else 'BEARISH'}"
+
+                    # Create context with TFC for this signal
+                    context = SignalContext(
+                        vix=base_context.vix,
+                        atr_14=base_context.atr_14,
+                        atr_percent=base_context.atr_percent,
+                        volume_ratio=base_context.volume_ratio,
+                        tfc_score=tfc_score,
+                        tfc_alignment=tfc_alignment,
+                    )
 
                     signal = DetectedSignal(
                         pattern_type=pattern_name,
@@ -1211,6 +1260,22 @@ class PaperSignalScanner:
                 setup_ts = p.get('setup_bar_timestamp')
                 if hasattr(setup_ts, 'to_pydatetime'):
                     setup_ts = setup_ts.to_pydatetime()
+
+                # Calculate TFC score based on signal direction (EQUITY-23 fix)
+                # CALL = 1 (want 2U bars), PUT = -1 (want 2D bars)
+                direction_int = 1 if p['direction'] == 'CALL' else -1
+                tfc_score = self.get_tfc_score(symbol, direction_int)
+                tfc_alignment = f"{tfc_score}/4 {'BULLISH' if direction_int == 1 else 'BEARISH'}"
+
+                # Create context with TFC for this signal
+                context = SignalContext(
+                    vix=base_context.vix,
+                    atr_14=base_context.atr_14,
+                    atr_percent=base_context.atr_percent,
+                    volume_ratio=base_context.volume_ratio,
+                    tfc_score=tfc_score,
+                    tfc_alignment=tfc_alignment,
+                )
 
                 signal = DetectedSignal(
                     pattern_type=p['bar_sequence'],
