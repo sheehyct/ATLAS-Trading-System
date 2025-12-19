@@ -1,9 +1,174 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 18, 2025 (Session EQUITY-23)
+**Last Updated:** December 19, 2025 (Session EQUITY-25)
 **Current Branch:** `main`
 **Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** R:R filter disabled for testing, direction logging bug fixed
+**Status:** STRAT-accurate resolved pattern alerts implemented
+
+---
+
+## Session EQUITY-25: STRAT-Accurate Resolved Pattern Alerts (COMPLETE)
+
+**Date:** December 19, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - GPT Codex changes reviewed and corrected for STRAT accuracy
+
+### Objective
+
+Review GPT Codex code review suggesting fixes for Discord entry alerts showing setup placeholders ("3-1-?") instead of resolved patterns ("3-1-2U").
+
+### GPT Codex Review Summary
+
+Codex identified three issues:
+1. Discord alerts used setup label, not resolved pattern
+2. Resolved pattern wasn't propagated to alerting layer
+3. Log messages showed setup patterns, not actual traded sequence
+
+### STRAT Accuracy Correction Applied
+
+**Critical Finding:** Codex's simple string replacement ("?" -> "2U/2D") was INCORRECT for opposite-direction breaks.
+
+Per STRAT methodology:
+- **Expected direction break:** Pattern completes as 3-bar (e.g., `2U-1-?` + UP = `2U-1-2U`)
+- **Opposite direction break:** Pattern becomes 2-bar (e.g., `2U-1-?` + DOWN = `2U-2D`, NOT `2U-1-2D`)
+
+When an inside bar breaks opposite to setup direction, it's no longer an inside bar - it becomes a directional bar, creating a 2-bar pattern.
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/scanning/entry_monitor.py` | STRAT-accurate pattern resolution based on expected vs opposite direction |
+| `crypto/alerters/discord_alerter.py` | Added `pattern_override` parameter to `send_entry_alert()` |
+| `crypto/scanning/daemon.py` | Pass resolved pattern via `_actual_pattern` to Discord alerter |
+
+### Pattern Resolution Logic (entry_monitor.py)
+
+```python
+# Expected direction (3-bar pattern)
+if signal.direction == actual_direction:
+    # Simple replacement: "3-1-?" -> "3-1-2U"
+    actual_pattern = pattern[:-1] + '2U'
+
+# Opposite direction (2-bar pattern)
+else:
+    # Use prior bar to form 2-bar pattern
+    if prior_type == 2:   # Prior was 2U
+        actual_pattern = "2U-2D"
+    elif prior_type == -2:  # Prior was 2D
+        actual_pattern = "2D-2D"
+    elif prior_type == 3:   # Prior was outside
+        actual_pattern = "3-2D"
+```
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `ca1cd28` | feat(crypto): add STRAT-accurate resolved pattern to Discord alerts (EQUITY-25) |
+
+### Test Results
+
+- 297 STRAT tests passing (2 skipped)
+- 14 signal automation tests passing
+- No regressions
+
+### Remaining Concerns (from Codex Review - Not Addressed)
+
+| Concern | Status | Notes |
+|---------|--------|-------|
+| Target/stop geometry | Deferred | When setup flips to 2-bar, target/stop still from original setup |
+| 2-2 continuation excluded | NOT A BUG | Correct per EQUITY-22: "2U-2U, 2D-2D = Position Management" |
+
+### Next Session Priorities
+
+1. Deploy to VPS and verify Discord alerts show resolved patterns
+2. Monitor for correct 2-bar vs 3-bar pattern naming
+3. Consider target/stop recalculation for direction flips (future enhancement)
+
+---
+
+## Session EQUITY-24: 3-? Bidirectional Setup Validation Bug Fix (COMPLETE)
+
+**Date:** December 19, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Fix deployed to VPS
+
+### Problem Identified
+
+User observed 3-2D patterns on both BIP and ETP (1h timeframe) that didn't trigger trades. The 3 bar (outside bar) should have created a 3-? bidirectional SETUP, but it wasn't showing up in monitored signals.
+
+### Root Cause
+
+The setup validation logic was incorrectly invalidating 3-? (outside bar) bidirectional setups:
+
+```python
+# BUG: The "3-2" setup_pattern fell into the else branch
+else:
+    # Default: check if range was broken
+    if bar_high > setup_high or bar_low < setup_low:
+        setup_still_valid = False  # WRONG!
+        break
+```
+
+For 3-? setups, breaking the outside bar range IS THE EXPECTED TRIGGER, not an invalidation condition. The entry monitor should handle detecting which direction broke first (LONG vs SHORT).
+
+### Bar Analysis (1h)
+
+| Time (UTC) | BIP | ETP |
+|------------|-----|-----|
+| 00:00 | 3 (outside) | 3 (outside) |
+| 01:00 | 2D | 2D |
+| 02:00 | 1 (forming) | 1 (forming) |
+
+Both had 3-2D patterns, but the 3-? SETUP was being invalidated when the 01:00 bar broke the outside bar's low.
+
+### Fix Applied
+
+Added explicit case for `setup_pattern == "3-2"` that does NOT invalidate based on range breaks:
+
+```python
+elif setup_pattern == "3-2":
+    # Session EQUITY-24 FIX: 3-? bidirectional (outside bar) setups
+    # Do NOT invalidate based on range break - breaking the range IS the trigger!
+    pass  # Always valid - let entry monitor handle
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/scanning/signal_scanner.py` | Added 3-2 case in validation (~line 1072) |
+| `strat/paper_signal_scanner.py` | Added 3-2 case in validation (~line 1255) |
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `997197b` | fix(strat): preserve 3-? bidirectional setups during validation (EQUITY-24) |
+
+### Verification
+
+After fix deployment:
+- **Before:** BIP had 0 3-? setups in entry monitor
+- **After:** 100 SETUP signals added to entry monitor (including many 3-? LONG/SHORT)
+
+### Test Results
+
+- 297 STRAT tests passing (2 skipped)
+- No regressions
+
+### Deployment
+
+- Pushed to GitHub
+- Pulled on VPS
+- Crypto daemon restarted with fix
+
+### Next Session Priorities
+
+1. Monitor crypto daemon for proper 3-? trigger detection
+2. Consider filtering 3-? setups to only most recent outside bar per timeframe (to reduce noise)
+3. Verify trade execution on 3-? pattern breaks
 
 ---
 
