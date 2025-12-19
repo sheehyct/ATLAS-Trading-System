@@ -452,14 +452,17 @@ class CryptoSignalDaemon:
                 f"  Stop: ${signal.stop_price:,.2f} | Target: ${signal.target_price:,.2f}"
             )
 
-            # Send Discord entry alert (Session CRYPTO-7)
+            # Send Discord entry alert (Session CRYPTO-7, EQUITY-25: resolved pattern)
             if self.discord_alerter and self.config.alert_on_trade_entry:
                 try:
+                    # Use resolved pattern from entry monitor (Session EQUITY-25)
+                    pattern_override = getattr(event, "_actual_pattern", signal.pattern_type)
                     self.discord_alerter.send_entry_alert(
                         signal=signal,
                         entry_price=event.current_price,
                         quantity=position_size,
                         leverage=implied_leverage,
+                        pattern_override=pattern_override,
                     )
                 except Exception as alert_err:
                     logger.warning(f"Failed to send entry alert: {alert_err}")

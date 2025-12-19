@@ -345,27 +345,30 @@ class CryptoDiscordAlerter:
         signal: CryptoDetectedSignal,
         entry_price: float,
         quantity: float,
-        leverage: float
+        leverage: float,
+        pattern_override: Optional[str] = None,
     ) -> bool:
         """
         Send clean entry alert for mobile notifications.
 
         Session CRYPTO-10: Simplified format with proper pattern notation.
+        Session EQUITY-25: Added pattern_override for STRAT-accurate resolved patterns.
 
         Args:
             signal: The signal being traded
             entry_price: Actual entry price
             quantity: Position quantity
             leverage: Leverage used
+            pattern_override: Resolved pattern from entry monitor (overrides signal.pattern_type)
 
         Returns:
             True if sent successfully
         """
         direction_str = "LONG" if signal.direction == "LONG" else "SHORT"
 
-        # Format pattern with proper direction (Session CRYPTO-10)
-        # Convert "3-1-?" to "3-1-2U" or "3-1-2D" based on trade direction
-        pattern = signal.pattern_type
+        # Use resolved pattern from entry monitor if provided (Session EQUITY-25)
+        # Otherwise fall back to signal.pattern_type with ? replacement
+        pattern = pattern_override or signal.pattern_type
         if pattern and pattern.endswith('?'):
             direction_suffix = '2U' if direction_str == 'LONG' else '2D'
             pattern = pattern[:-1] + direction_suffix

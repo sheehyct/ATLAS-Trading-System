@@ -383,37 +383,78 @@ class CryptoEntryMonitor:
             broke_down = setup_low > 0 and current_price < setup_low
 
             if broke_up and not broke_down:
-                # Inside bar broke UP → pattern completes as X-1-2U → LONG
+                # Inside bar broke UP → LONG
                 trigger_level = setup_high
                 actual_direction = "LONG"
                 is_triggered = True
-                logger.info(
-                    f"SETUP RESOLVED UP: {signal.symbol} {signal.pattern_type} → "
-                    f"X-1-2U LONG @ ${trigger_level:,.2f}"
-                )
+
+                # STRAT-ACCURATE PATTERN RESOLUTION (Session EQUITY-25):
+                # - If setup expected LONG: 3-bar pattern completes (X-1-2U)
+                # - If setup expected SHORT: Inside bar becomes 2U, creating 2-bar reversal (X-2U)
+                if signal.direction == "LONG":
+                    # Expected direction - 3-bar pattern completes
+                    actual_pattern = signal.pattern_type
+                    if actual_pattern and actual_pattern.endswith('?'):
+                        actual_pattern = actual_pattern[:-1] + '2U'
+                    logger.info(
+                        f"SETUP RESOLVED UP: {signal.symbol} {signal.pattern_type} → "
+                        f"{actual_pattern} LONG @ ${trigger_level:,.2f}"
+                    )
+                else:
+                    # Opposite direction - pattern changes to 2-bar
+                    prior_type = getattr(signal, 'prior_bar_type', 0)
+                    if prior_type == 2:  # Prior was 2U
+                        actual_pattern = "2U-2U"
+                    elif prior_type == -2:  # Prior was 2D
+                        actual_pattern = "2D-2U"
+                    elif prior_type == 3:  # Prior was outside
+                        actual_pattern = "3-2U"
+                    else:
+                        # Fallback: simple replacement
+                        actual_pattern = signal.pattern_type
+                        if actual_pattern and actual_pattern.endswith('?'):
+                            actual_pattern = actual_pattern[:-1] + '2U'
+                    logger.info(
+                        f"SETUP CHANGED TO 2-BAR: {signal.symbol} {signal.pattern_type} → "
+                        f"{actual_pattern} LONG @ ${trigger_level:,.2f}"
+                    )
 
             elif broke_down and not broke_up:
-                # Inside bar broke DOWN → bar is now 2D
-                # Pattern changes from X-1-? to X-2D (2-bar pattern)
+                # Inside bar broke DOWN → SHORT
                 trigger_level = setup_low
                 actual_direction = "SHORT"
                 is_triggered = True
 
-                # Determine the 2-bar pattern based on prior bar
-                prior_type = getattr(signal, 'prior_bar_type', 0)
-                if prior_type == 2:  # Prior was 2U
-                    new_pattern = "2U-2D"
-                elif prior_type == -2:  # Prior was 2D
-                    new_pattern = "2D-2D"
-                elif prior_type == 3:  # Prior was outside
-                    new_pattern = "3-2D"
+                # STRAT-ACCURATE PATTERN RESOLUTION (Session EQUITY-25):
+                # - If setup expected SHORT: 3-bar pattern completes (X-1-2D)
+                # - If setup expected LONG: Inside bar becomes 2D, creating 2-bar reversal (X-2D)
+                if signal.direction == "SHORT":
+                    # Expected direction - 3-bar pattern completes
+                    actual_pattern = signal.pattern_type
+                    if actual_pattern and actual_pattern.endswith('?'):
+                        actual_pattern = actual_pattern[:-1] + '2D'
+                    logger.info(
+                        f"SETUP RESOLVED DOWN: {signal.symbol} {signal.pattern_type} → "
+                        f"{actual_pattern} SHORT @ ${trigger_level:,.2f}"
+                    )
                 else:
-                    new_pattern = "X-2D"
-
-                logger.info(
-                    f"SETUP CHANGED TO 2-BAR: {signal.symbol} {signal.pattern_type} → "
-                    f"{new_pattern} SHORT @ ${trigger_level:,.2f}"
-                )
+                    # Opposite direction - pattern changes to 2-bar
+                    prior_type = getattr(signal, 'prior_bar_type', 0)
+                    if prior_type == 2:  # Prior was 2U
+                        actual_pattern = "2U-2D"
+                    elif prior_type == -2:  # Prior was 2D
+                        actual_pattern = "2D-2D"
+                    elif prior_type == 3:  # Prior was outside
+                        actual_pattern = "3-2D"
+                    else:
+                        # Fallback: simple replacement
+                        actual_pattern = signal.pattern_type
+                        if actual_pattern and actual_pattern.endswith('?'):
+                            actual_pattern = actual_pattern[:-1] + '2D'
+                    logger.info(
+                        f"SETUP CHANGED TO 2-BAR: {signal.symbol} {signal.pattern_type} → "
+                        f"{actual_pattern} SHORT @ ${trigger_level:,.2f}"
+                    )
 
             elif broke_up and broke_down:
                 # Both bounds broken → outside bar (type 3)
@@ -423,24 +464,19 @@ class CryptoEntryMonitor:
                 )
 
             if is_triggered:
-                # Update signal direction if it changed
-                if actual_direction != signal.direction:
-                    # Create modified signal with new direction for the trigger event
-                    # Note: We don't modify the original signal object
-                    pass  # Direction is captured in actual_direction
-
                 event = CryptoTriggerEvent(
                     signal=signal,
                     trigger_price=trigger_level,
                     current_price=current_price,
                 )
-                # Store the actual direction for execution
+                # Store the actual direction and pattern for execution (Session EQUITY-25)
                 event._actual_direction = actual_direction
+                event._actual_pattern = actual_pattern
                 triggered.append(event)
                 triggered_ids.append(self._generate_signal_id(signal))
 
                 logger.info(
-                    f"TRIGGER: {signal.symbol} {signal.pattern_type} {actual_direction} "
+                    f"TRIGGER: {signal.symbol} {actual_pattern} {actual_direction} "
                     f"@ ${trigger_level:,.2f} (current: ${current_price:,.2f}, "
                     f"timeframe: {signal.timeframe})"
                 )
