@@ -281,8 +281,9 @@ class SignalDaemon:
                 return {}
 
         # Configure entry monitor
+        # Session EQUITY-29: Reduced from 60s to 15s for faster "on the break" detection
         monitor_config = EntryMonitorConfig(
-            poll_interval=60,  # 1 minute
+            poll_interval=15,  # 15 seconds for faster trigger detection
             market_hours_only=True,
             on_trigger=self._on_entry_triggered,
         )
@@ -824,6 +825,16 @@ class SignalDaemon:
         results: List[ExecutionResult] = []
 
         for signal in signals:
+            # Session EQUITY-29: SETUP signals should NOT execute immediately
+            # They need to wait for entry_monitor to detect trigger break
+            # Only COMPLETED signals (entry already happened) execute immediately
+            if getattr(signal, 'signal_type', 'COMPLETED') == 'SETUP':
+                logger.debug(
+                    f"SETUP signal {signal.signal_key} skipped from immediate execution - "
+                    f"waiting for entry_monitor trigger"
+                )
+                continue
+
             # "Let the Market Breathe" - Skip intraday patterns if too early in session
             if not self._is_intraday_entry_allowed(signal):
                 results.append(ExecutionResult(
