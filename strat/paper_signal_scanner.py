@@ -899,8 +899,14 @@ class PaperSignalScanner:
         (setup_mask_322, setup_dir_322, long_trigger_322, short_trigger_322,
          stop_long_322, stop_short_322, target_long_322, target_short_322) = result_322
 
-        # Session EQUITY-20: INCLUDE last closed bar for setups
+        # Session EQUITY-27 FIX: Exclude the forming bar for daily/weekly/monthly timeframes.
+        # For resampled HTF data, the last bar is INCOMPLETE (today's running bar).
+        # Using it as a setup bar causes premature entries before the bar closes.
+        # This matches the 3-1/2-1 exclusion logic above.
+        last_bar_idx_322 = len(setup_mask_322) - 1
         for i in range(len(setup_mask_322)):
+            if i == last_bar_idx_322:
+                continue  # Skip forming bar - pattern not confirmed until bar closes
             if setup_mask_322[i]:
                 # Get pattern prefix from bar before the directional bar
                 prev_bar_class = classifications[i-1] if i > 0 else 0
@@ -982,8 +988,14 @@ class PaperSignalScanner:
         (setup_mask_22, setup_dir_22, long_trigger_22, short_trigger_22,
          stop_long_22, stop_short_22, target_long_22, target_short_22) = result_22
 
-        # Session EQUITY-20: INCLUDE last closed bar for setups
+        # Session EQUITY-27 FIX: Exclude the forming bar for daily/weekly/monthly timeframes.
+        # For resampled HTF data, the last bar is INCOMPLETE (today's running bar).
+        # Using it as a setup bar causes premature entries before the bar closes.
+        # This matches the 3-1/2-1 exclusion logic above.
+        last_bar_idx_22 = len(setup_mask_22) - 1
         for i in range(len(setup_mask_22)):
+            if i == last_bar_idx_22:
+                continue  # Skip forming bar - pattern not confirmed until bar closes
             if setup_mask_22[i]:
                 # Get pattern prefix from bar before this directional bar
                 prev_bar_class = classifications[i-1] if i > 0 else 0
@@ -1067,7 +1079,14 @@ class PaperSignalScanner:
         (setup_mask_3, long_trigger_3, short_trigger_3,
          stop_long_3, stop_short_3, target_long_3, target_short_3) = result_3
 
+        # Session EQUITY-27 FIX: Exclude the forming bar for daily/weekly/monthly timeframes.
+        # For resampled HTF data, the last bar is INCOMPLETE (today's running bar).
+        # Using it as a setup bar causes premature entries before the bar closes.
+        # This matches the 3-1/2-1 exclusion logic above.
+        last_bar_idx_3 = len(setup_mask_3) - 1
         for i in range(len(setup_mask_3)):
+            if i == last_bar_idx_3:
+                continue  # Skip forming bar - pattern not confirmed until bar closes
             if setup_mask_3[i]:
                 setup_bar_high = high[i]
                 setup_bar_low = low[i]
