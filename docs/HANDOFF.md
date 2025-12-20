@@ -1,9 +1,149 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 19, 2025 (Session EQUITY-25)
+**Last Updated:** December 20, 2025 (Session EQUITY-27)
 **Current Branch:** `main`
-**Phase:** Paper Trading - MONITORING + Crypto STRAT Integration
-**Status:** STRAT-accurate resolved pattern alerts implemented
+**Phase:** Paper Trading - BUG FIX DEPLOYED
+**Status:** Forming bar bug FIXED and deployed to VPS
+
+---
+
+## Session EQUITY-27: Forming Bar Bug Fix + ETF Investigation (COMPLETE)
+
+**Date:** December 20, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Bug fixed, deployed, investigation complete
+
+### Objective
+
+Fix the critical forming bar bug discovered in EQUITY-26 and investigate why ETF hourly signals aren't executing.
+
+### Bug Fix Applied
+
+**Location:** `strat/paper_signal_scanner.py` (lines 906, 995, 1086)
+
+**Problem:** 3-2, 2-2, and 3-? setup detection loops did NOT exclude the forming bar, while 3-1 and 2-1 setups correctly did.
+
+**Fix:** Added `last_bar_idx` exclusion to three setup loops:
+1. 3-2 Setups (line 906): `last_bar_idx_322`
+2. 2-2 Setups (line 995): `last_bar_idx_22`
+3. 3-? Setups (line 1086): `last_bar_idx_3`
+
+### Test Results
+
+- 297 STRAT tests passing (2 skipped)
+- 14 signal automation tests passing
+- No regressions
+
+### Commits
+
+| Hash | Message |
+|------|---------|
+| `79d134b` | fix(strat): exclude forming bars from directional setup detection (EQUITY-27) |
+
+### VPS Deployment
+
+- Pushed to GitHub
+- Pulled on VPS
+- Daemon restarted: `sudo systemctl restart atlas-daemon`
+
+### Account Status (Dec 20)
+
+**Equity Daemon (Alpaca Paper):**
+- Starting: $3,000
+- Current: $2,102.86 (-29.9%)
+- Open Positions: 5 (AAPL PUT -55%, ACHR PUT 0%, DIA PUT +9%, GOOGL CALL +34%, QQQ CALL +19%)
+
+### ETF Hourly Investigation Results
+
+**Finding:** ETF hourly signals ARE being detected and scanned, but they complete as HISTORICAL (entry already occurred) before monitoring begins.
+
+**Evidence:**
+- QQQ 2U-2D PUT detected Dec 19 at 9:00 AM EST
+- Marked HISTORICAL because "entry @ $610.46 already occurred"
+- Pattern was COMPLETED (not SETUP) when detected
+
+**"Let the Market Breathe" Clarification (from user):**
+- Only applies to 1H timeframe
+- Reason: Previous day's last hourly bar lacks price continuity to next day's first bar due to pre/post market gaps
+- Time thresholds are about when patterns can FORM:
+  - 2-bar patterns: 10:30 AM (requires 2 hourly bars: 9:30-10:30, 10:30-11:30)
+  - 3-bar patterns: 11:30 AM (requires 3 hourly bars to complete)
+- These thresholds are CORRECT per STRAT methodology
+
+**Root Cause of ETF Issue:** Patterns complete (become COMPLETED, not SETUP) before the scan can create bidirectional SETUPs to monitor.
+
+### Next Session Priorities
+
+1. **Monitor** - Watch for correct pattern detection with forming bar fix
+2. **Optional** - Investigate why ETF patterns complete before being detected as SETUPs
+
+---
+
+## Session EQUITY-26: Trade Audit - CRITICAL BUG FOUND (COMPLETE)
+
+**Date:** December 19, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** IN PROGRESS - Session ended at 156k tokens, audit incomplete
+
+### Objective
+
+Audit equity and crypto daemon trades from Dec 17-19 to verify STRAT pattern accuracy, entry times, and execution correctness.
+
+### CRITICAL BUG DISCOVERED
+
+**Location:** `strat/paper_signal_scanner.py` lines 902-943
+
+**Problem:** Scanner uses FORMING daily bars as setup bars during intraday trading.
+
+**Example (AAPL Dec 18):**
+- Dec 17 = Type 3 (outside bar) - CLOSED
+- Dec 18 = Type 2D (down bar) - FORMING at 11:02 AM
+- Scanner detected "3-2D-?" setup using Dec 18's CURRENT intraday high ($273.63)
+- Entry triggered when price touched $273.63 again
+- But Dec 18 bar wasn't closed! Pattern was incomplete!
+- The 2U bar didn't form until Dec 19 at 3:59 PM EST (1 min before close)
+- Trade was stopped out (MAX_LOSS -$298) before pattern completed
+
+**Root Cause:** Session EQUITY-20 code says "INCLUDE last closed bar" but for intraday resampled daily data, the "last bar" is actually the FORMING bar for today, not a closed bar.
+
+**Fix Needed:** For 1D/1W/1M timeframes, exclude the current calendar period's bar from being a setup bar. Only use bars that have actually CLOSED.
+
+### Trades Audited (Dec 18-19)
+
+| Ticker | Resolved Pattern | TF | Entry (EST) | Exit/Status |
+|--------|------------------|-----|-------------|-------------|
+| QQQ | 3-2D-2U CALL | 1W | Dec 18 11:02 AM | OPEN (+$138) |
+| AAPL | 3-2D-2U CALL | 1D | Dec 18 11:02 AM | MAX_LOSS (-$298) |
+| AAPL | 3-2D PUT | 1W | Dec 18 11:02 AM | OPEN (+$27) |
+| ACHR | 3-2U CALL | 1H | Dec 18 12:17 PM | STOP (-$25) |
+| QBTS | 3-2U CALL | 1H | Dec 19 9:30 AM | TARGET (+$78) |
+| GOOGL | 3-2U CALL | 1H | Dec 19 9:48 AM | OPEN (-$25) |
+| ACHR | 3-2U-2D PUT | 1H | Dec 19 3:48 PM | OPEN |
+
+### Account Status (Dec 19 EOD)
+
+**Equity Daemon (Alpaca Paper):**
+- Starting: $3,000
+- Current: $2,145.96 (-28.5%)
+- Open Positions: 4 (AAPL PUT, DIA PUT, GOOGL CALL, QQQ CALL)
+
+**Crypto Daemon (Paper):**
+- Starting: $1,000
+- Current: $1,145.23 (+14.5%)
+- Open Positions: 2 (BIP SHORT, ETP LONG)
+- Win Rate: 71% (10/14 trades)
+
+### Next Session Priorities
+
+1. **FIX THE BUG:** Modify scanner to exclude forming bars for daily/weekly/monthly timeframes
+2. **Continue Audit:** Verify remaining trades, especially hourly patterns
+3. **Investigate:** Why ETF hourly signals (SPY, QQQ, IWM, DIA) aren't executing
+
+### Files to Review
+
+- `strat/paper_signal_scanner.py` - Lines 902-943 (3-2 setup detection)
+- `strat/paper_signal_scanner.py` - Lines 340-394 (resampling logic)
+- `strat/signal_automation/entry_monitor.py` - Trigger checking logic
 
 ---
 
