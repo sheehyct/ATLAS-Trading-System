@@ -1,24 +1,71 @@
 # CRYPTO HANDOFF - ATLAS Crypto Daemon Monitoring
 
-**Last Updated:** December 21, 2025 (Session EQUITY-30)
+**Last Updated:** December 21, 2025 (Session CRYPTO-MONITOR-1)
 **Purpose:** Live monitoring of crypto STRAT daemon for pattern validation
 **Related:** See `docs/HANDOFF.md` for equity options work
 
 ---
 
-## Session CRYPTO-MONITOR-1: Setup (PENDING)
+## Session CRYPTO-MONITOR-1: IN PROGRESS
 
 **Date:** December 21, 2025
 **Environment:** Claude Code Desktop
-**Status:** READY TO START
+**Status:** BUGS IDENTIFIED - ROOT CAUSE FOUND
 
 ### Objective
 
 Live monitoring of crypto daemon to:
 1. Validate pattern classifications against actual bar data
 2. Verify entry correctness when trades trigger
-3. Flag missed opportunities (pattern detected → no trade)
+3. Flag missed opportunities (pattern detected -> no trade)
 4. Check for bugs found in equity daemon
+
+### Critical Findings
+
+#### BUG 1: Signal Expiration Uses Bar Timestamp (ROOT CAUSE FOUND)
+
+**Severity:** CRITICAL - All weekly/daily signals expire immediately
+
+**Evidence:**
+```
+15:03:06 | Added 64 SETUP signals to entry monitor
+15:03:52 | Removed 64 expired signals  <-- 46 seconds later!
+```
+
+**Root Cause:**
+In `crypto/scanning/signal_scanner.py`, signals are created with:
+```python
+detected_time = p["timestamp"]  # This is the BAR timestamp, not scan time!
+```
+
+For weekly bars, `detected_time` = last Sunday's date (Dec 15).
+When expiry check runs on Dec 21: `age_hours = 144 hours > 24 = EXPIRED`
+
+**Fix Required:**
+Change `detected_time` to current scan time (`datetime.now(timezone.utc)`)
+or use a separate `scan_time` field for expiry calculations.
+
+**Files to Modify:**
+- `crypto/scanning/signal_scanner.py` (lines 1006-1009, 1109-1112)
+- Add: `detected_time=datetime.now(timezone.utc)` instead of bar timestamp
+
+#### BUG 2: Duplicate Signal Generation
+
+**Severity:** HIGH - Wastes resources, inflates signal counts
+
+**Evidence:**
+```
+BIP 3-? LONG (1w): 3 duplicates per scan
+BIP 3-? SHORT (1w): 3 duplicates per scan
+ETP 3-? LONG (1w): 6 duplicates per scan
+ETP 3-? SHORT (1w): 6 duplicates per scan
+```
+
+**Impact:** 64 signals added when should be ~10 unique signals.
+
+**Root Cause:** Scanner generates same pattern multiple times for same bar.
+
+**Investigation Needed:** Check 3-? setup detection loops for duplicate logic.
 
 ---
 
@@ -84,17 +131,23 @@ Dec 18 11:34:55 | Removed 1 expired signals  <-- 55 seconds!
 
 ---
 
-## Current State (Dec 21, 2025)
+## Current State (Dec 21, 2025 - 15:15 UTC)
 
 ### Daemon Stats
 
 | Metric | Value |
 |--------|-------|
-| Scans | 173 |
-| Signals | 12,500+ |
+| Uptime | 1 day 22 hours |
+| Scans | 174 |
+| Signals | 12,617 |
 | Triggers | 64 |
 | Executions | 6 |
 | Errors | 0 |
+
+### Key Observation
+
+64 triggers but only 6 executions = 58 triggers did NOT result in trades.
+This gap is likely due to signals expiring before triggers can be processed.
 
 ### Active Symbols
 
@@ -162,11 +215,38 @@ ssh atlas@178.156.223.251 "sudo systemctl restart atlas-crypto-daemon"
 
 ## Session Log
 
-### CRYPTO-MONITOR-1 (Pending)
-- [ ] Start live monitoring
-- [ ] Validate first pattern detection
-- [ ] Check for signal expiration issue
-- [ ] Log any trade events
+### CRYPTO-MONITOR-1 (Dec 21, 2025) - COMPLETE
+
+**Status:** BUGS FIXED AND DEPLOYED
+
+**Accomplishments:**
+- [x] Started live monitoring of crypto daemon
+- [x] Identified signal expiration bug root cause
+- [x] Fixed Bug 1: detected_time now uses scan time (not bar timestamp)
+- [x] Fixed Bug 2: signal_id uses setup_bar_timestamp for deduplication
+- [x] Deployed fixes to VPS (commit ad62441)
+- [x] Verified signals now persist beyond 60 seconds
+
+**Bug Fixes Applied:**
+
+| Bug | Root Cause | Fix |
+|-----|------------|-----|
+| Signal Expiration | `detected_time = bar_timestamp` (old bars > 24h = expired) | `detected_time = datetime.now(timezone.utc)` |
+| Duplicate Signals | `signal_id` used `detected_time` (unique per scan) | `signal_id` uses `setup_bar_timestamp` (same bar = dedupe) |
+
+**Remaining Issue:**
+Multiple 3-? setups still appear per timeframe because each outside bar in the data creates a setup. This is expected behavior - the scanner detects all valid outside bars, not just the most recent. Future enhancement: limit 3-? setups to the most recent outside bar only.
+
+**Commit:** ad62441 - fix(crypto): fix signal expiration and deduplication bugs (CRYPTO-MONITOR-1)
+
+---
+
+## Next Session Priorities (CRYPTO-MONITOR-2)
+
+1. **Monitor Signal Persistence** - Verify signals stay active for 24 hours
+2. **Watch for Triggers** - Check if triggers now fire when price breaks levels
+3. **Limit 3-? Setups** - Consider reducing to only most recent outside bar
+4. **Pattern Validation** - Verify detected patterns match actual bar data
 
 ---
 
