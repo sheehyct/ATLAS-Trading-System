@@ -245,55 +245,22 @@ for i in range(1, len(bars)):
 
 ## 2. 2-1-2 Patterns
 
-### CRITICAL: Direction Determination
-
-**The EXIT bar (last bar) determines trade direction, NOT the first bar.**
-
-| Pattern | Exit Bar | Direction | Option |
-|---------|----------|-----------|--------|
-| 2U-1-2U | 2U | Bullish | CALL |
-| 2D-1-2D | 2D | Bearish | PUT |
-| 2D-1-2U | 2U | Bullish | CALL |
-| **2U-1-2D** | **2D** | **Bearish** | **PUT** |
-
-**WARNING:** `2U-1-2D` is BEARISH despite starting with 2U!
-
 ### Pattern Structure
 
-**2U-1-2U (Bullish Continuation):**
+**Bullish 2-1-2:**
 ```
-Bar 1: 2U (breaks high, low >= prior) - SETUP bar
+Bar 1: 2U (breaks high, low >= prior)
 Bar 2: 1 (inside bar - consolidation)
-Bar 3: 2U (breaks high again) - EXIT bar determines direction
+Bar 3: 2U (breaks high again)
 Trigger: High of Bar 3
-Direction: BULLISH (CALL)
 ```
 
-**2D-1-2D (Bearish Continuation):**
+**Bearish 2-1-2:**
 ```
-Bar 1: 2D (breaks low, high <= prior) - SETUP bar
+Bar 1: 2D (breaks low, high <= prior)
 Bar 2: 1 (inside bar - consolidation)
-Bar 3: 2D (breaks low again) - EXIT bar determines direction
+Bar 3: 2D (breaks low again)
 Trigger: Low of Bar 3
-Direction: BEARISH (PUT)
-```
-
-**2D-1-2U (Bullish Reversal):**
-```
-Bar 1: 2D (breaks low) - SETUP bar
-Bar 2: 1 (inside bar - consolidation)
-Bar 3: 2U (breaks high) - EXIT bar determines direction
-Trigger: High of Bar 3
-Direction: BULLISH (CALL)
-```
-
-**2U-1-2D (Bearish Reversal):**
-```
-Bar 1: 2U (breaks high) - SETUP bar
-Bar 2: 1 (inside bar - consolidation)
-Bar 3: 2D (breaks low) - EXIT bar determines direction
-Trigger: Low of Bar 3
-Direction: BEARISH (PUT)
 ```
 
 ### Detection Logic
@@ -410,22 +377,20 @@ def backtest_212_pattern(data):
 
 ### Pattern Structure
 
-**3-1-2U (Bullish):**
+**Bullish 3-1-2:**
 ```
 Bar 1: 3 (outside bar - expansion)
 Bar 2: 1 (inside bar - consolidation)
-Bar 3: 2U (breaks high) - EXIT bar determines direction
+Bar 3: 2U (breaks high)
 Trigger: High of 2U bar
-Direction: BULLISH (CALL)
 ```
 
-**3-1-2D (Bearish):**
+**Bearish 3-1-2:**
 ```
 Bar 1: 3 (outside bar - expansion)
 Bar 2: 1 (inside bar - consolidation)
-Bar 3: 2D (breaks low) - EXIT bar determines direction
+Bar 3: 2D (breaks low)
 Trigger: Low of 2D bar
-Direction: BEARISH (PUT)
 ```
 
 ### Detection Logic
@@ -497,36 +462,18 @@ def detect_312_bear(bars, low, high, idx):
 
 ### Pattern Structure
 
-**2U-2U (Bullish Continuation):**
+**Bullish 2-2:**
 ```
 Bar 1: 2U (initial break)
-Bar 2: 2U (continuation) - EXIT bar determines direction
+Bar 2: 2U (continuation)
 Trigger: High of Bar 2
-Direction: BULLISH (CALL)
 ```
 
-**2D-2D (Bearish Continuation):**
+**Bearish 2-2:**
 ```
 Bar 1: 2D (initial break)
-Bar 2: 2D (continuation) - EXIT bar determines direction
+Bar 2: 2D (continuation)
 Trigger: Low of Bar 2
-Direction: BEARISH (PUT)
-```
-
-**2D-2U (Bullish Reversal):**
-```
-Bar 1: 2D (initial down)
-Bar 2: 2U (reversal up) - EXIT bar determines direction
-Trigger: High of Bar 2
-Direction: BULLISH (CALL)
-```
-
-**2U-2D (Bearish Reversal):**
-```
-Bar 1: 2U (initial up)
-Bar 2: 2D (reversal down) - EXIT bar determines direction
-Trigger: Low of Bar 2
-Direction: BEARISH (PUT)
 ```
 
 ### Detection Logic

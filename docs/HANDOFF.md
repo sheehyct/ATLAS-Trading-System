@@ -1,9 +1,77 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 20, 2025 (Session EQUITY-29)
+**Last Updated:** December 20, 2025 (Session EQUITY-30)
 **Current Branch:** `main`
-**Phase:** Paper Trading - CRITICAL BUG FIX DEPLOYED
-**Status:** SETUP signal execution bug fixed - continue trade audit next session
+**Phase:** Paper Trading - STRAT Skill Updated
+**Status:** Trade 6 audited, STRAT skill corrected, timing filter investigation deferred
+
+---
+
+## Session EQUITY-30: STRAT Skill Correction + Trade 6 Audit (COMPLETE)
+
+**Date:** December 20, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Major skill update and trade audit
+
+### STRAT Skill Corrections (CRITICAL)
+
+User identified fundamental misunderstandings in skill documentation. Updated:
+
+**Files Modified:**
+- `~/.claude/skills/strat-methodology/SKILL.md`
+- `~/.claude/skills/strat-methodology/references/ENTRY_MECHANICS.md`
+- `~/.claude/skills/strat-methodology/IMPLEMENTATION-BUGS.md`
+
+**Key Concepts Added:**
+
+1. **Three Universal Truths** - Bar can only be 1, 2U/2D, or 3. Once boundary breaks, cannot "unbreak."
+
+2. **Intrabar Classification** - CAN classify forming bar before close based on what it has done:
+   - Broke high only -> AT LEAST 2U
+   - Broke low only -> AT LEAST 2D
+   - Broke both -> Type 3 (final)
+
+3. **Setup vs Entry Bar Distinction:**
+   - SETUP bar: Must be CLOSED (defines trigger/stop/target levels)
+   - ENTRY bar: Classified intrabar (enter when trigger breaks)
+
+4. **"Let the Market Breathe" Timing (1H):**
+   - 2-bar patterns: No entry before 10:30 AM EST
+   - 3-bar patterns: No entry before 11:30 AM EST
+   - 15:30 bar: Must exit before 16:00
+
+5. **Removed oversimplified:** "Pattern detection happens at bar close" - replaced with nuanced explanation
+
+### Trade 6 Audit: GOOGL 3-2U CALL (1H)
+
+**Verdict:** INVALID TRADE - Multiple violations
+
+| Violation | Description |
+|-----------|-------------|
+| Timing | Entry at 09:48, before 10:30 AM minimum |
+| Forming Bar | Dec 19 09:30 bar used as setup (was FORMING) |
+| Pattern Label | Claimed 3-2U, actual closed bars showed 2D-2U |
+
+**Timing Filter Investigation:**
+- Filter IS implemented in daemon.py and entry_monitor.py
+- Filter was deployed before Dec 19 (EQUITY-18)
+- Why it failed: UNKNOWN - deferred to next session
+
+### Remaining Trade Audits (5 trades)
+
+| Trade | Pattern | Status |
+|-------|---------|--------|
+| 1 | QQQ 3-2D-2U CALL (1W) | PENDING |
+| 2 | AAPL 3-2D-2U CALL (1D) | PENDING |
+| 3 | AAPL 3-2D PUT (1W) | PENDING |
+| 4 | ACHR 3-2U CALL (1H) | PENDING |
+| 5 | QBTS 3-2U CALL (1H) | PENDING |
+
+### Next Session (EQUITY-31) Priorities
+
+1. **Investigate timing filter bypass** - Check Alpaca order history for actual execution times
+2. **Continue trade audit** - 5 remaining trades
+3. **Add logging** - Verify signal timeframe at execution
 
 ---
 
