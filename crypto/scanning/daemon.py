@@ -500,10 +500,26 @@ class CryptoSignalDaemon:
         return True
 
     def _generate_signal_id(self, signal: CryptoDetectedSignal) -> str:
-        """Generate unique ID for deduplication."""
+        """Generate unique ID for deduplication.
+
+        CRYPTO-MONITOR-1 FIX: Use setup_bar_timestamp instead of detected_time.
+        This ensures:
+        - Same bar across scans -> same ID -> deduplicated
+        - Different bars -> different IDs -> kept as separate setups
+        """
+        # Use setup_bar_timestamp for deduplication (bar-based, not scan-based)
+        bar_ts = signal.setup_bar_timestamp
+        if bar_ts is not None and hasattr(bar_ts, 'isoformat'):
+            ts_str = bar_ts.isoformat()
+        elif bar_ts is not None:
+            ts_str = str(bar_ts)
+        else:
+            # Fallback to detected_time if no setup_bar_timestamp
+            ts_str = signal.detected_time.isoformat()
+
         return (
             f"{signal.symbol}_{signal.timeframe}_{signal.pattern_type}_"
-            f"{signal.direction}_{signal.detected_time.isoformat()}"
+            f"{signal.direction}_{ts_str}"
         )
 
     def _is_duplicate(self, signal: CryptoDetectedSignal) -> bool:

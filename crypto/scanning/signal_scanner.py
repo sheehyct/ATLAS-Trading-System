@@ -1003,11 +1003,9 @@ class CryptoSignalScanner:
                         direction=p["direction"],
                         symbol=symbol,
                         timeframe=timeframe,
-                        detected_time=(
-                            p["timestamp"].to_pydatetime()
-                            if hasattr(p["timestamp"], "to_pydatetime")
-                            else p["timestamp"]
-                        ),
+                        # CRYPTO-MONITOR-1 FIX: Use scan time, not bar timestamp
+                        # Bar timestamp is preserved in setup_bar_timestamp for reference
+                        detected_time=datetime.now(timezone.utc),
                         entry_trigger=p["entry"],
                         stop_price=p["stop"],
                         target_price=p["target"],
@@ -1106,11 +1104,9 @@ class CryptoSignalScanner:
                     direction=p["direction"],
                     symbol=symbol,
                     timeframe=timeframe,
-                    detected_time=(
-                        p["timestamp"].to_pydatetime()
-                        if hasattr(p["timestamp"], "to_pydatetime")
-                        else p["timestamp"]
-                    ),
+                    # CRYPTO-MONITOR-1 FIX: Use scan time, not bar timestamp
+                    # Bar timestamp is preserved in setup_bar_timestamp for reference
+                    detected_time=datetime.now(timezone.utc),
                     entry_trigger=p["entry"],
                     stop_price=p["stop"],
                     target_price=p["target"],
