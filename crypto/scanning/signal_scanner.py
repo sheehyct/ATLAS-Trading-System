@@ -1033,7 +1033,7 @@ class CryptoSignalScanner:
             # Check if setup is still valid
             # For X-1 patterns (3-1-2, 2-1-2): Valid if bars stay inside the setup bar range
             # For X-2 patterns (3-2-2, 2-2): Valid if entry level not yet triggered
-            # For 3-? patterns (3-2 bidirectional): ALWAYS valid - entry monitor handles trigger
+            # For 3-? patterns (3-2 bidirectional): Valid until range is broken (pattern completes)
             setup_still_valid = True
             for j in range(setup_idx + 1, len(df)):
                 bar_high = df["High"].iloc[j]
@@ -1068,11 +1068,14 @@ class CryptoSignalScanner:
                             setup_still_valid = False
                             break
                 elif setup_pattern == "3-2":
-                    # Session EQUITY-24 FIX: 3-? bidirectional (outside bar) setups
-                    # Do NOT invalidate based on range break - breaking the range IS the trigger!
-                    # The entry monitor will detect which direction broke first (LONG or SHORT)
-                    # and handle the entry accordingly.
-                    pass  # Always valid - let entry monitor handle
+                    # Session CRYPTO-MONITOR-2 FIX: 3-? bidirectional (outside bar) setups
+                    # MUST invalidate when range is broken - that means pattern COMPLETED
+                    # The entry monitor handles the TRIGGER in real-time, but once the
+                    # pattern completes (any bar breaks the outside bar range), the setup
+                    # is no longer valid - it already triggered or should have.
+                    if bar_high > setup_high or bar_low < setup_low:
+                        setup_still_valid = False
+                        break
                 else:
                     # Default: check if range was broken
                     if bar_high > setup_high or bar_low < setup_low:

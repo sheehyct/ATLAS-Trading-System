@@ -372,15 +372,10 @@ class CryptoSignalDaemon:
         # This handles cases where SETUP (X-1-?) became 2-bar pattern (X-2D)
         direction = getattr(event, '_actual_direction', signal.direction)
 
-        # Check if position already exists for this symbol (Session CRYPTO-8)
-        # Only allow one position per symbol to prevent duplicate entries
-        existing_position = self.paper_trader.get_open_position(signal.symbol)
-        if existing_position:
-            logger.info(
-                f"SKIPPING TRADE: Position already exists for {signal.symbol} "
-                f"(signal: {signal.pattern_type} {signal.timeframe})"
-            )
-            return
+        # Session CRYPTO-MONITOR-2: REMOVED position limit
+        # Previously only allowed one position per symbol, but this prevented
+        # multiple valid signals from executing and limited our ability to
+        # analyze trade accuracy. Now allowing multiple positions per symbol.
 
         # Get current leverage tier based on time
         now_et = self._get_current_time_et()
