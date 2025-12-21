@@ -1,12 +1,99 @@
 # CRYPTO HANDOFF - ATLAS Crypto Daemon Monitoring
 
-**Last Updated:** December 21, 2025 (Session CRYPTO-MONITOR-1)
+**Last Updated:** December 21, 2025 (Session CRYPTO-MONITOR-2)
 **Purpose:** Live monitoring of crypto STRAT daemon for pattern validation
 **Related:** See `docs/HANDOFF.md` for equity options work
 
 ---
 
-## Session CRYPTO-MONITOR-1: IN PROGRESS
+## Session CRYPTO-MONITOR-2: COMPLETE
+
+**Date:** December 21, 2025
+**Environment:** Claude Code Desktop
+**Status:** CRITICAL BUGS FIXED AND DEPLOYED
+
+### Objective
+
+Trade audit of discord alerts received today - cross-reference with actual price data to identify pattern detection bugs.
+
+### Critical Bugs Fixed
+
+#### BUG 1: Stale 3-? Setups Never Invalidated (CRITICAL)
+
+**Severity:** CRITICAL - Trades executing 7+ days late at wrong prices
+
+**Evidence from Discord Alerts:**
+```
+4:34 AM:  ENTRY 3-2U (1d) LONG @ $3,000    <- 7 days late!
+10:55 AM: ENTRY 3-2D (1w) LONG @ $2,975    <- Pattern-direction mismatch!
+```
+
+**Root Cause:**
+In setup validation (signal_scanner.py), 3-? setups used `pass`:
+```python
+elif setup_pattern == "3-2":
+    pass  # Always valid - let entry monitor handle  <- BUG!
+```
+
+This meant outside bar setups from WEEKS ago remained active, triggering trades at wrong times and prices.
+
+**Fix Applied:**
+```python
+elif setup_pattern == "3-2":
+    # MUST invalidate when range is broken - pattern COMPLETED
+    if bar_high > setup_high or bar_low < setup_low:
+        setup_still_valid = False
+        break
+```
+
+**Files Modified:**
+- `crypto/scanning/signal_scanner.py` (lines 1070-1078)
+- `strat/paper_signal_scanner.py` (lines 1274-1282)
+
+#### BUG 2: One-Position-Per-Symbol Limit
+
+**Severity:** MEDIUM - Prevented analysis of trade accuracy
+
+**Root Cause:**
+Daemon had check that skipped ALL trades if any position existed for that symbol:
+```python
+existing_position = self.paper_trader.get_open_position(signal.symbol)
+if existing_position:
+    return  # Skip trade
+```
+
+**Fix Applied:**
+Removed the check entirely to allow multiple positions per symbol for better data collection.
+
+**File Modified:**
+- `crypto/scanning/daemon.py` (lines 375-383)
+
+### Verification
+
+**Before Fix (Weekly setups):**
+- 5 ACTIVE SETUPS including from Nov 2 (7 weeks old!) and Dec 7 (pattern already completed)
+
+**After Fix (Weekly setups):**
+- 1 ACTIVE SETUP from Dec 21 (today - valid current setup)
+
+### Trade Audit Summary
+
+| Alert Time | Pattern | Entry | Issue |
+|------------|---------|-------|-------|
+| 4:34 AM | 3-2U (1d) LONG | $3,000 | 7 days late, wrong price |
+| 8:32 AM | EXIT [STOP] | - | Lost $28.18 (-1.72%) |
+| 10:55 AM | 3-2D (1w) LONG | $2,975 | Pattern=bearish, Direction=bullish (impossible) |
+| 11:24 AM | 3-2U (4h) LONG | $2,983 | Also late |
+
+**Root Cause:** All due to stale 3-? setups triggering days/weeks after pattern actually completed.
+
+### Commits
+
+- `04fbebb` - fix(strat): invalidate stale 3-? setups and remove position limit (CRYPTO-MONITOR-2)
+
+---
+
+## Session CRYPTO-MONITOR-1: COMPLETE
 
 **Date:** December 21, 2025
 **Environment:** Claude Code Desktop
