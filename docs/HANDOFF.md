@@ -1,9 +1,49 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 20, 2025 (Session EQUITY-30)
+**Last Updated:** December 22, 2025 (Session EQUITY-32)
 **Current Branch:** `main`
-**Phase:** Paper Trading - STRAT Skill Updated
-**Status:** Trade 6 audited, STRAT skill corrected, timing filter investigation deferred
+**Phase:** Paper Trading - TRIGGERED Pattern Fix
+**Status:** Equity daemon TRIGGERED pattern execution fix deployed
+
+---
+
+## Session EQUITY-32: Execute TRIGGERED Patterns (COMPLETE)
+
+**Date:** December 22, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Critical bug fix deployed
+
+### Root Cause
+
+Same bug as CRYPTO-MONITOR-3: COMPLETED signals (patterns where entry bar already formed) were being marked `HISTORICAL_TRIGGERED` and then skipped by both entry_monitor and executor - resulting in valid patterns never executing.
+
+**Evidence from VPS logs:**
+```
+HISTORICAL: SPY 3-2U CALL 1H (entry @ $684.98 already occurred)
+Signal SPY_1H_3-2U_CALL_202512221100 is HISTORICAL_TRIGGERED - skipping execution
+
+HISTORICAL: HOOD 3-2U CALL 1H (entry @ $122.37 already occurred)
+Signal HOOD_1H_3-2U_CALL_202512221400 is HISTORICAL_TRIGGERED - skipping execution
+```
+
+### Fix Applied
+
+**File:** `strat/signal_automation/daemon.py`
+
+1. Added `_execute_triggered_pattern()` method - executes COMPLETED patterns at current market price
+2. Added `_get_current_price()` helper - fetches price via executor's trading client
+3. Modified `run_base_scan()` and `run_scan()` to execute TRIGGERED patterns before `_execute_signals()`
+4. Includes duplicate prevention (one trade per symbol+timeframe)
+5. Includes price validation (skip if past target)
+6. Respects "let the market breathe" timing filters
+
+**Commit:** `538f212`
+
+### Next Session (EQUITY-33) Priorities
+
+1. **Verify fix works** - Monitor next market session for TRIGGERED pattern execution
+2. **Continue trade audit** - 5 remaining trades from EQUITY-30
+3. **Enhanced exit alerts** - Add entry/exit times and duration (deferred from this session)
 
 ---
 
