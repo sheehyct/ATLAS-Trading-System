@@ -979,12 +979,16 @@ class CryptoSignalScanner:
         signals = []
 
         # Detect COMPLETED patterns
+        # Session CRYPTO-MONITOR-3: Only include patterns from the LAST bar
+        # Patterns from older bars are stale - they should have been traded already.
+        # Including older patterns causes duplicate/conflicting trades on daemon restart.
+        last_bar_idx = len(df) - 1
         for pattern_type in self.ALL_PATTERNS:
             patterns = self._detect_patterns(df, pattern_type)
 
             for p in patterns:
-                # Only include recent signals (last 5 bars)
-                if p["index"] >= len(df) - 5:
+                # Only include patterns from the most recent CLOSED bar
+                if p["index"] == last_bar_idx:
                     setup_ts = p.get("setup_bar_timestamp")
                     if hasattr(setup_ts, "to_pydatetime"):
                         setup_ts = setup_ts.to_pydatetime()

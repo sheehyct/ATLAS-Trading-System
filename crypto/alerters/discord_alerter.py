@@ -404,12 +404,17 @@ class CryptoDiscordAlerter:
         entry_price: float,
         exit_price: float,
         pnl: float,
-        pnl_pct: float
+        pnl_pct: float,
+        pattern_type: Optional[str] = None,
+        timeframe: Optional[str] = None,
+        entry_time: Optional[datetime] = None,
+        exit_time: Optional[datetime] = None,
     ) -> bool:
         """
         Send clean exit alert for mobile notifications.
 
         Session CRYPTO-10: Simplified to just reason and P&L.
+        Session CRYPTO-MONITOR-3: Added pattern, timeframe, and duration for traceability.
 
         Args:
             symbol: Symbol that was closed
@@ -419,6 +424,10 @@ class CryptoDiscordAlerter:
             exit_price: Exit price
             pnl: Dollar P&L
             pnl_pct: Percentage P&L
+            pattern_type: STRAT pattern (e.g., '3-2D', '2D-1-2U')
+            timeframe: Signal timeframe (e.g., '1h', '15m')
+            entry_time: When trade was opened
+            exit_time: When trade was closed
 
         Returns:
             True if sent successfully
@@ -426,10 +435,41 @@ class CryptoDiscordAlerter:
         pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pnl_pct_str = f"+{pnl_pct:.2f}%" if pnl_pct >= 0 else f"{pnl_pct:.2f}%"
 
-        message = (
-            f"**EXIT [{exit_reason}]: {symbol}**\n"
-            f"P/L: {pnl_str} ({pnl_pct_str})"
-        )
+        # Build pattern/timeframe context line
+        context_parts = []
+        if pattern_type:
+            context_parts.append(pattern_type)
+        if timeframe:
+            context_parts.append(f"({timeframe})")
+        context_str = " ".join(context_parts) if context_parts else ""
+
+        # Calculate duration if times available
+        duration_str = ""
+        if entry_time and exit_time:
+            duration = exit_time - entry_time
+            hours = duration.total_seconds() / 3600
+            if hours < 1:
+                duration_str = f" | {int(duration.total_seconds() / 60)}m"
+            elif hours < 24:
+                duration_str = f" | {hours:.1f}h"
+            else:
+                duration_str = f" | {hours / 24:.1f}d"
+
+        # Build message with context
+        if context_str:
+            message = (
+                f"**EXIT [{exit_reason}]: {symbol} {direction}**\n"
+                f"Pattern: {context_str}{duration_str}\n"
+                f"Entry: ${entry_price:,.2f} -> Exit: ${exit_price:,.2f}\n"
+                f"P/L: {pnl_str} ({pnl_pct_str})"
+            )
+        else:
+            # Fallback if no pattern info
+            message = (
+                f"**EXIT [{exit_reason}]: {symbol} {direction}**\n"
+                f"Entry: ${entry_price:,.2f} -> Exit: ${exit_price:,.2f}\n"
+                f"P/L: {pnl_str} ({pnl_pct_str})"
+            )
 
         payload = {
             'username': self.username,

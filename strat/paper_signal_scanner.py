@@ -1179,13 +1179,16 @@ class PaperSignalScanner:
 
         # =================================================================
         # COMPLETED patterns (entry already happened, historical)
+        # Session CRYPTO-MONITOR-3: Only include patterns from the LAST bar
+        # Patterns from older bars are stale - they should have been traded already.
         # =================================================================
+        last_bar_idx = len(df) - 1
         for pattern_type in self.ALL_PATTERNS:
             patterns = self._detect_patterns(df, pattern_type)
 
             for p in patterns:
-                # Only include recent signals (last 5 bars)
-                if p['index'] >= len(df) - 5:
+                # Only include patterns from the most recent CLOSED bar
+                if p['index'] == last_bar_idx:
                     # Session 83K-44: Use full bar sequence from detection
                     pattern_name = p.get('bar_sequence', f"{pattern_type}{'U' if p['direction'] == 'CALL' else 'D'}")
 
@@ -1395,13 +1398,15 @@ class PaperSignalScanner:
 
             # =================================================================
             # COMPLETED patterns (entry already happened, historical)
+            # Session CRYPTO-MONITOR-3: Only include patterns from the LAST bar
             # =================================================================
+            last_bar_idx_resamp = len(resampled_df) - 1
             for pattern_type in self.ALL_PATTERNS:
                 patterns = self._detect_patterns(resampled_df, pattern_type)
 
                 for p in patterns:
-                    # Only include recent signals (last 5 bars)
-                    if p['index'] >= len(resampled_df) - 5:
+                    # Only include patterns from the most recent CLOSED bar
+                    if p['index'] == last_bar_idx_resamp:
                         pattern_name = p.get('bar_sequence', f"{pattern_type}{'U' if p['direction'] == 'CALL' else 'D'}")
 
                         setup_ts = p.get('setup_bar_timestamp')

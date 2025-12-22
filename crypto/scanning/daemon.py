@@ -622,10 +622,29 @@ class CryptoSignalDaemon:
         # Session CRYPTO-MONITOR-3: Execute TRIGGERED patterns immediately
         # These are patterns where entry condition was already met (e.g., 3-1-2D
         # where the 2D bar broke the inside bar). Previously these were discarded!
+        #
+        # IMPORTANT: Track executed symbols to prevent:
+        # 1. Duplicate trades on same symbol/timeframe
+        # 2. Conflicting trades (LONG and SHORT on same symbol)
         triggered_count = 0
+        executed_symbols = set()  # Track symbol+timeframe to avoid duplicates
+
         for signal in new_signals:
             if signal.signal_type == "COMPLETED":
+                # Create unique key for this signal
+                signal_key = f"{signal.symbol}_{signal.timeframe}"
+
+                # Skip if we already executed a trade for this symbol/timeframe
+                if signal_key in executed_symbols:
+                    logger.debug(
+                        f"Skipping duplicate TRIGGERED: {signal.symbol} "
+                        f"{signal.pattern_type} ({signal.timeframe})"
+                    )
+                    continue
+
+                # Execute and mark as done
                 self._execute_triggered_pattern(signal)
+                executed_symbols.add(signal_key)
                 triggered_count += 1
 
         if triggered_count > 0:
@@ -1061,6 +1080,7 @@ class CryptoSignalDaemon:
                         pnl = (trade.entry_price - trade.exit_price) * trade.quantity
                         pnl_pct = ((trade.entry_price / trade.exit_price) - 1) * 100
 
+                    # Session CRYPTO-MONITOR-3: Include pattern context for traceability
                     self.discord_alerter.send_exit_alert(
                         symbol=trade.symbol,
                         direction="LONG" if trade.side == "BUY" else "SHORT",
@@ -1069,6 +1089,10 @@ class CryptoSignalDaemon:
                         exit_price=trade.exit_price,
                         pnl=pnl,
                         pnl_pct=pnl_pct,
+                        pattern_type=trade.pattern_type,
+                        timeframe=trade.timeframe,
+                        entry_time=trade.entry_time,
+                        exit_time=trade.exit_time,
                     )
                 except Exception as alert_err:
                     logger.warning(f"Failed to send exit alert: {alert_err}")
