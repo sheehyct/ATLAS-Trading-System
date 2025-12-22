@@ -607,12 +607,29 @@ class CryptoSignalDaemon:
 
     def run_scan_and_monitor(self) -> List[CryptoDetectedSignal]:
         """
-        Run scan and add SETUP signals to entry monitor.
+        Run scan, execute TRIGGERED patterns, and add SETUP signals to entry monitor.
+
+        TRIGGERED patterns (signal_type="COMPLETED") are patterns where the entry
+        bar has already formed - these should execute immediately at market price.
+
+        SETUP patterns are waiting for a price break - these go to entry_monitor.
 
         Returns:
             List of new signals found
         """
         new_signals = self.run_scan()
+
+        # Session CRYPTO-MONITOR-3: Execute TRIGGERED patterns immediately
+        # These are patterns where entry condition was already met (e.g., 3-1-2D
+        # where the 2D bar broke the inside bar). Previously these were discarded!
+        triggered_count = 0
+        for signal in new_signals:
+            if signal.signal_type == "COMPLETED":
+                self._execute_triggered_pattern(signal)
+                triggered_count += 1
+
+        if triggered_count > 0:
+            logger.info(f"Executed {triggered_count} TRIGGERED patterns")
 
         # Add SETUP signals to entry monitor
         if self.entry_monitor is not None:
@@ -621,6 +638,127 @@ class CryptoSignalDaemon:
                 logger.info(f"Added {setup_count} SETUP signals to entry monitor")
 
         return new_signals
+
+    def _execute_triggered_pattern(self, signal: CryptoDetectedSignal) -> None:
+        """
+        Execute a TRIGGERED pattern immediately at market price.
+
+        Session CRYPTO-MONITOR-3: Patterns where entry bar has formed should
+        execute at current market price, not be discarded.
+
+        Args:
+            signal: TRIGGERED signal (signal_type="COMPLETED")
+        """
+        if self.paper_trader is None:
+            return
+
+        # Get current market price
+        try:
+            current_price = self.client.get_current_price(signal.symbol)
+            if current_price is None or current_price <= 0:
+                logger.warning(f"Could not get price for {signal.symbol} - skipping")
+                return
+        except Exception as e:
+            logger.warning(f"Error getting price for {signal.symbol}: {e}")
+            return
+
+        direction = signal.direction
+        stop_price = signal.stop_price
+        target_price = signal.target_price
+
+        # Validate entry is still viable (price hasn't blown past target)
+        if direction == "LONG":
+            if current_price >= target_price:
+                logger.info(
+                    f"SKIP TRIGGERED: {signal.symbol} {signal.pattern_type} LONG - "
+                    f"price ${current_price:,.2f} already at/past target ${target_price:,.2f}"
+                )
+                return
+        else:  # SHORT
+            if current_price <= target_price:
+                logger.info(
+                    f"SKIP TRIGGERED: {signal.symbol} {signal.pattern_type} SHORT - "
+                    f"price ${current_price:,.2f} already at/past target ${target_price:,.2f}"
+                )
+                return
+
+        # Get current leverage tier
+        now_et = self._get_current_time_et()
+        tier = get_current_leverage_tier(now_et)
+        max_leverage = get_max_leverage_for_symbol(signal.symbol, now_et)
+
+        logger.info(
+            f"TRIGGERED PATTERN: {signal.symbol} {signal.pattern_type} {direction} "
+            f"({signal.timeframe}) - executing at ${current_price:,.2f}"
+        )
+
+        # Check if trade should be skipped due to leverage constraints
+        skip, reason = should_skip_trade(
+            account_value=self.paper_trader.account.current_balance,
+            risk_percent=config.DEFAULT_RISK_PERCENT,
+            entry_price=current_price,
+            stop_price=stop_price,
+            max_leverage=max_leverage,
+        )
+
+        if skip:
+            logger.warning(f"SKIPPING TRIGGERED: {reason}")
+            return
+
+        # Calculate position size
+        position_size, implied_leverage, actual_risk = calculate_position_size(
+            account_value=self.paper_trader.account.current_balance,
+            risk_percent=config.DEFAULT_RISK_PERCENT,
+            entry_price=current_price,
+            stop_price=stop_price,
+            max_leverage=max_leverage,
+        )
+
+        if position_size <= 0:
+            logger.warning("Position size is zero or negative - skipping")
+            return
+
+        side = "BUY" if direction == "LONG" else "SELL"
+
+        # Execute trade
+        try:
+            trade = self.paper_trader.open_trade(
+                symbol=signal.symbol,
+                side=side,
+                quantity=position_size,
+                entry_price=current_price,
+                stop_price=stop_price,
+                target_price=target_price,
+                timeframe=signal.timeframe,
+                pattern_type=signal.pattern_type,
+                tfc_score=signal.context.tfc_score,
+            )
+
+            self._execution_count += 1
+            logger.info(
+                f"TRADE OPENED (TRIGGERED): {trade.trade_id} {signal.symbol} {side} "
+                f"qty={position_size:.6f} @ ${current_price:,.2f} "
+                f"({implied_leverage:.1f}x leverage, ${actual_risk:.2f} risk)"
+            )
+            logger.info(
+                f"  Pattern: {signal.pattern_type} | Stop: ${stop_price:,.2f} | "
+                f"Target: ${target_price:,.2f}"
+            )
+
+            # Send Discord alert
+            if self.discord_alerter and self.config.alert_on_trade_entry:
+                try:
+                    self.discord_alerter.send_entry_alert(
+                        signal=signal,
+                        entry_price=current_price,
+                        quantity=position_size,
+                        leverage=implied_leverage,
+                    )
+                except Exception as alert_err:
+                    logger.warning(f"Failed to send entry alert: {alert_err}")
+
+        except Exception as e:
+            logger.error(f"Failed to execute triggered pattern: {e}")
 
     # =========================================================================
     # MAINTENANCE WINDOW

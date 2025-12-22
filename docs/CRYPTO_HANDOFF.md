@@ -1,8 +1,136 @@
 # CRYPTO HANDOFF - ATLAS Crypto Daemon Monitoring
 
-**Last Updated:** December 21, 2025 (Session CRYPTO-MONITOR-2)
+**Last Updated:** December 22, 2025 (Session CRYPTO-MONITOR-3)
 **Purpose:** Live monitoring of crypto STRAT daemon for pattern validation
 **Related:** See `docs/HANDOFF.md` for equity options work
+
+---
+
+## Session CRYPTO-MONITOR-3: IN PROGRESS
+
+**Date:** December 22, 2025
+**Environment:** Claude Code Desktop
+**Status:** CRITICAL BUG IDENTIFIED - FIX REQUIRED
+
+### Objective
+
+Audit Discord trade alerts from December 22, 2025 against actual price data to verify pattern detection accuracy.
+
+### Critical Bug Found
+
+#### BUG: Invalid 2-2 Setups with Inside Bar Reference (CRITICAL)
+
+**Severity:** CRITICAL - Invalid patterns being detected and traded
+
+**Evidence from Discord Alerts (12:06 PM EST, December 22):**
+```
+ENTRY: BIP-20DEC30-CDE SHORT
+Pattern: 1-2D-2D (1h)  <- INVALID! "1" cannot be reference bar for 2-2 pattern
+
+ENTRY: ETP-20DEC30-CDE SHORT
+Pattern: 1-2D-2D (1h)  <- INVALID! Same bug
+```
+
+**Root Cause:**
+In signal_scanner.py `_detect_setups()`, 2-2 setups only skip when `prev_bar_class == 3` (outside bar), but do NOT skip when `prev_bar_class == 1` (inside bar):
+
+```python
+# Line 783-785 - MISSING CHECK FOR INSIDE BARS
+if prev_bar_class == 3:
+    continue  # Skip outside bars (handled by 3-2)
+# BUG: Does NOT skip when prev_bar_class == 1 (inside bar)!
+```
+
+This creates invalid setups like "1-2D-?" which resolve to "1-2D-2D" on trigger.
+
+**Actual Bar Sequence at 17:00 UTC (12 PM EST):**
+```
+15:00 UTC: 3   (Outside bar)
+16:00 UTC: 1   (Inside bar)   <- REFERENCE BAR (should NOT allow 2-2 setup!)
+17:00 UTC: 2D  (Bearish)      <- SETUP BAR
+```
+
+Per STRAT methodology, a valid 2-2 pattern requires:
+- Reference bar: DIRECTIONAL (2U or 2D)
+- Setup bar: DIRECTIONAL (2U or 2D)
+
+An inside bar (1) as reference is NOT a valid 2-2 pattern.
+
+**Fix Required:**
+Add validation to skip 2-2 setups when reference bar is not directional:
+
+```python
+# Skip if previous bar is not directional (must be 2U or 2D for valid 2-2)
+if abs(prev_bar_class) != 2:
+    continue  # Skip inside bars (1), outside bars (3), and unclassified (0)
+```
+
+**Files to Modify:**
+- `crypto/scanning/signal_scanner.py` (lines 783-786)
+- `strat/paper_signal_scanner.py` (same fix for equities)
+
+### Verification Analysis
+
+Verified pattern detector behavior with actual Coinbase data:
+- `detect_212_patterns_nb`: Working correctly - only flags valid 2-1-2 patterns
+- `detect_22_setups_nb`: Flags any 2D/2U bar (root cause - doesn't validate reference bar)
+- Signal scanner: Creates "1-2D-?" setups when prev bar is inside
+
+**Invalid Setups Found in BTC 1H Data (December 22):**
+- 06:00 UTC: 1-2D-? setup (inside bar before 2D)
+- 10:00 UTC: 1-2U-? setup (inside bar before 2U)
+- 17:00 UTC: 1-2D-? setup (inside bar before 2D) <- The 12:06 PM alert!
+
+### Stop/Target Concerns
+
+Also observed potential stop/target inversion in alerts:
+```
+BIP LONG @ $92,280 with Target: $91,720  <- Target BELOW entry!
+BIP LONG @ $91,485 with Target: $91,415  <- Target BELOW entry!
+```
+
+Root cause: When reference bar is inside (1), target uses inside bar high/low which may create invalid geometry.
+
+### Fixes Applied
+
+#### FIX 1: Execute TRIGGERED Patterns (CRITICAL)
+
+**Problem:** COMPLETED patterns (where entry bar has formed) were being DISCARDED because `entry_monitor.add_signal()` rejects non-SETUP signals.
+
+**Solution:** Added `_execute_triggered_pattern()` method in daemon.py that:
+1. Executes TRIGGERED patterns immediately at market price
+2. Validates trade is still viable (price hasn't passed target)
+3. Uses same position sizing and risk management as SETUP triggers
+
+**File Modified:** `crypto/scanning/daemon.py` (lines 608-761)
+
+#### FIX 2: Skip Invalid 2-2 Setups
+
+**Problem:** 2-2 setup detection created invalid patterns like "1-2D-?" when reference bar was inside (1).
+
+**Solution:** Added validation to skip 2-2 setups where `abs(prev_bar_class) != 2`:
+```python
+# Skip if previous bar is NOT directional
+if abs(prev_bar_class) != 2:
+    continue
+```
+
+**Files Modified:**
+- `crypto/scanning/signal_scanner.py` (lines 787-791)
+- `strat/paper_signal_scanner.py` (lines 1009-1013)
+
+### Test Results
+
+- 297 STRAT tests: PASSED
+- 14 Signal automation tests: PASSED
+- No regressions
+
+### Next Steps
+
+1. Deploy fixes to VPS
+2. Monitor for correct pattern detection (expect 3-1-2D, 2D-1-2D instead of 1-2D-2D)
+3. Verify TRIGGERED patterns are executing
+4. Consider terminology update (COMPLETED -> TRIGGERED in code)
 
 ---
 

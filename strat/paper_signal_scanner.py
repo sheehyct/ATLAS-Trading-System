@@ -1006,6 +1006,12 @@ class PaperSignalScanner:
                 if prev_bar_class == 3:
                     continue
 
+                # Session CRYPTO-MONITOR-3: Skip if previous bar is NOT directional
+                # A valid 2-2 pattern requires reference bar to be 2U or 2D
+                # Inside bar (1) as reference creates invalid patterns like "1-2D-?"
+                if abs(prev_bar_class) != 2:
+                    continue
+
                 setup_bar_high = high[i]
                 setup_bar_low = low[i]
 
