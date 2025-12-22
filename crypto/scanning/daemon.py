@@ -371,6 +371,29 @@ class CryptoSignalDaemon:
         # Use actual direction from entry monitor if pattern changed (Session CRYPTO-8)
         # This handles cases where SETUP (X-1-?) became 2-bar pattern (X-2D)
         direction = getattr(event, '_actual_direction', signal.direction)
+        actual_pattern = getattr(event, '_actual_pattern', signal.pattern_type)
+
+        # Session CRYPTO-MONITOR-2 FIX: Recalculate stop/target when direction flips
+        # For bidirectional setups (3-?), the signal has LONG values. If triggering SHORT
+        # (or vice versa), we need the correct stop/target for the actual direction.
+        stop_price = signal.stop_price
+        target_price = signal.target_price
+
+        if direction != signal.direction and signal.setup_bar_high > 0 and signal.setup_bar_low > 0:
+            # Direction flipped - recalculate for actual direction
+            bar_range = signal.setup_bar_high - signal.setup_bar_low
+            if direction == "SHORT":
+                # Flipped to SHORT: stop at high, target below entry
+                stop_price = signal.setup_bar_high
+                target_price = event.current_price - bar_range
+            else:
+                # Flipped to LONG: stop at low, target above entry
+                stop_price = signal.setup_bar_low
+                target_price = event.current_price + bar_range
+            logger.info(
+                f"DIRECTION FLIPPED: {signal.direction} -> {direction}, "
+                f"recalculated stop=${stop_price:,.2f} target=${target_price:,.2f}"
+            )
 
         # Session CRYPTO-MONITOR-2: REMOVED position limit
         # Previously only allowed one position per symbol, but this prevented
@@ -391,7 +414,7 @@ class CryptoSignalDaemon:
             account_value=self.paper_trader.account.current_balance,
             risk_percent=config.DEFAULT_RISK_PERCENT,
             entry_price=event.current_price,
-            stop_price=signal.stop_price,
+            stop_price=stop_price,  # Use corrected stop
             max_leverage=max_leverage,
         )
 
@@ -404,7 +427,7 @@ class CryptoSignalDaemon:
             account_value=self.paper_trader.account.current_balance,
             risk_percent=config.DEFAULT_RISK_PERCENT,
             entry_price=event.current_price,
-            stop_price=signal.stop_price,
+            stop_price=stop_price,  # Use corrected stop
             max_leverage=max_leverage,
         )
 
@@ -430,10 +453,10 @@ class CryptoSignalDaemon:
                 side=side,
                 quantity=position_size,
                 entry_price=event.current_price,
-                stop_price=signal.stop_price,
-                target_price=signal.target_price,
+                stop_price=stop_price,  # Use corrected stop
+                target_price=target_price,  # Use corrected target
                 timeframe=signal.timeframe,
-                pattern_type=signal.pattern_type,
+                pattern_type=actual_pattern,  # Use resolved pattern
                 tfc_score=signal.context.tfc_score,  # Session CRYPTO-9
             )
 
@@ -444,20 +467,21 @@ class CryptoSignalDaemon:
                 f"({implied_leverage:.1f}x leverage, ${actual_risk:.2f} risk)"
             )
             logger.info(
-                f"  Stop: ${signal.stop_price:,.2f} | Target: ${signal.target_price:,.2f}"
+                f"  Stop: ${stop_price:,.2f} | Target: ${target_price:,.2f}"
             )
 
-            # Send Discord entry alert (Session CRYPTO-7, EQUITY-25: resolved pattern)
+            # Send Discord entry alert (Session CRYPTO-MONITOR-2: pass corrected values)
             if self.discord_alerter and self.config.alert_on_trade_entry:
                 try:
-                    # Use resolved pattern from entry monitor (Session EQUITY-25)
-                    pattern_override = getattr(event, "_actual_pattern", signal.pattern_type)
                     self.discord_alerter.send_entry_alert(
                         signal=signal,
                         entry_price=event.current_price,
                         quantity=position_size,
                         leverage=implied_leverage,
-                        pattern_override=pattern_override,
+                        pattern_override=actual_pattern,
+                        direction_override=direction,
+                        stop_override=stop_price,
+                        target_override=target_price,
                     )
                 except Exception as alert_err:
                     logger.warning(f"Failed to send entry alert: {alert_err}")

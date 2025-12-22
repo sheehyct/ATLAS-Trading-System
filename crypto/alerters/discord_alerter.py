@@ -347,12 +347,16 @@ class CryptoDiscordAlerter:
         quantity: float,
         leverage: float,
         pattern_override: Optional[str] = None,
+        direction_override: Optional[str] = None,
+        stop_override: Optional[float] = None,
+        target_override: Optional[float] = None,
     ) -> bool:
         """
         Send clean entry alert for mobile notifications.
 
         Session CRYPTO-10: Simplified format with proper pattern notation.
         Session EQUITY-25: Added pattern_override for STRAT-accurate resolved patterns.
+        Session CRYPTO-MONITOR-2: Added direction/stop/target overrides for flipped setups.
 
         Args:
             signal: The signal being traded
@@ -360,14 +364,19 @@ class CryptoDiscordAlerter:
             quantity: Position quantity
             leverage: Leverage used
             pattern_override: Resolved pattern from entry monitor (overrides signal.pattern_type)
+            direction_override: Actual trade direction (overrides signal.direction)
+            stop_override: Corrected stop price for flipped setups
+            target_override: Corrected target price for flipped setups
 
         Returns:
             True if sent successfully
         """
-        direction_str = "LONG" if signal.direction == "LONG" else "SHORT"
+        # Use overrides if provided (Session CRYPTO-MONITOR-2)
+        direction_str = direction_override or signal.direction
+        stop_price = stop_override if stop_override is not None else signal.stop_price
+        target_price = target_override if target_override is not None else signal.target_price
 
         # Use resolved pattern from entry monitor if provided (Session EQUITY-25)
-        # Otherwise fall back to signal.pattern_type with ? replacement
         pattern = pattern_override or signal.pattern_type
         if pattern and pattern.endswith('?'):
             direction_suffix = '2U' if direction_str == 'LONG' else '2D'
@@ -377,7 +386,7 @@ class CryptoDiscordAlerter:
             f"**ENTRY: {signal.symbol} {direction_str}**\n"
             f"Pattern: {pattern} ({signal.timeframe})\n"
             f"@ ${entry_price:,.2f}\n"
-            f"Target: ${signal.target_price:,.2f} | Stop: ${signal.stop_price:,.2f}"
+            f"Target: ${target_price:,.2f} | Stop: ${stop_price:,.2f}"
         )
 
         payload = {
