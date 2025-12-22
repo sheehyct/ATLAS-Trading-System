@@ -419,16 +419,38 @@ class SignalDaemon:
             if new_signals:
                 self._send_alerts(new_signals)
 
-                # Execute signals if execution enabled (Session 83K-48)
+                # Session EQUITY-32: Execute TRIGGERED patterns immediately
+                # These are COMPLETED patterns where entry bar already formed.
+                if self.executor is not None:
+                    triggered_count = 0
+                    executed_symbols = set()
+
+                    for signal in new_signals:
+                        if signal.signal_type == SignalType.COMPLETED.value:
+                            signal_key = f"{signal.symbol}_{signal.timeframe}"
+
+                            if signal_key in executed_symbols:
+                                continue
+
+                            result = self._execute_triggered_pattern(signal)
+                            if result and result.state == ExecutionState.ORDER_SUBMITTED:
+                                executed_symbols.add(signal_key)
+                                triggered_count += 1
+
+                    if triggered_count > 0:
+                        logger.info(f"Executed {triggered_count} TRIGGERED patterns")
+
+                # Execute SETUP signals if any (skipped by _execute_signals per EQUITY-29)
                 if self.executor is not None:
                     exec_results = self._execute_signals(new_signals)
                     executed_count = sum(
                         1 for r in exec_results
                         if r.state == ExecutionState.ORDER_SUBMITTED
                     )
-                    logger.info(
-                        f"Executed {executed_count}/{len(new_signals)} signals"
-                    )
+                    if executed_count > 0:
+                        logger.info(
+                            f"Executed {executed_count}/{len(new_signals)} signals"
+                        )
 
             # Scan completion
             duration = time.time() - start_time
@@ -502,16 +524,45 @@ class SignalDaemon:
             if new_signals:
                 self._send_alerts(new_signals)
 
-                # Execute signals if execution enabled
+                # Session EQUITY-32: Execute TRIGGERED patterns immediately
+                # These are COMPLETED patterns where entry bar already formed.
+                # Previously these were marked HISTORICAL_TRIGGERED and skipped!
+                if self.executor is not None:
+                    triggered_count = 0
+                    executed_symbols = set()  # Track symbol+timeframe to avoid duplicates
+
+                    for signal in new_signals:
+                        if signal.signal_type == SignalType.COMPLETED.value:
+                            signal_key = f"{signal.symbol}_{signal.timeframe}"
+
+                            # Skip if we already executed for this symbol/timeframe
+                            if signal_key in executed_symbols:
+                                logger.debug(
+                                    f"Skipping duplicate TRIGGERED: {signal.symbol} "
+                                    f"{signal.pattern_type} ({signal.timeframe})"
+                                )
+                                continue
+
+                            result = self._execute_triggered_pattern(signal)
+                            if result and result.state == ExecutionState.ORDER_SUBMITTED:
+                                executed_symbols.add(signal_key)
+                                triggered_count += 1
+
+                    if triggered_count > 0:
+                        logger.info(f"Executed {triggered_count} TRIGGERED patterns")
+
+                # Execute SETUP signals if any (will be skipped by _execute_signals per EQUITY-29)
+                # This call is kept for logging/alerting purposes
                 if self.executor is not None:
                     exec_results = self._execute_signals(new_signals)
                     executed_count = sum(
                         1 for r in exec_results
                         if r.state == ExecutionState.ORDER_SUBMITTED
                     )
-                    logger.info(
-                        f"Executed {executed_count}/{len(new_signals)} signals"
-                    )
+                    if executed_count > 0:
+                        logger.info(
+                            f"Executed {executed_count}/{len(new_signals)} signals via _execute_signals"
+                        )
 
             # Scan completion
             duration = time.time() - start_time
@@ -726,6 +777,131 @@ class SignalDaemon:
             except Exception as e:
                 logger.error(f"Alert error ({alerter.name}): {e}")
                 self._error_count += 1
+
+    def _get_current_price(self, symbol: str) -> Optional[float]:
+        """
+        Get current price for a symbol using executor's trading client.
+
+        Session EQUITY-32: Helper for triggered pattern execution.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            Current mid price or None if unavailable
+        """
+        if self.executor is None:
+            return None
+        try:
+            quotes = self.executor._trading_client.get_stock_quotes([symbol])
+            if symbol in quotes:
+                quote = quotes[symbol]
+                if isinstance(quote, dict) and 'mid' in quote:
+                    return quote['mid']
+                elif isinstance(quote, (int, float)):
+                    return float(quote)
+        except Exception as e:
+            logger.error(f"Price fetch error for {symbol}: {e}")
+        return None
+
+    def _execute_triggered_pattern(self, signal: StoredSignal) -> Optional[ExecutionResult]:
+        """
+        Execute a TRIGGERED pattern immediately at market price.
+
+        Session EQUITY-32: Patterns where entry bar has formed should
+        execute at current market price, not be discarded.
+
+        These are COMPLETED patterns (e.g., 3-1-2U where the 2U bar has
+        already broken the inside bar). STRAT principle: entry on the break.
+
+        Args:
+            signal: TRIGGERED signal (signal_type="COMPLETED")
+
+        Returns:
+            ExecutionResult if executed, None if skipped
+        """
+        if self.executor is None:
+            return None
+
+        # Get current market price
+        current_price = self._get_current_price(signal.symbol)
+        if current_price is None or current_price <= 0:
+            logger.warning(f"Could not get price for {signal.symbol} - skipping triggered pattern")
+            return None
+
+        direction = signal.direction
+        stop_price = signal.stop_price
+        target_price = signal.target_price
+
+        # Validate entry is still viable (price hasn't blown past target)
+        if direction == "CALL":
+            if current_price >= target_price:
+                logger.info(
+                    f"SKIP TRIGGERED: {signal.symbol} {signal.pattern_type} CALL - "
+                    f"price ${current_price:.2f} already at/past target ${target_price:.2f}"
+                )
+                return None
+        else:  # PUT
+            if current_price <= target_price:
+                logger.info(
+                    f"SKIP TRIGGERED: {signal.symbol} {signal.pattern_type} PUT - "
+                    f"price ${current_price:.2f} already at/past target ${target_price:.2f}"
+                )
+                return None
+
+        # "Let the Market Breathe" - Skip intraday patterns if too early in session
+        if not self._is_intraday_entry_allowed(signal):
+            return None
+
+        logger.info(
+            f"TRIGGERED PATTERN: {signal.symbol} {signal.pattern_type} {signal.direction} "
+            f"({signal.timeframe}) - executing at ${current_price:.2f}"
+        )
+
+        try:
+            # Execute via SignalExecutor
+            # Temporarily set status to ALERTED to bypass HISTORICAL_TRIGGERED skip in executor
+            original_status = signal.status
+            signal.status = SignalStatus.ALERTED.value
+
+            result = self.executor.execute_signal(signal, underlying_price=current_price)
+
+            signal.status = original_status  # Restore original status
+
+            if result.state == ExecutionState.ORDER_SUBMITTED:
+                self._execution_count += 1
+                self.signal_store.mark_triggered(signal.signal_key)
+
+                if result.osi_symbol:
+                    self.signal_store.set_executed_osi_symbol(
+                        signal.signal_key, result.osi_symbol
+                    )
+
+                logger.info(
+                    f"TRADE OPENED (TRIGGERED): {signal.symbol} {signal.direction} "
+                    f"{signal.pattern_type} ({signal.timeframe}) - {result.osi_symbol}"
+                )
+
+                # Send Discord entry alert
+                for alerter in self.alerters:
+                    try:
+                        if isinstance(alerter, DiscordAlerter):
+                            alerter.send_entry_alert(signal, result)
+                        elif isinstance(alerter, LoggingAlerter):
+                            alerter.log_execution(result)
+                    except Exception as e:
+                        logger.error(f"Entry alert error: {e}")
+
+                return result
+            else:
+                logger.info(
+                    f"TRIGGERED execution skipped/failed: {signal.symbol} - {result.error}"
+                )
+                return result
+
+        except Exception as e:
+            logger.error(f"Failed to execute triggered pattern: {e}")
+            return None
 
     def _is_intraday_entry_allowed(self, signal: StoredSignal) -> bool:
         """
