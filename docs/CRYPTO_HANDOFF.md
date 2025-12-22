@@ -125,11 +125,51 @@ if abs(prev_bar_class) != 2:
 - 14 Signal automation tests: PASSED
 - No regressions
 
+#### FIX 3: Prevent Historical Pattern Execution on Restart
+
+**Problem:** On daemon restart, ALL historical TRIGGERED patterns (last 5 bars) were executed, causing duplicate and conflicting trades (LONG and SHORT on same symbol).
+
+**Solution:**
+1. Changed filter from "last 5 bars" to "LAST bar only" for COMPLETED patterns
+2. Added deduplication tracking in daemon: one trade per symbol+timeframe per scan
+
+**Files Modified:**
+- `crypto/scanning/signal_scanner.py` (line 991: `if p["index"] == last_bar_idx`)
+- `strat/paper_signal_scanner.py` (same fix in two locations)
+- `crypto/scanning/daemon.py` (added `executed_symbols` set)
+
+#### FIX 4: Enhanced Discord Exit Alerts
+
+**Problem:** Exit alerts only showed P/L without context - couldn't trace which trade exited.
+
+**Solution:** Added pattern type, timeframe, duration, and entry/exit prices to exit messages.
+
+**New Format:**
+```
+**EXIT [STOP]: BIP-20DEC30-CDE SHORT**
+Pattern: 3-2D (15m) | 2.5h
+Entry: $89,480.00 -> Exit: $89,825.00
+P/L: -$23.56 (-1.15%)
+```
+
+**Files Modified:**
+- `crypto/alerters/discord_alerter.py` (enhanced `send_exit_alert`)
+- `crypto/scanning/daemon.py` (pass pattern context to alerter)
+
+### Commits
+
+- `02ba4ba` - fix(strat): execute TRIGGERED patterns and skip invalid 2-2 setups
+- `0ecec1a` - fix(strat): only execute TRIGGERED patterns from last bar and improve Discord alerts
+
+### Status
+
+All fixes deployed to VPS. Daemon restarted at 19:18 UTC.
+
 ### Next Steps
 
-1. Deploy fixes to VPS
-2. Monitor for correct pattern detection (expect 3-1-2D, 2D-1-2D instead of 1-2D-2D)
-3. Verify TRIGGERED patterns are executing
+1. Monitor for correct pattern detection (expect 3-1-2D, 2D-1-2D instead of 1-2D-2D)
+2. Verify TRIGGERED patterns execute from current bar only
+3. Verify exit alerts show pattern context
 4. Consider terminology update (COMPLETED -> TRIGGERED in code)
 
 ---
