@@ -37,6 +37,8 @@ class SimulatedTrade:
     pattern_type: Optional[str] = None
     exit_reason: Optional[str] = None  # 'STOP', 'TARGET', 'MANUAL'
     tfc_score: Optional[int] = None  # Timeframe Continuity score (0-4)
+    # Session EQUITY-34: Margin tracking
+    margin_reserved: float = 0.0  # Margin reserved for this position
 
     def close(self, exit_price: float, exit_time: Optional[datetime] = None) -> None:
         """
@@ -78,6 +80,7 @@ class SimulatedTrade:
             "pattern_type": self.pattern_type,
             "exit_reason": self.exit_reason,
             "tfc_score": self.tfc_score,
+            "margin_reserved": self.margin_reserved,  # Session EQUITY-34
         }
 
     @classmethod
@@ -97,6 +100,7 @@ class SimulatedTrade:
             pattern_type=data.get("pattern_type"),
             exit_reason=data.get("exit_reason"),
             tfc_score=data.get("tfc_score"),
+            margin_reserved=data.get("margin_reserved", 0.0),  # Session EQUITY-34
         )
         if data.get("exit_price"):
             trade.exit_price = data["exit_price"]
@@ -116,6 +120,8 @@ class PaperTradingAccount:
     open_trades: List[SimulatedTrade] = field(default_factory=list)
     closed_trades: List[SimulatedTrade] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.utcnow)
+    # Session EQUITY-34: Track margin in use for open positions
+    reserved_margin: float = 0.0
 
 
 class PaperTrader:
@@ -179,9 +185,13 @@ class PaperTrader:
         timeframe: Optional[str] = None,
         pattern_type: Optional[str] = None,
         tfc_score: Optional[int] = None,
-    ) -> SimulatedTrade:
+        leverage: float = 4.0,
+    ) -> Optional[SimulatedTrade]:
         """
-        Open a new simulated trade.
+        Open a new simulated trade with margin reservation.
+
+        Session EQUITY-34: Now tracks margin requirements and prevents
+        over-leveraging by checking available balance before opening.
 
         Args:
             symbol: Trading pair (e.g., 'BTC-USD')
@@ -194,10 +204,25 @@ class PaperTrader:
             timeframe: Signal timeframe (e.g., '1d', '4h')
             pattern_type: STRAT pattern (e.g., '3-2U', '2D-1-2U')
             tfc_score: Timeframe Continuity score (0-4)
+            leverage: Leverage used for margin calculation (default: 4x swing)
 
         Returns:
-            SimulatedTrade object
+            SimulatedTrade object if opened, None if insufficient margin
         """
+        # Calculate margin required for this position
+        position_notional = quantity * entry_price
+        margin_required = position_notional / leverage
+
+        # Check available balance (Session EQUITY-34)
+        available = self.get_available_balance()
+        if margin_required > available:
+            logger.warning(
+                "Insufficient margin for trade: need $%.2f, have $%.2f available",
+                margin_required,
+                available
+            )
+            return None
+
         trade = SimulatedTrade(
             trade_id=self._generate_trade_id(),
             symbol=symbol,
@@ -210,21 +235,37 @@ class PaperTrader:
             timeframe=timeframe,
             pattern_type=pattern_type,
             tfc_score=tfc_score,
+            margin_reserved=margin_required,
         )
 
+        # Reserve margin (Session EQUITY-34)
+        self.account.reserved_margin += margin_required
         self.account.open_trades.append(trade)
+
         logger.info(
-            "Opened simulated trade: %s %s %s @ %.2f (stop=%.2f, target=%.2f)",
+            "Opened simulated trade: %s %s %s @ %.2f (margin=$%.2f, stop=%.2f, target=%.2f)",
             trade.trade_id,
             side,
             symbol,
             entry_price,
+            margin_required,
             stop_price or 0,
             target_price or 0,
         )
 
         self._save_state()
         return trade
+
+    def get_available_balance(self) -> float:
+        """
+        Get available balance after margin reservations.
+
+        Session EQUITY-34: Returns current_balance minus reserved_margin.
+
+        Returns:
+            Available balance in USD
+        """
+        return max(0, self.account.current_balance - self.account.reserved_margin)
 
     def close_trade(
         self,
@@ -233,7 +274,9 @@ class PaperTrader:
         exit_time: Optional[datetime] = None,
     ) -> Optional[SimulatedTrade]:
         """
-        Close an open trade.
+        Close an open trade and release margin.
+
+        Session EQUITY-34: Now releases reserved margin when trade closes.
 
         Args:
             trade_id: Trade ID to close
@@ -254,15 +297,20 @@ class PaperTrader:
         self.account.open_trades.remove(trade)
         self.account.closed_trades.append(trade)
 
+        # Release margin (Session EQUITY-34)
+        self.account.reserved_margin -= trade.margin_reserved
+        self.account.reserved_margin = max(0, self.account.reserved_margin)
+
         # Update account
         self.account.realized_pnl += trade.pnl or 0
         self.account.current_balance += trade.pnl or 0
 
         logger.info(
-            "Closed trade %s: P&L = $%.2f (%.2f%%)",
+            "Closed trade %s: P&L = $%.2f (%.2f%%), margin released: $%.2f",
             trade_id,
             trade.pnl or 0,
             trade.pnl_percent or 0,
+            trade.margin_reserved,
         )
 
         self._save_state()
@@ -441,6 +489,7 @@ class PaperTrader:
             "starting_balance": self.account.starting_balance,
             "current_balance": self.account.current_balance,
             "realized_pnl": self.account.realized_pnl,
+            "reserved_margin": self.account.reserved_margin,  # Session EQUITY-34
             "created_at": self.account.created_at.isoformat(),
             "trade_counter": self._trade_counter,
             "open_trades": [t.to_dict() for t in self.account.open_trades],
@@ -456,6 +505,9 @@ class PaperTrader:
     def _load_state(self) -> bool:
         """
         Load state from file.
+
+        Session EQUITY-34: Now loads reserved_margin and recalculates
+        from open trades if not present for backward compatibility.
 
         Returns:
             True if state was loaded, False otherwise
@@ -481,10 +533,20 @@ class PaperTrader:
                 SimulatedTrade.from_dict(t) for t in state.get("closed_trades", [])
             ]
 
+            # Session EQUITY-34: Load or recalculate reserved_margin
+            if "reserved_margin" in state:
+                self.account.reserved_margin = state["reserved_margin"]
+            else:
+                # Backward compat: recalculate from open trades
+                self.account.reserved_margin = sum(
+                    t.margin_reserved for t in self.account.open_trades
+                )
+
             logger.info(
-                "Loaded paper trading state: %d open, %d closed trades",
+                "Loaded paper trading state: %d open, %d closed trades, $%.2f reserved",
                 len(self.account.open_trades),
                 len(self.account.closed_trades),
+                self.account.reserved_margin,
             )
             return True
 

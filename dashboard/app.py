@@ -57,6 +57,7 @@ from dashboard.components.options_panel import (
     create_positions_table,
     create_pnl_summary,
     create_trade_progress_chart,
+    create_trade_progress_display,
     create_closed_trades_table,
 )
 from dashboard.components.crypto_panel import (
@@ -1636,16 +1637,18 @@ def update_pnl_summary(n_intervals, active_tab):
 
 
 @app.callback(
-    Output('trade-progress-chart', 'figure'),
+    Output('trade-progress-container', 'children'),
     [Input('options-refresh-interval', 'n_intervals'),
      Input('tabs', 'active_tab')]
 )
 def update_trade_progress(n_intervals, active_tab):
     """
-    Update trade progress chart with live position data.
+    Update trade progress display with live position data.
 
-    Session EQUITY-33: Now links positions to their original signals
+    Session EQUITY-33: Links positions to their original signals
     to show entry -> current -> target progress.
+
+    Session EQUITY-34: Simplified from Plotly chart to HTML progress bars.
 
     Only updates when options tab is active.
     """
@@ -1656,11 +1659,11 @@ def update_trade_progress(n_intervals, active_tab):
 
         # Get positions linked to their signals
         trades = options_loader.get_positions_with_signals()
-        return create_trade_progress_chart(trades)
+        return create_trade_progress_display(trades)
 
     except Exception as e:
         logger.error(f"Error updating trade progress: {e}")
-        return create_trade_progress_chart([])
+        return create_trade_progress_display([])
 
 
 # ============================================

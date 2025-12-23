@@ -192,7 +192,8 @@ MAX_POSITION_PERCENT: float = 0.50  # 50% of account max per position
 # =============================================================================
 
 # Multi-timeframe hierarchy for STRAT analysis
-TIMEFRAMES: List[str] = ["1w", "1d", "4h", "1h", "15m"]
+# Session EQUITY-34: Removed 15m per user request - only 1H and above
+TIMEFRAMES: List[str] = ["1w", "1d", "4h", "1h"]
 
 # Base timeframe for resampling (used for HTF pattern detection)
 BASE_TIMEFRAME: str = "15m"

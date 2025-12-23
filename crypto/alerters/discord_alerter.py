@@ -382,9 +382,13 @@ class CryptoDiscordAlerter:
             direction_suffix = '2U' if direction_str == 'LONG' else '2D'
             pattern = pattern[:-1] + direction_suffix
 
+        # Session EQUITY-34: Add TFC score to entry alerts
+        tfc_score = signal.context.tfc_score if signal.context else 0
+        tfc_display = f"{tfc_score}/4" if tfc_score else "N/A"
+
         message = (
             f"**ENTRY: {signal.symbol} {direction_str}**\n"
-            f"Pattern: {pattern} ({signal.timeframe})\n"
+            f"Pattern: {pattern} ({signal.timeframe}) | TFC: {tfc_display}\n"
             f"@ ${entry_price:,.2f}\n"
             f"Target: ${target_price:,.2f} | Stop: ${stop_price:,.2f}"
         )

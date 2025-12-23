@@ -278,10 +278,12 @@ class OptionsDataLoader:
 
     def get_option_positions(self) -> List[Dict]:
         """
-        Get live option positions from Alpaca.
+        Get live option positions from Alpaca with signal linkage.
+
+        Session EQUITY-34: Now includes pattern and timeframe from originating signal.
 
         Returns:
-            List of position dictionaries with P&L data
+            List of position dictionaries with P&L data and pattern info
         """
         if not self._connected:
             self.connect()
@@ -300,6 +302,20 @@ class OptionsDataLoader:
                     )
                 # Parse OCC symbol for display
                 pos['display_contract'] = self._parse_occ_symbol(pos.get('symbol', ''))
+
+                # Session EQUITY-34: Look up pattern + timeframe from signal store
+                pos['pattern'] = '-'
+                pos['timeframe'] = '-'
+                osi_symbol = pos.get('symbol', '')
+                if self.signal_store and osi_symbol:
+                    try:
+                        signal = self.signal_store.get_signal_by_osi_symbol(osi_symbol)
+                        if signal:
+                            pos['pattern'] = signal.pattern_type
+                            pos['timeframe'] = signal.timeframe
+                    except Exception as e:
+                        logger.debug(f"Could not look up signal for {osi_symbol}: {e}")
+
             return positions
         except Exception as e:
             logger.error(f"Error getting option positions: {e}")

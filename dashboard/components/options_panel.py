@@ -220,7 +220,7 @@ def create_options_panel():
         ], className='mb-4'),
 
         # ============================================
-        # ROW 3: Trade Progress Chart
+        # ROW 3: Trade Progress Display (Simplified - Session EQUITY-34)
         # ============================================
         dbc.Row([
             dbc.Col([
@@ -235,12 +235,11 @@ def create_options_panel():
                         'borderBottom': f'1px solid {DARK_THEME["border"]}'
                     }),
                     dbc.CardBody([
-                        dcc.Graph(
-                            id='trade-progress-chart',
-                            figure=create_trade_progress_chart(),
-                            config={'displayModeBar': False, 'displaylogo': False}
+                        html.Div(
+                            id='trade-progress-container',
+                            children=[_create_no_positions_progress_placeholder()]
                         )
-                    ], style={'backgroundColor': DARK_THEME['card_bg']})
+                    ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': '1rem'})
                 ], style={
                     'backgroundColor': DARK_THEME['card_bg'],
                     'border': f'1px solid {DARK_THEME["border"]}'
@@ -338,6 +337,140 @@ def _create_no_positions_placeholder():
         'padding': '2rem',
         'backgroundColor': DARK_THEME['card_bg']
     })
+
+
+def _create_no_positions_progress_placeholder():
+    """Create placeholder when no positions for progress tracking - Session EQUITY-34."""
+    return html.Div([
+        html.I(className='fas fa-chart-line fa-2x mb-3',
+               style={'color': DARK_THEME['text_muted']}),
+        html.P('No active positions to track', style={
+            'color': DARK_THEME['text_muted'],
+            'marginBottom': '0.25rem'
+        }),
+        html.Small('Open positions will show progress toward targets',
+                   style={'color': DARK_THEME['text_muted']})
+    ], style={
+        'textAlign': 'center',
+        'padding': '2rem',
+        'backgroundColor': DARK_THEME['card_bg']
+    })
+
+
+def create_trade_progress_display(trades: Optional[List[Dict]] = None) -> html.Div:
+    """
+    Create simplified trade progress display - Session EQUITY-34.
+
+    Replaced complex Plotly bullet chart with clean HTML progress bars.
+    Each trade shows: Name | Progress Bar | Percentage
+
+    Args:
+        trades: List of trade dicts with entry/current/target/stop/name/direction/pnl_pct
+
+    Returns:
+        HTML Div with progress display
+    """
+    if not trades:
+        return _create_no_positions_progress_placeholder()
+
+    rows = []
+    for trade in trades:
+        # Calculate progress percentage (0-100, capped)
+        entry = trade.get('entry', 0)
+        current = trade.get('current', 0)
+        target = trade.get('target', 0)
+        stop = trade.get('stop', 0)
+        direction = trade.get('direction', 'CALL')
+        pnl_pct = trade.get('pnl_pct', 0) * 100  # Convert to percentage
+
+        # Calculate progress based on direction
+        if direction == 'CALL':
+            # CALL: profit when price goes up from entry to target
+            total_range = target - entry if target != entry else 1
+            progress = (current - entry) / total_range * 100
+        else:
+            # PUT: profit when price goes down from entry to target
+            total_range = entry - target if entry != target else 1
+            progress = (entry - current) / total_range * 100
+
+        # Clamp progress to -100% to 200% for display
+        progress = max(-100, min(200, progress))
+
+        # Color based on profit
+        is_profit = progress > 0
+        bar_color = DARK_THEME['accent_green'] if is_profit else DARK_THEME['accent_red']
+        pnl_color = DARK_THEME['accent_green'] if pnl_pct >= 0 else DARK_THEME['accent_red']
+
+        # Create progress bar (clamped to 0-100 for display)
+        display_progress = max(0, min(100, progress))
+
+        rows.append(
+            html.Div([
+                # Trade name (left)
+                html.Div([
+                    html.Span(trade.get('name', 'Unknown'), style={
+                        'fontWeight': 'bold',
+                        'color': DARK_THEME['text_primary'],
+                        'fontSize': '0.9rem'
+                    }),
+                ], style={'flex': '0 0 180px', 'overflow': 'hidden', 'textOverflow': 'ellipsis'}),
+
+                # Progress bar (middle)
+                html.Div([
+                    html.Div([
+                        # Background bar
+                        html.Div(style={
+                            'position': 'absolute',
+                            'top': '0',
+                            'left': '0',
+                            'right': '0',
+                            'bottom': '0',
+                            'backgroundColor': DARK_THEME['progress_bg'],
+                            'borderRadius': '4px'
+                        }),
+                        # Progress fill
+                        html.Div(style={
+                            'position': 'absolute',
+                            'top': '0',
+                            'left': '0',
+                            'bottom': '0',
+                            'width': f'{display_progress}%',
+                            'backgroundColor': bar_color,
+                            'borderRadius': '4px',
+                            'transition': 'width 0.3s ease'
+                        }),
+                    ], style={
+                        'position': 'relative',
+                        'height': '12px',
+                        'borderRadius': '4px',
+                        'overflow': 'hidden'
+                    })
+                ], style={'flex': '1', 'padding': '0 1rem'}),
+
+                # Progress percentage (right)
+                html.Div([
+                    html.Span(f"{progress:.0f}%", style={
+                        'fontWeight': 'bold',
+                        'color': bar_color,
+                        'fontSize': '0.9rem',
+                        'minWidth': '50px',
+                        'textAlign': 'right'
+                    }),
+                    html.Span(f" ({pnl_pct:+.1f}%)", style={
+                        'color': pnl_color,
+                        'fontSize': '0.8rem',
+                        'marginLeft': '0.25rem'
+                    }),
+                ], style={'flex': '0 0 100px', 'textAlign': 'right'}),
+            ], style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'padding': '0.75rem 0',
+                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+            })
+        )
+
+    return html.Div(rows)
 
 
 def create_signals_table(signals: List[Dict], show_triggered_time: bool = False) -> html.Table:
@@ -658,8 +791,10 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
     """
     Create table displaying live option positions.
 
+    Session EQUITY-34: Added pattern + timeframe column.
+
     Args:
-        positions: List of position dictionaries from Alpaca
+        positions: List of position dictionaries from Alpaca with pattern/timeframe
 
     Returns:
         HTML table component
@@ -677,6 +812,10 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
         # Get display contract or parse OCC symbol
         contract = pos.get('display_contract', pos.get('symbol', ''))
 
+        # Session EQUITY-34: Get pattern and timeframe from signal linkage
+        pattern = pos.get('pattern', '-')
+        timeframe = pos.get('timeframe', '-')
+
         rows.append(
             html.Tr([
                 # Contract
@@ -688,6 +827,17 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
                     html.Small(f"Qty: {pos.get('qty', 0)}", style={
                         'color': DARK_THEME['text_secondary']
                     })
+                ], style={'padding': '0.75rem'}),
+
+                # Pattern + Timeframe (Session EQUITY-34)
+                html.Td([
+                    html.Div(pattern, style={
+                        'fontWeight': 'bold',
+                        'color': DARK_THEME['accent_blue'] if pattern != '-' else DARK_THEME['text_muted']
+                    }),
+                    html.Small(timeframe, style={
+                        'color': DARK_THEME['text_secondary']
+                    }) if timeframe != '-' else None
                 ], style={'padding': '0.75rem'}),
 
                 # Entry Price
@@ -742,6 +892,7 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
         html.Thead([
             html.Tr([
                 html.Th('Contract', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('Pattern', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),  # Session EQUITY-34
                 html.Th('Entry', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Current', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Value', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),

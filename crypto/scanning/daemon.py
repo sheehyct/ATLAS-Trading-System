@@ -422,9 +422,10 @@ class CryptoSignalDaemon:
             logger.warning(f"SKIPPING TRADE: {reason}")
             return
 
-        # Calculate position size with time-based leverage
+        # Calculate position size with time-based leverage (Session EQUITY-34: use available balance)
+        available_balance = self.paper_trader.get_available_balance()
         position_size, implied_leverage, actual_risk = calculate_position_size(
-            account_value=self.paper_trader.account.current_balance,
+            account_value=available_balance,
             risk_percent=config.DEFAULT_RISK_PERCENT,
             entry_price=event.current_price,
             stop_price=stop_price,  # Use corrected stop
@@ -458,7 +459,15 @@ class CryptoSignalDaemon:
                 timeframe=signal.timeframe,
                 pattern_type=actual_pattern,  # Use resolved pattern
                 tfc_score=signal.context.tfc_score,  # Session CRYPTO-9
+                leverage=implied_leverage,  # Session EQUITY-34: margin tracking
             )
+
+            # Session EQUITY-34: Check if trade was rejected due to insufficient margin
+            if trade is None:
+                logger.warning(
+                    f"Trade rejected: insufficient margin for {signal.symbol}"
+                )
+                return
 
             self._execution_count += 1
             logger.info(
@@ -724,9 +733,10 @@ class CryptoSignalDaemon:
             logger.warning(f"SKIPPING TRIGGERED: {reason}")
             return
 
-        # Calculate position size
+        # Calculate position size using available balance (Session EQUITY-34)
+        available_balance = self.paper_trader.get_available_balance()
         position_size, implied_leverage, actual_risk = calculate_position_size(
-            account_value=self.paper_trader.account.current_balance,
+            account_value=available_balance,
             risk_percent=config.DEFAULT_RISK_PERCENT,
             entry_price=current_price,
             stop_price=stop_price,
@@ -751,7 +761,15 @@ class CryptoSignalDaemon:
                 timeframe=signal.timeframe,
                 pattern_type=signal.pattern_type,
                 tfc_score=signal.context.tfc_score,
+                leverage=implied_leverage,  # Session EQUITY-34: margin tracking
             )
+
+            # Session EQUITY-34: Check if trade was rejected due to insufficient margin
+            if trade is None:
+                logger.warning(
+                    f"Trade rejected: insufficient margin for {signal.symbol}"
+                )
+                return
 
             self._execution_count += 1
             logger.info(
