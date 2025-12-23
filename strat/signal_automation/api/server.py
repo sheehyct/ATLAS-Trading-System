@@ -142,16 +142,47 @@ def get_status():
 @app.route('/positions')
 def get_positions():
     """
-    Open option positions with unrealized P&L.
+    Open option positions with unrealized P&L and signal linkage.
+
+    Session EQUITY-34: Now includes pattern and timeframe from originating signal.
 
     Returns:
-        List of position dictionaries from Alpaca
+        List of position dictionaries from Alpaca with pattern/timeframe/entry_time
     """
     if _daemon is None or _daemon.executor is None:
         return jsonify([])
 
     try:
         positions = _daemon.executor.get_positions()
+
+        # Session EQUITY-34: Enhance with signal data
+        for pos in positions:
+            pos['pattern'] = '-'
+            pos['timeframe'] = '-'
+            pos['entry_time_et'] = None
+
+            osi_symbol = pos.get('symbol', '')
+            if osi_symbol and _daemon.signal_store:
+                try:
+                    signal = _daemon.signal_store.get_signal_by_osi_symbol(osi_symbol)
+                    if signal:
+                        pos['pattern'] = signal.pattern_type
+                        pos['timeframe'] = signal.timeframe
+                        # Format entry time in ET
+                        if signal.detected_time:
+                            try:
+                                import pytz
+                                et = pytz.timezone('America/New_York')
+                                dt = signal.detected_time
+                                if dt.tzinfo is None:
+                                    dt = pytz.utc.localize(dt)
+                                dt_et = dt.astimezone(et)
+                                pos['entry_time_et'] = dt_et.strftime('%m/%d %H:%M')
+                            except Exception:
+                                pos['entry_time_et'] = str(signal.detected_time)[:16]
+                except Exception as e:
+                    logger.debug(f"Could not look up signal for {osi_symbol}: {e}")
+
         return jsonify(positions)
     except Exception as e:
         logger.error(f"Error fetching positions: {e}")

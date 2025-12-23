@@ -812,9 +812,10 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
         # Get display contract or parse OCC symbol
         contract = pos.get('display_contract', pos.get('symbol', ''))
 
-        # Session EQUITY-34: Get pattern and timeframe from signal linkage
+        # Session EQUITY-34: Get pattern, timeframe, and entry time from signal linkage
         pattern = pos.get('pattern', '-')
         timeframe = pos.get('timeframe', '-')
+        entry_time = pos.get('entry_time_et', '')
 
         rows.append(
             html.Tr([
@@ -829,15 +830,15 @@ def create_positions_table(positions: List[Dict]) -> html.Table:
                     })
                 ], style={'padding': '0.75rem'}),
 
-                # Pattern + Timeframe (Session EQUITY-34)
+                # Pattern + Timeframe + Entry Time (Session EQUITY-34)
                 html.Td([
-                    html.Div(pattern, style={
+                    html.Div(f"{pattern} {timeframe}" if pattern != '-' else '-', style={
                         'fontWeight': 'bold',
                         'color': DARK_THEME['accent_blue'] if pattern != '-' else DARK_THEME['text_muted']
                     }),
-                    html.Small(timeframe, style={
-                        'color': DARK_THEME['text_secondary']
-                    }) if timeframe != '-' else None
+                    html.Small(entry_time or '', style={
+                        'color': DARK_THEME['text_muted']
+                    }) if entry_time else None
                 ], style={'padding': '0.75rem'}),
 
                 # Entry Price

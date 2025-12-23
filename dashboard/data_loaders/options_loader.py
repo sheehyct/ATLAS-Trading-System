@@ -280,11 +280,34 @@ class OptionsDataLoader:
         """
         Get live option positions from Alpaca with signal linkage.
 
-        Session EQUITY-34: Now includes pattern and timeframe from originating signal.
+        Session EQUITY-34: Now includes pattern, timeframe, and entry time.
+        Uses VPS API when in remote mode (Railway), local signal store otherwise.
 
         Returns:
             List of position dictionaries with P&L data and pattern info
         """
+        # Session EQUITY-34: Use VPS API when in remote mode
+        if self.use_remote and self.vps_api_url:
+            try:
+                response = requests.get(
+                    f"{self.vps_api_url}/positions",
+                    timeout=10
+                )
+                if response.status_code == 200:
+                    positions = response.json()
+                    # Add display_contract for each position
+                    for pos in positions:
+                        pos['display_contract'] = self._parse_occ_symbol(
+                            pos.get('symbol', '')
+                        )
+                    return positions
+                else:
+                    logger.warning(f"VPS API returned {response.status_code}")
+            except Exception as e:
+                logger.error(f"Error fetching positions from VPS API: {e}")
+            return []
+
+        # Local mode: fetch from Alpaca directly
         if not self._connected:
             self.connect()
         if not self._connected:
@@ -306,6 +329,7 @@ class OptionsDataLoader:
                 # Session EQUITY-34: Look up pattern + timeframe from signal store
                 pos['pattern'] = '-'
                 pos['timeframe'] = '-'
+                pos['entry_time_et'] = None
                 osi_symbol = pos.get('symbol', '')
                 if self.signal_store and osi_symbol:
                     try:
@@ -313,6 +337,18 @@ class OptionsDataLoader:
                         if signal:
                             pos['pattern'] = signal.pattern_type
                             pos['timeframe'] = signal.timeframe
+                            # Format entry time in ET
+                            if signal.detected_time:
+                                try:
+                                    import pytz
+                                    et = pytz.timezone('America/New_York')
+                                    dt = signal.detected_time
+                                    if dt.tzinfo is None:
+                                        dt = pytz.utc.localize(dt)
+                                    dt_et = dt.astimezone(et)
+                                    pos['entry_time_et'] = dt_et.strftime('%m/%d %H:%M')
+                                except Exception:
+                                    pos['entry_time_et'] = str(signal.detected_time)[:16]
                     except Exception as e:
                         logger.debug(f"Could not look up signal for {osi_symbol}: {e}")
 
