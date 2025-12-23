@@ -517,18 +517,6 @@ class OptionsDataLoader:
         if not positions:
             return []
 
-        # Load executions and signals to link
-        executions = self._load_executions()
-
-        # Load all signals from store for target/stop data
-        all_signals = {}
-        if self.signal_store:
-            try:
-                for signal in self.signal_store.get_all():
-                    all_signals[signal.signal_key] = signal
-            except Exception as e:
-                logger.debug(f"Could not load signals: {e}")
-
         # Collect unique underlying symbols to fetch prices
         underlying_symbols = set()
         position_signals = []
@@ -536,12 +524,14 @@ class OptionsDataLoader:
         for pos in positions:
             osi_symbol = pos.get('symbol', '')
 
-            # Find the signal_key for this position
+            # Find the signal that was executed for this position
+            # SignalStore has get_signal_by_osi_symbol() method
             signal = None
-            for key, exec_data in executions.items():
-                if exec_data.get('osi_symbol') == osi_symbol:
-                    signal = all_signals.get(key)
-                    break
+            if self.signal_store:
+                try:
+                    signal = self.signal_store.get_signal_by_osi_symbol(osi_symbol)
+                except Exception as e:
+                    logger.debug(f"Error looking up signal for {osi_symbol}: {e}")
 
             if signal:
                 underlying_symbols.add(signal.symbol)
