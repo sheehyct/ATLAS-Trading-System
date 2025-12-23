@@ -497,6 +497,88 @@ class OptionsDataLoader:
             ) if losers else 0.0,
         }
 
+    def get_positions_with_signals(self) -> List[Dict]:
+        """
+        Get live positions linked to their original signals for trade progress tracking.
+
+        Session EQUITY-33: Enables the "Trade Progress to Target" chart.
+
+        Returns:
+            List of trade dictionaries with:
+            - name: Display name (e.g., "SPY 3-1-2U 1H")
+            - entry: Entry trigger price (underlying stock)
+            - current: Current underlying stock price
+            - target: Target price (underlying stock)
+            - stop: Stop price (underlying stock)
+            - direction: CALL or PUT
+            - pnl_pct: Current P&L percentage
+        """
+        positions = self.get_option_positions()
+        if not positions:
+            return []
+
+        # Load executions and signals to link
+        executions = self._load_executions()
+
+        # Load all signals from store for target/stop data
+        all_signals = {}
+        if self.signal_store:
+            try:
+                for signal in self.signal_store.get_all():
+                    all_signals[signal.signal_key] = signal
+            except Exception as e:
+                logger.debug(f"Could not load signals: {e}")
+
+        # Collect unique underlying symbols to fetch prices
+        underlying_symbols = set()
+        position_signals = []
+
+        for pos in positions:
+            osi_symbol = pos.get('symbol', '')
+
+            # Find the signal_key for this position
+            signal = None
+            for key, exec_data in executions.items():
+                if exec_data.get('osi_symbol') == osi_symbol:
+                    signal = all_signals.get(key)
+                    break
+
+            if signal:
+                underlying_symbols.add(signal.symbol)
+                position_signals.append((pos, signal))
+
+        # Fetch current underlying prices
+        underlying_prices = {}
+        if underlying_symbols and self._connected:
+            try:
+                quotes = self.client.get_stock_quotes(list(underlying_symbols))
+                for symbol, quote in quotes.items():
+                    if isinstance(quote, dict):
+                        underlying_prices[symbol] = quote.get('mid', quote.get('last', 0))
+                    elif isinstance(quote, (int, float)):
+                        underlying_prices[symbol] = float(quote)
+            except Exception as e:
+                logger.debug(f"Could not fetch underlying prices: {e}")
+
+        # Build trade data
+        trades = []
+        for pos, signal in position_signals:
+            current_underlying = underlying_prices.get(signal.symbol, signal.entry_trigger)
+
+            trade = {
+                'name': f"{signal.symbol} {signal.pattern_type} {signal.timeframe}",
+                'entry': signal.entry_trigger,
+                'current': current_underlying,
+                'target': signal.target_price,
+                'stop': signal.stop_price,
+                'direction': signal.direction,
+                'pnl_pct': float(pos.get('unrealized_plpc', 0)),
+                'osi_symbol': pos.get('symbol', ''),
+            }
+            trades.append(trade)
+
+        return trades
+
     def _signal_to_dict(self, signal: StoredSignal) -> Dict:
         """
         Convert StoredSignal to dashboard-friendly dictionary.

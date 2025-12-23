@@ -1644,6 +1644,9 @@ def update_trade_progress(n_intervals, active_tab):
     """
     Update trade progress chart with live position data.
 
+    Session EQUITY-33: Now links positions to their original signals
+    to show entry -> current -> target progress.
+
     Only updates when options tab is active.
     """
     try:
@@ -1651,9 +1654,9 @@ def update_trade_progress(n_intervals, active_tab):
             from dash import no_update
             return no_update
 
-        # For now, return empty chart since we don't have signal-position linkage
-        # In future, this would link positions to their original signals for target tracking
-        return create_trade_progress_chart([])
+        # Get positions linked to their signals
+        trades = options_loader.get_positions_with_signals()
+        return create_trade_progress_chart(trades)
 
     except Exception as e:
         logger.error(f"Error updating trade progress: {e}")
