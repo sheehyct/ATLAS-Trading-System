@@ -79,6 +79,10 @@ class StoredSignal:
     volume_ratio: float = 0.0
     market_regime: str = ''
 
+    # Session EQUITY-33: TFC (Timeframe Continuity) data
+    tfc_score: int = 0
+    tfc_alignment: str = ''
+
     # Setup-specific fields (Session 83K-68: Setup-based detection)
     signal_type: str = SignalType.SETUP.value  # SETUP or COMPLETED
     setup_bar_high: float = 0.0     # Level to monitor for bullish break
@@ -135,6 +139,9 @@ class StoredSignal:
             atr_14=signal.context.atr_14 if signal.context else 0.0,
             volume_ratio=signal.context.volume_ratio if signal.context else 0.0,
             market_regime=signal.context.market_regime if signal.context else '',
+            # Session EQUITY-33: TFC data
+            tfc_score=signal.context.tfc_score if signal.context else 0,
+            tfc_alignment=signal.context.tfc_alignment if signal.context else '',
             # Session 83K-68: Setup-based detection fields
             signal_type=getattr(signal, 'signal_type', SignalType.COMPLETED.value),
             setup_bar_high=getattr(signal, 'setup_bar_high', 0.0),

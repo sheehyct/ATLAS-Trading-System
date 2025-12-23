@@ -568,11 +568,14 @@ class DiscordAlerter(BaseAlerter):
         option_type = "Call" if signal.direction == "CALL" else "Put"
 
         # Clean, mobile-friendly message
+        # Session EQUITY-33: Added magnitude and TFC score
+        tfc_display = f"{signal.tfc_score}/4" if hasattr(signal, 'tfc_score') and signal.tfc_score else "N/A"
         message = (
             f"**Entry: {signal.symbol} {signal.pattern_type} {signal.timeframe} {option_type}**\n"
             f"@ ${signal.entry_trigger:.2f} | "
             f"Target: ${signal.target_price:.2f} | "
-            f"Stop: ${signal.stop_price:.2f}"
+            f"Stop: ${signal.stop_price:.2f}\n"
+            f"Mag: {signal.magnitude_pct:.2f}% | TFC: {tfc_display}"
         )
 
         payload = {

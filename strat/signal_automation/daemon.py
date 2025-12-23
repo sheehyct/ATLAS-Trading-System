@@ -738,6 +738,23 @@ class SignalDaemon:
 
         return True
 
+    def _is_market_hours(self) -> bool:
+        """
+        Check if current time is within market hours (9:30-16:00 ET).
+
+        Session EQUITY-33: Explicit timezone-aware check to prevent premarket alerts
+        even if VPS timezone is misconfigured.
+
+        Returns:
+            True if within market hours, False otherwise
+        """
+        import pytz
+        et = pytz.timezone('America/New_York')
+        now = datetime.now(et).time()
+        market_open = dt_time(9, 30)
+        market_close = dt_time(16, 0)
+        return market_open <= now <= market_close
+
     def _send_alerts(self, signals: List[StoredSignal]) -> None:
         """
         Send alerts for new signals.
@@ -745,9 +762,22 @@ class SignalDaemon:
         Session 83K-77: Discord only receives trade execution alerts (entry/exit),
         not signal detection alerts. Logging alerter still logs all signals.
 
+        Session EQUITY-33: Added explicit market hours check to prevent premarket alerts.
+
         Args:
             signals: Signals to alert
         """
+        # Session EQUITY-33: Skip ALL alerting during premarket/afterhours
+        if not self._is_market_hours():
+            logger.debug(
+                f"Outside market hours - skipping alerts for {len(signals)} signals"
+            )
+            # Still mark as alerted for internal tracking
+            for signal in signals:
+                if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
+                    self.signal_store.mark_alerted(signal.signal_key)
+            return
+
         for alerter in self.alerters:
             try:
                 # Session 83K-77: Skip Discord for signal detection (only trades)
@@ -970,12 +1000,18 @@ class SignalDaemon:
 
         if current_time < earliest_time:
             logger.info(
-                f"{signal.timeframe} {pattern_type_str} pattern {signal.symbol} {pattern} blocked: "
-                f"current time {current_time.strftime('%H:%M')} < {earliest_time.strftime('%H:%M')} "
-                f"(let market breathe)"
+                f"TIMING FILTER BLOCKED: {signal.symbol} {pattern} ({signal.timeframe}) - "
+                f"{pattern_type_str} pattern before {earliest_time.strftime('%H:%M')} "
+                f"(current: {current_time.strftime('%H:%M')})"
             )
             return False
 
+        # Session EQUITY-33: Log when patterns pass the filter for verification
+        logger.info(
+            f"TIMING FILTER PASSED: {signal.symbol} {pattern} ({signal.timeframe}) - "
+            f"{pattern_type_str} at {current_time.strftime('%H:%M')} "
+            f"(threshold: {earliest_time.strftime('%H:%M')})"
+        )
         return True
 
     def _execute_signals(

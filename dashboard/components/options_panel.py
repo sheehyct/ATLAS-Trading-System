@@ -142,9 +142,10 @@ def create_options_panel():
                     }),
                     dbc.CardBody([
                         # Signal Tabs
+                        # Session EQUITY-33: Renamed tabs for clarity
                         dbc.Tabs([
                             dbc.Tab(
-                                label='Active Setups',
+                                label='Pending Entries',  # Renamed from "Active Setups"
                                 tab_id='tab-setups',
                                 label_style={'color': DARK_THEME['text_secondary']},
                                 active_label_style={
@@ -160,7 +161,7 @@ def create_options_panel():
                                 ]
                             ),
                             dbc.Tab(
-                                label='Triggered',
+                                label='Triggered Signals',  # Renamed from "Triggered"
                                 tab_id='tab-triggered',
                                 label_style={'color': DARK_THEME['text_secondary']},
                                 active_label_style={
