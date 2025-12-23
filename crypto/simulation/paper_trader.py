@@ -398,6 +398,8 @@ class PaperTrader:
         """
         Get account summary with all metrics.
 
+        Session EQUITY-34: Added reserved_margin and available_balance.
+
         Returns:
             Dict with account summary
         """
@@ -405,6 +407,8 @@ class PaperTrader:
             "account_name": self.account_name,
             "starting_balance": self.account.starting_balance,
             "current_balance": self.account.current_balance,
+            "reserved_margin": self.account.reserved_margin,
+            "available_balance": self.get_available_balance(),
             "realized_pnl": self.account.realized_pnl,
             "return_percent": (
                 (self.account.current_balance - self.account.starting_balance)

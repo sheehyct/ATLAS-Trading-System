@@ -390,6 +390,8 @@ def create_account_summary_display(summary: Dict) -> html.Div:
         return _create_api_error_placeholder('Account data not available')
 
     balance = summary.get('current_balance', 0)
+    available = summary.get('available_balance', balance)  # Session EQUITY-34
+    reserved = summary.get('reserved_margin', 0)  # Session EQUITY-34
     starting = summary.get('starting_balance', 1000)
     realized_pnl = summary.get('realized_pnl', 0)
     return_pct = summary.get('return_percent', 0)
@@ -402,10 +404,11 @@ def create_account_summary_display(summary: Dict) -> html.Div:
 
     return html.Div([
         dbc.Row([
+            # Session EQUITY-34: Show Available Balance (after margin) prominently
             dbc.Col([
                 html.Div([
-                    html.Small('Current Balance', style={'color': DARK_THEME['text_secondary']}),
-                    html.H4(f'${balance:,.2f}', style={
+                    html.Small('Available Balance', style={'color': DARK_THEME['text_secondary']}),
+                    html.H4(f'${available:,.2f}', style={
                         'color': DARK_THEME['text_primary'],
                         'marginBottom': '0'
                     })
@@ -413,9 +416,9 @@ def create_account_summary_display(summary: Dict) -> html.Div:
             ], width=6),
             dbc.Col([
                 html.Div([
-                    html.Small('Starting Balance', style={'color': DARK_THEME['text_secondary']}),
-                    html.H5(f'${starting:,.2f}', style={
-                        'color': DARK_THEME['text_muted'],
+                    html.Small('In Positions', style={'color': DARK_THEME['text_secondary']}),
+                    html.H5(f'${reserved:,.2f}', style={
+                        'color': DARK_THEME['accent_blue'],
                         'marginBottom': '0'
                     })
                 ])
