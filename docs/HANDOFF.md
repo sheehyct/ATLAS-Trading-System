@@ -1,9 +1,58 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 22, 2025 (Session EQUITY-32)
+**Last Updated:** December 23, 2025 (Session EQUITY-33)
 **Current Branch:** `main`
-**Phase:** Paper Trading - TRIGGERED Pattern Fix
-**Status:** Equity daemon TRIGGERED pattern execution fix deployed
+**Phase:** Paper Trading - Premarket Fix + Discord Enhancement
+**Status:** Premarket alert fix deployed, Discord entry alerts enhanced
+
+---
+
+## Session EQUITY-33: Premarket Alert Fix + Discord Enhancement (COMPLETE)
+
+**Date:** December 23, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - All fixes deployed to VPS
+
+### Issues Addressed
+
+1. **Premarket Discord Alerts** - Rich embed pattern detection alerts being sent at 8:45 AM
+   - Root cause: VPS timezone showing 13:45 labeled as "ET" but was actually UTC (13:45 UTC = 8:45 AM ET)
+   - Fix: Added `_is_market_hours()` with explicit pytz timezone conversion
+
+2. **Discord Entry Alert Metrics** - Missing magnitude and TFC score
+   - Added: `Mag: X.XX% | TFC: X/4` to entry alerts
+
+3. **Dashboard Tab Naming** - Clarified tab names
+   - "Active Setups" -> "Pending Entries"
+   - "Triggered" -> "Triggered Signals"
+
+4. **Timing Filter Logging** - Added verification logging
+   - `TIMING FILTER BLOCKED:` and `TIMING FILTER PASSED:` prefixes
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/daemon.py` | Added `_is_market_hours()`, enhanced timing filter logging |
+| `strat/signal_automation/signal_store.py` | Added `tfc_score`, `tfc_alignment` fields |
+| `strat/signal_automation/alerters/discord_alerter.py` | Added magnitude/TFC to entry alerts |
+| `dashboard/components/options_panel.py` | Renamed tabs for clarity |
+
+**Commit:** `247f4e4`
+
+### STRAT Terminology Alignment (Documented)
+
+| Term | Definition |
+|------|------------|
+| **Pattern Triggered** | Moment we ENTER a trade |
+| **Pattern Completed** | Pattern hits its magnitude/target |
+| **Pattern Invalidated** | Hit stop loss OR magnitude too close |
+
+### Next Session (EQUITY-34) Priorities
+
+1. **Monitor today's session** - Verify no premarket alerts, timing filters working
+2. **Continue trade audit** - 5 remaining trades from EQUITY-30
+3. **Enhanced exit alerts** - Add entry/exit times and duration (deferred)
 
 ---
 
