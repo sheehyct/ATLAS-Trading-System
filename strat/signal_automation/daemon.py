@@ -1323,6 +1323,10 @@ class SignalDaemon:
         # Start scheduler
         self.scheduler.start()
 
+        # Start API server if enabled (Session EQUITY-33)
+        if self.config.api.enabled:
+            self._start_api_server()
+
         # Notify startup (Session 83K-77: Discord only sends trade alerts, not daemon status)
         for alerter in self.alerters:
             if isinstance(alerter, LoggingAlerter):
@@ -1453,3 +1457,37 @@ class SignalDaemon:
             logger.error("Execution not enabled")
             return None
         return self.executor.close_position(osi_symbol)
+
+    def _start_api_server(self) -> None:
+        """
+        Start the REST API server in a background thread.
+
+        Session EQUITY-33: Enables remote dashboard access to daemon data.
+        """
+        import threading
+
+        try:
+            from strat.signal_automation.api.server import init_api, run_api
+
+            # Initialize API with this daemon instance
+            init_api(self)
+
+            # Start API server in background thread
+            api_thread = threading.Thread(
+                target=run_api,
+                kwargs={
+                    'host': self.config.api.host,
+                    'port': self.config.api.port,
+                    'debug': False,
+                },
+                daemon=True,  # Thread dies when main process exits
+                name='equity-api-server',
+            )
+            api_thread.start()
+
+            logger.info(
+                f"API server started on {self.config.api.host}:{self.config.api.port}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to start API server: {e}")

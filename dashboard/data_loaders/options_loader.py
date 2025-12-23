@@ -502,6 +502,7 @@ class OptionsDataLoader:
         Get live positions linked to their original signals for trade progress tracking.
 
         Session EQUITY-33: Enables the "Trade Progress to Target" chart.
+        Uses VPS API endpoint when in remote mode (Railway deployment).
 
         Returns:
             List of trade dictionaries with:
@@ -513,6 +514,25 @@ class OptionsDataLoader:
             - direction: CALL or PUT
             - pnl_pct: Current P&L percentage
         """
+        # Session EQUITY-33: Use VPS API when in remote mode
+        if self.use_remote and self.vps_api_url:
+            try:
+                response = requests.get(
+                    f"{self.vps_api_url}/positions_with_signals",
+                    timeout=10
+                )
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.warning(
+                        f"VPS API returned status {response.status_code}"
+                    )
+                    return []
+            except Exception as e:
+                logger.error(f"Error fetching positions with signals from VPS: {e}")
+                return []
+
+        # Local mode: use signal store directly
         positions = self.get_option_positions()
         if not positions:
             return []

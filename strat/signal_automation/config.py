@@ -284,6 +284,23 @@ class MonitoringConfig:
 
 
 @dataclass
+class ApiConfig:
+    """
+    REST API server configuration - Session EQUITY-33.
+
+    Controls the optional HTTP API for remote dashboard access.
+
+    Attributes:
+        enabled: Enable API server
+        host: Host to bind to
+        port: Port to bind to
+    """
+    enabled: bool = False  # Off by default
+    host: str = '0.0.0.0'  # Listen on all interfaces
+    port: int = 8081       # Default port (8080 used by crypto)
+
+
+@dataclass
 class SignalAutomationConfig:
     """
     Master configuration for the signal automation system.
@@ -297,6 +314,7 @@ class SignalAutomationConfig:
         alerts: Alert delivery configuration
         execution: Options execution configuration (Session 83K-48)
         monitoring: Position monitoring configuration (Session 83K-49)
+        api: REST API server configuration (Session EQUITY-33)
         store_path: Path to signal store directory
         graceful_shutdown_timeout: Seconds to wait for graceful shutdown
         health_check_interval: Seconds between health checks
@@ -306,6 +324,7 @@ class SignalAutomationConfig:
     alerts: AlertConfig = field(default_factory=AlertConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
+    api: ApiConfig = field(default_factory=ApiConfig)
 
     # Signal store location
     store_path: str = 'data/signals'
@@ -399,12 +418,23 @@ class SignalAutomationConfig:
         # Store path
         store_path = os.environ.get('SIGNAL_STORE_PATH', 'data/signals')
 
+        # API configuration (Session EQUITY-33)
+        api_config = ApiConfig()
+        api_config.enabled = os.environ.get(
+            'SIGNAL_API_ENABLED', 'false'
+        ).lower() == 'true'
+        if api_host := os.environ.get('SIGNAL_API_HOST'):
+            api_config.host = api_host
+        if api_port := os.environ.get('SIGNAL_API_PORT'):
+            api_config.port = int(api_port)
+
         return cls(
             scan=scan_config,
             schedule=schedule_config,
             alerts=alert_config,
             execution=execution_config,
             monitoring=monitoring_config,
+            api=api_config,
             store_path=store_path,
         )
 
