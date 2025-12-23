@@ -210,8 +210,10 @@ class PaperTrader:
             SimulatedTrade object if opened, None if insufficient margin
         """
         # Calculate margin required for this position
+        # Session EQUITY-34: Use max(1.0, leverage) to avoid margin > notional when leverage < 1
         position_notional = quantity * entry_price
-        margin_required = position_notional / leverage
+        effective_leverage = max(1.0, leverage)
+        margin_required = position_notional / effective_leverage
 
         # Check available balance (Session EQUITY-34)
         available = self.get_available_balance()
