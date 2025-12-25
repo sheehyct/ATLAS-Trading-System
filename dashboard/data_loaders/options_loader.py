@@ -641,6 +641,35 @@ class OptionsDataLoader:
 
         return trades
 
+    def _get_entry_trigger_display(self, signal: StoredSignal) -> float:
+        """
+        Get the appropriate entry trigger price for display.
+
+        Session EQUITY-34: For SETUP signals (incomplete patterns like "3-?"),
+        entry_trigger is 0.0 since the pattern is incomplete. In this case,
+        return the setup bar level that needs to break:
+        - CALL: setup_bar_high (bullish break level)
+        - PUT: setup_bar_low (bearish break level)
+
+        Args:
+            signal: The signal to get entry trigger for
+
+        Returns:
+            Entry trigger price as float
+        """
+        # Check if this is a SETUP with 0.0 entry trigger
+        if signal.entry_trigger == 0.0 or (
+            hasattr(signal, 'signal_type') and signal.signal_type == 'SETUP'
+        ):
+            # Use setup bar levels based on direction
+            if signal.direction == 'CALL' and hasattr(signal, 'setup_bar_high') and signal.setup_bar_high > 0:
+                return signal.setup_bar_high
+            elif signal.direction == 'PUT' and hasattr(signal, 'setup_bar_low') and signal.setup_bar_low > 0:
+                return signal.setup_bar_low
+
+        # Default: use entry_trigger
+        return signal.entry_trigger
+
     def _signal_to_dict(self, signal: StoredSignal) -> Dict:
         """
         Convert StoredSignal to dashboard-friendly dictionary.
@@ -651,13 +680,16 @@ class OptionsDataLoader:
         Returns:
             Dictionary with display-ready fields
         """
+        # Session EQUITY-34: Use helper for proper SETUP pattern entry display
+        entry_trigger = self._get_entry_trigger_display(signal)
+
         return {
             'signal_key': signal.signal_key,
             'symbol': signal.symbol,
             'timeframe': signal.timeframe,
             'pattern': signal.pattern_type,
             'direction': signal.direction,
-            'entry_trigger': signal.entry_trigger,
+            'entry_trigger': entry_trigger,
             'target': signal.target_price,
             'stop': signal.stop_price,
             'magnitude_pct': signal.magnitude_pct,

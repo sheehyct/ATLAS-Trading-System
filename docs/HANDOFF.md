@@ -1,9 +1,79 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 23, 2025 (Session EQUITY-33)
+**Last Updated:** December 25, 2025 (Session EQUITY-34)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Premarket Fix + Discord Enhancement
-**Status:** Premarket alert fix deployed, Discord entry alerts enhanced
+**Phase:** Paper Trading - Daemon Bug Fixes
+**Status:** 5 daemon bugs fixed, deployed to VPS
+
+---
+
+## Session EQUITY-34: Daemon Bug Fixes from Audit (COMPLETE)
+
+**Date:** December 25, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - All 5 bug fixes deployed to VPS
+
+### Issues Addressed (from Claude Code for Web Audit)
+
+1. **Market Hours/Holiday Handling** - `_is_market_hours()` was hardcoded 9:30-4:00 PM
+   - Fix: Now uses `pandas_market_calendars` for accurate holiday/early close detection
+   - Examples: Christmas Day (closed), Christmas Eve (1 PM close)
+
+2. **Discord Alert Flooding** - Used isinstance check instead of config flags
+   - Fix: Added explicit alert config flags matching crypto daemon pattern:
+     - `alert_on_signal_detection: False` (pattern detection - noisy)
+     - `alert_on_trigger: False` (SETUP price hit)
+     - `alert_on_trade_entry: True` (trade executes)
+     - `alert_on_trade_exit: True` (trade closes)
+
+3. **TFC Score Always N/A** - Truthiness check failed for score of 0
+   - Fix: Changed `if signal.tfc_score` to `if signal.tfc_score is not None`
+   - Now correctly displays "0/4" instead of "N/A"
+
+4. **15-Minute Alerts** - `scan_15m=True` but 15m not in timeframes
+   - Fix: Set `scan_15m=False` and `scan_30m=False` in ScheduleConfig
+   - These are not needed for STRAT resampling architecture
+
+5. **Entry Trigger $0.00** - SETUP patterns showed $0.00 for incomplete patterns
+   - Fix: Added `_get_entry_trigger_display()` helper method
+   - Displays `setup_bar_high` (CALL) or `setup_bar_low` (PUT) for SETUP signals
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/daemon.py` | Calendar-aware `_is_market_hours()`, config flag check in `_send_alerts()` |
+| `strat/signal_automation/config.py` | Alert type flags in AlertConfig, disabled 15m/30m scans |
+| `strat/signal_automation/alerters/discord_alerter.py` | TFC truthiness fix, entry trigger helper |
+
+**Commit:** `d2ab504`
+**Tests:** 297 STRAT + 14 signal automation passed
+
+### Additional Fix: Dashboard Entry Trigger
+
+Also fixed dashboard entry trigger display for SETUP patterns:
+- **File:** `dashboard/data_loaders/options_loader.py`
+- **Fix:** Added `_get_entry_trigger_display()` helper (same as discord_alerter)
+- SETUP patterns now show `setup_bar_high/low` instead of $0.00
+
+### ATLAS Strategy Audit Findings
+
+Explored strategy implementation status per system architecture:
+
+| Strategy | Status | Priority |
+|----------|--------|----------|
+| 52-Week High Momentum | VALIDATED (Session 36) | Phase 1 |
+| Quality-Momentum | SKELETON | Phase 1 |
+| Semi-Volatility Momentum | SKELETON | Phase 2 |
+| IBS Mean Reversion | SKELETON | Phase 2 |
+| Opening Range Breakout | Partial | Phase 3 |
+| STRAT Options | COMPLETE | Live |
+
+### Next Session (EQUITY-35) Priorities
+
+1. **Create comprehensive ATLAS strategy implementation plan** - Plan mode for remaining strategies
+2. **Start Quality-Momentum implementation** - Phase 1 priority per architecture
+3. **Monitor trading session** - Verify market hours calendar works (Dec 26)
 
 ---
 
