@@ -740,29 +740,57 @@ class SignalDaemon:
 
     def _is_market_hours(self) -> bool:
         """
-        Check if current time is within market hours (9:30-16:00 ET).
+        Check if current time is within NYSE market hours.
 
-        Session EQUITY-33: Explicit timezone-aware check to prevent premarket alerts
-        even if VPS timezone is misconfigured.
+        Session EQUITY-34: Uses pandas_market_calendars for accurate holiday
+        and early close handling (e.g., Christmas Eve 1PM, Thanksgiving Friday 1PM).
 
         Returns:
             True if within market hours, False otherwise
         """
         import pytz
+        import pandas_market_calendars as mcal
+
         et = pytz.timezone('America/New_York')
-        now = datetime.now(et).time()
-        market_open = dt_time(9, 30)
-        market_close = dt_time(16, 0)
-        return market_open <= now <= market_close
+        now = datetime.now(et)
+
+        # Get NYSE calendar
+        nyse = mcal.get_calendar('NYSE')
+
+        # Get today's schedule
+        schedule = nyse.schedule(
+            start_date=now.date(),
+            end_date=now.date()
+        )
+
+        # Check if market is open today (handles holidays)
+        if schedule.empty:
+            logger.debug(f"Market closed: {now.date()} is not a trading day")
+            return False
+
+        # Get market open/close times (handles early closes)
+        market_open = schedule.iloc[0]['market_open']
+        market_close = schedule.iloc[0]['market_close']
+
+        # Compare timezone-aware datetimes
+        if now < market_open:
+            logger.debug(f"Market not yet open: opens at {market_open.strftime('%H:%M')} ET")
+            return False
+
+        if now > market_close:
+            logger.debug(f"Market closed: closed at {market_close.strftime('%H:%M')} ET")
+            return False
+
+        return True
 
     def _send_alerts(self, signals: List[StoredSignal]) -> None:
         """
         Send alerts for new signals.
 
-        Session 83K-77: Discord only receives trade execution alerts (entry/exit),
-        not signal detection alerts. Logging alerter still logs all signals.
-
-        Session EQUITY-33: Added explicit market hours check to prevent premarket alerts.
+        Session EQUITY-34: Uses explicit config flags for Discord alert control.
+        Discord only receives alerts based on alert_on_signal_detection config.
+        Trade entry/exit alerts are controlled by alert_on_trade_entry/exit flags.
+        Logging alerter still logs all signals.
 
         Args:
             signals: Signals to alert
@@ -780,13 +808,14 @@ class SignalDaemon:
 
         for alerter in self.alerters:
             try:
-                # Session 83K-77: Skip Discord for signal detection (only trades)
+                # Session EQUITY-34: Use explicit config flag for Discord signal detection
                 if isinstance(alerter, DiscordAlerter):
-                    # Mark as alerted without sending Discord message
-                    for signal in signals:
-                        if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
-                            self.signal_store.mark_alerted(signal.signal_key)
-                    continue
+                    if not self.config.alerts.alert_on_signal_detection:
+                        # Mark as alerted without sending Discord message
+                        for signal in signals:
+                            if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
+                                self.signal_store.mark_alerted(signal.signal_key)
+                        continue
 
                 # Logging alerter: log all signals
                 if len(signals) > 1 and hasattr(alerter, 'send_batch_alert'):

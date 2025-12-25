@@ -143,8 +143,9 @@ class ScheduleConfig:
     # Session EQUITY-18: Added scan_15m and scan_30m flags
     # =========================================================================
     # Enable/disable individual timeframe scans
-    scan_15m: bool = True      # 15-minute timeframe scanning
-    scan_30m: bool = True      # 30-minute timeframe scanning
+    # Session EQUITY-34: Disabled - not in ScanConfig.timeframes, not used for STRAT resampling
+    scan_15m: bool = False     # 15-minute timeframe scanning (disabled)
+    scan_30m: bool = False     # 30-minute timeframe scanning (disabled)
     scan_hourly: bool = True
     scan_daily: bool = True
     scan_weekly: bool = True
@@ -164,9 +165,15 @@ class AlertConfig:
 
     Supports multiple channels with throttling to prevent spam.
 
+    Session EQUITY-34: Added explicit alert type flags matching crypto daemon pattern.
+
     Attributes:
         discord_webhook_url: Discord webhook URL (from env if not set)
         discord_enabled: Enable Discord alerts
+        alert_on_signal_detection: Send alerts for pattern detection (noisy, disabled)
+        alert_on_trigger: Send alerts when SETUP price hit (disabled)
+        alert_on_trade_entry: Send alerts when trade executes (enabled)
+        alert_on_trade_exit: Send alerts when trade closes (enabled)
         email_enabled: Enable email alerts (future)
         email_smtp_server: SMTP server for email
         email_from: From address for email
@@ -178,6 +185,12 @@ class AlertConfig:
     # Discord configuration
     discord_webhook_url: Optional[str] = None
     discord_enabled: bool = True
+
+    # Discord alert types (Session EQUITY-34: Explicit control matching crypto daemon)
+    alert_on_signal_detection: bool = False  # Pattern detection (noisy)
+    alert_on_trigger: bool = False           # When SETUP price hit
+    alert_on_trade_entry: bool = True        # When trade executes
+    alert_on_trade_exit: bool = True         # When trade closes with P&L
 
     # Email configuration (future)
     email_enabled: bool = False

@@ -174,6 +174,35 @@ class DiscordAlerter(BaseAlerter):
         logger.error(f"Discord webhook failed after {self.retry_attempts} attempts")
         return False
 
+    def _get_entry_trigger_display(self, signal: StoredSignal) -> str:
+        """
+        Get entry trigger price for display.
+
+        Session EQUITY-34: For SETUP signals (incomplete patterns like "3-?"),
+        entry_trigger is 0.0 since the pattern is incomplete. In this case,
+        display the setup bar level that needs to break:
+        - CALL: setup_bar_high (bullish break level)
+        - PUT: setup_bar_low (bearish break level)
+
+        Args:
+            signal: The signal to get entry trigger for
+
+        Returns:
+            Formatted price string like "$123.45"
+        """
+        # Check if this is a SETUP with 0.0 entry trigger
+        if signal.entry_trigger == 0.0 or (
+            hasattr(signal, 'signal_type') and signal.signal_type == 'SETUP'
+        ):
+            # Use setup bar levels based on direction
+            if signal.direction == 'CALL' and hasattr(signal, 'setup_bar_high') and signal.setup_bar_high > 0:
+                return f"${signal.setup_bar_high:.2f}"
+            elif signal.direction == 'PUT' and hasattr(signal, 'setup_bar_low') and signal.setup_bar_low > 0:
+                return f"${signal.setup_bar_low:.2f}"
+
+        # Default: use entry_trigger
+        return f"${signal.entry_trigger:.2f}"
+
     def _create_signal_embed(self, signal: StoredSignal) -> Dict[str, Any]:
         """
         Create Discord embed for a signal.
@@ -197,10 +226,11 @@ class DiscordAlerter(BaseAlerter):
         description = f"**{signal.pattern_type}** pattern detected on {signal.timeframe} timeframe"
 
         # Price fields
+        # Session EQUITY-34: Use helper for SETUP signals with 0.0 entry_trigger
         fields = [
             {
                 'name': 'Entry Trigger',
-                'value': f'${signal.entry_trigger:.2f}',
+                'value': self._get_entry_trigger_display(signal),
                 'inline': True
             },
             {
@@ -569,10 +599,13 @@ class DiscordAlerter(BaseAlerter):
 
         # Clean, mobile-friendly message
         # Session EQUITY-33: Added magnitude and TFC score
-        tfc_display = f"{signal.tfc_score}/4" if hasattr(signal, 'tfc_score') and signal.tfc_score else "N/A"
+        # Session EQUITY-34: Fix truthiness check - 0 is valid TFC score
+        # Session EQUITY-34: Use helper for SETUP signals with 0.0 entry_trigger
+        tfc_display = f"{signal.tfc_score}/4" if hasattr(signal, 'tfc_score') and signal.tfc_score is not None else "N/A"
+        entry_display = self._get_entry_trigger_display(signal)
         message = (
             f"**Entry: {signal.symbol} {signal.pattern_type} {signal.timeframe} {option_type}**\n"
-            f"@ ${signal.entry_trigger:.2f} | "
+            f"@ {entry_display} | "
             f"Target: ${signal.target_price:.2f} | "
             f"Stop: ${signal.stop_price:.2f}\n"
             f"Mag: {signal.magnitude_pct:.2f}% | TFC: {tfc_display}"
