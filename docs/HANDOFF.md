@@ -1,9 +1,73 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 25, 2025 (Session EQUITY-34)
+**Last Updated:** December 26, 2025 (Session EQUITY-35)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Daemon Bug Fixes
-**Status:** 5 daemon bugs fixed, deployed to VPS
+**Phase:** Paper Trading - Daemon Stability
+**Status:** Premarket alerts fixed, EOD exit for 1H trades implemented
+
+---
+
+## Session EQUITY-35: Premarket Alert Fix + EOD Exit (COMPLETE)
+
+**Date:** December 26, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - All fixes deployed to VPS
+
+### Issues Addressed
+
+1. **Premarket Discord Alerts Every 15 Minutes**
+   - Root cause: Separate cron job (`premarket_pipeline_test.py`) running every 15 min during premarket
+   - Sent alerts directly to Discord, bypassing daemon's `alert_on_signal_detection=False` config
+   - Also scanned 15m timeframe despite `SIGNAL_TIMEFRAMES=1H,1D,1W,1M`
+   - Fix: Disabled the cron job
+
+2. **API Keys Unauthorized**
+   - Root cause: Old API keys in VPS `.env` file (only `ALPACA_API_KEY_SMALL` updated, not generic `ALPACA_API_KEY`)
+   - Fix: Updated all 4 Alpaca key variables in VPS `.env`
+
+3. **Timestamp Showing UTC as ET**
+   - Root cause: Naive datetime with hardcoded "ET" label in discord_alerter.py
+   - Fix: Added proper pytz timezone conversion before display
+
+4. **Missing EOD Exit for 1H Trades**
+   - Per STRAT methodology: The truncated 15:30 bar allows entries, but all hourly trades must exit before market close
+   - Fix: Added `EOD_EXIT` reason and automatic exit at 15:55 ET for 1H timeframe positions
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/daemon.py` | Added debug logging for alert flow |
+| `strat/signal_automation/alerters/discord_alerter.py` | Fixed timezone conversion for "Detected:" timestamp |
+| `strat/signal_automation/position_monitor.py` | Added EOD_EXIT reason and 15:55 ET exit for 1H trades |
+
+### VPS Changes
+
+- Disabled cron job: `premarket_pipeline_test.py` (was running every 15 min 9:00-14:59 UTC)
+- Updated `.env`: All 4 Alpaca keys now have new credentials
+
+**Commits:**
+- `98b4f01`: fix(daemon): add logging for alert flow and fix timezone display (EQUITY-35)
+- `0057857`: feat(position-monitor): add EOD exit for 1H trades (EQUITY-35)
+
+### Current Daemon Entry Rules Confirmed
+
+| Timeframe | 2-bar patterns | 3-bar patterns |
+|-----------|----------------|----------------|
+| 1H | After 10:30 AM ET | After 11:30 AM ET |
+| 1D/1W/1M | No time restriction | No time restriction |
+
+### TFC (Timeframe Continuity) Status
+
+- Stored and displayed in signals (`tfc_score`, `tfc_alignment`)
+- NOT used for position sizing (capital-based 1-5 contracts)
+- NOT used for entry qualification (only magnitude + R:R checked)
+
+### Next Session (EQUITY-36) Priorities
+
+1. **Monitor trading session** - Verify EOD exit works at 15:55 ET for 1H trades
+2. **Continue trade audit** - 5 remaining trades from EQUITY-30
+3. **ATLAS Strategy Implementation** - Start Quality-Momentum (deferred from this session)
 
 ---
 
