@@ -264,8 +264,18 @@ class DiscordAlerter(BaseAlerter):
         footer_parts = []
         if signal.market_regime:
             footer_parts.append(f"Regime: {signal.market_regime}")
+
+        # Session EQUITY-35: Convert detected_time to ET for display
+        # The datetime may be naive (in server timezone) or UTC - convert properly
+        import pytz
+        et = pytz.timezone('America/New_York')
+        dt = signal.detected_time
+        if dt.tzinfo is None:
+            # Assume naive datetime is UTC (server runs in UTC)
+            dt = pytz.utc.localize(dt)
+        dt_et = dt.astimezone(et)
         footer_parts.append(
-            f"Detected: {signal.detected_time.strftime('%Y-%m-%d %H:%M ET')}"
+            f"Detected: {dt_et.strftime('%Y-%m-%d %H:%M ET')}"
         )
 
         embed = {

@@ -795,10 +795,20 @@ class SignalDaemon:
         Args:
             signals: Signals to alert
         """
+        # Session EQUITY-35: Debug logging to understand alert flow
+        import pytz
+        et = pytz.timezone('America/New_York')
+        now_et = datetime.now(et)
+        logger.info(
+            f"_send_alerts called: {len(signals)} signals at {now_et.strftime('%H:%M:%S ET')}, "
+            f"is_market_hours={self._is_market_hours()}, "
+            f"alert_on_signal_detection={self.config.alerts.alert_on_signal_detection}"
+        )
+
         # Session EQUITY-33: Skip ALL alerting during premarket/afterhours
         if not self._is_market_hours():
-            logger.debug(
-                f"Outside market hours - skipping alerts for {len(signals)} signals"
+            logger.info(
+                f"BLOCKED (outside market hours): {len(signals)} signals at {now_et.strftime('%H:%M:%S ET')}"
             )
             # Still mark as alerted for internal tracking
             for signal in signals:
@@ -811,6 +821,11 @@ class SignalDaemon:
                 # Session EQUITY-34: Use explicit config flag for Discord signal detection
                 if isinstance(alerter, DiscordAlerter):
                     if not self.config.alerts.alert_on_signal_detection:
+                        # Session EQUITY-35: Log when Discord alerts are blocked
+                        logger.info(
+                            f"BLOCKED Discord pattern alerts: alert_on_signal_detection=False, "
+                            f"{len(signals)} signals"
+                        )
                         # Mark as alerted without sending Discord message
                         for signal in signals:
                             if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
