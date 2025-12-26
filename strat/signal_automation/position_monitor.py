@@ -35,6 +35,7 @@ class ExitReason(str, Enum):
     MAX_LOSS = "MAX_LOSS"       # Unrealized loss exceeded threshold
     MANUAL = "MANUAL"           # Manually closed
     TIME_EXIT = "TIME"          # Max hold time exceeded
+    EOD_EXIT = "EOD"            # Session EQUITY-35: End of day exit for 1H trades
 
 
 @dataclass
@@ -58,6 +59,11 @@ class MonitoringConfig:
     alert_on_exit: bool = True           # Send alerts for exits
     alert_on_profit_target: bool = True  # Alert when approaching profit target
     alert_pct_to_target: float = 0.80    # Alert when 80% to target
+
+    # Session EQUITY-35: EOD exit for hourly trades
+    # All 1H timeframe trades must exit before market close to avoid overnight gap risk
+    eod_exit_hour: int = 15              # Hour in ET for EOD exit
+    eod_exit_minute: int = 55            # Minute in ET for EOD exit (15:55 = 5 min buffer)
 
 
 @dataclass
@@ -389,6 +395,7 @@ class PositionMonitor:
 
         Exit conditions (in priority order):
         0. Minimum hold time check (Session 83K-77 - prevent rapid exit)
+        0.5. EOD exit for 1H trades (Session EQUITY-35 - avoid overnight gap)
         1. DTE exit (mandatory - theta decay risk)
         2. Stop hit (loss management)
         3. Max loss exceeded (risk management)
@@ -403,6 +410,35 @@ class PositionMonitor:
                 f"min {self.config.minimum_hold_seconds}s - skipping exit check"
             )
             return None
+
+        # 0.5. Session EQUITY-35: EOD exit for 1H trades
+        # All hourly trades must exit before market close to avoid overnight gap risk
+        if pos.timeframe == '1H':
+            import pytz
+            et = pytz.timezone('America/New_York')
+            now_et = datetime.now(et)
+            eod_exit_time = now_et.replace(
+                hour=self.config.eod_exit_hour,
+                minute=self.config.eod_exit_minute,
+                second=0,
+                microsecond=0
+            )
+            if now_et >= eod_exit_time:
+                logger.info(
+                    f"EOD EXIT: {pos.osi_symbol} (1H) - "
+                    f"current time {now_et.strftime('%H:%M ET')} >= "
+                    f"EOD cutoff {self.config.eod_exit_hour}:{self.config.eod_exit_minute:02d} ET"
+                )
+                return ExitSignal(
+                    osi_symbol=pos.osi_symbol,
+                    signal_key=pos.signal_key,
+                    reason=ExitReason.EOD_EXIT,
+                    underlying_price=pos.underlying_price or 0.0,
+                    current_option_price=pos.current_price,
+                    unrealized_pnl=pos.unrealized_pnl,
+                    dte=pos.dte,
+                    details=f"1H trade EOD exit at {now_et.strftime('%H:%M ET')} (cutoff: {self.config.eod_exit_hour}:{self.config.eod_exit_minute:02d} ET)",
+                )
 
         # Update DTE
         pos.dte = self._calculate_dte(pos.expiration)
