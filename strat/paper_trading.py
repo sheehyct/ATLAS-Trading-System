@@ -176,6 +176,14 @@ class PaperTrade:
     updated_at: datetime = field(default_factory=datetime.now)
     status: str = 'PENDING'          # PENDING, OPEN, CLOSED, CANCELLED
 
+    # =========================================================================
+    # Code Version Tracking (for audit traceability)
+    # =========================================================================
+    code_version: str = ''           # Git commit short hash at trade creation
+    code_session: str = ''           # Session ID (e.g., EQUITY-35)
+    code_branch: str = ''            # Git branch name
+    code_dirty: bool = False         # True if uncommitted changes existed
+
     def __post_init__(self):
         """Calculate derived fields."""
         # Use entry_price if set, otherwise use entry_trigger for calculations
@@ -627,10 +635,13 @@ def create_paper_trade(
     vix: float = 0.0,
     atr: float = 0.0,
     market_regime: str = '',
-    notes: str = ''
+    notes: str = '',
+    include_version: bool = True
 ) -> PaperTrade:
     """
     Factory function to create a new paper trade with sensible defaults.
+
+    Automatically includes code version metadata for audit traceability.
 
     Args:
         pattern_type: STRAT pattern (e.g., '3-2U', '2-2D')
@@ -648,11 +659,30 @@ def create_paper_trade(
         atr: ATR at pattern detection
         market_regime: ATLAS regime
         notes: Free-form notes
+        include_version: If True, embed git commit info (default True)
 
     Returns:
-        PaperTrade instance
+        PaperTrade instance with version metadata
     """
     trade_id = PaperTrade.generate_trade_id()
+
+    # Get version metadata for audit traceability
+    code_version = ''
+    code_session = ''
+    code_branch = ''
+    code_dirty = False
+
+    if include_version:
+        try:
+            from utils.version_tracker import get_version_info
+            version_info = get_version_info()
+            code_version = version_info.commit_short
+            code_session = version_info.session_id
+            code_branch = version_info.branch
+            code_dirty = version_info.is_dirty
+        except Exception:
+            # Version tracking is best-effort, don't fail trade creation
+            pass
 
     return PaperTrade(
         trade_id=trade_id,
@@ -674,6 +704,10 @@ def create_paper_trade(
         status='PENDING',
         quote_source='ThetaData',
         underlying_source='Alpaca',
+        code_version=code_version,
+        code_session=code_session,
+        code_branch=code_branch,
+        code_dirty=code_dirty,
     )
 
 

@@ -125,6 +125,11 @@ class TradeExecutionRecord:
     continuation_bars: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # Code version tracking (for audit traceability)
+    code_version: str = ''          # Git commit short hash at trade creation
+    code_session: str = ''          # Session ID (e.g., EQUITY-35)
+    code_branch: str = ''           # Git branch name
+
     def __post_init__(self):
         """Calculate derived fields."""
         # Calculate days_held if not provided
@@ -205,6 +210,9 @@ class TradeExecutionRecord:
             'data_source': self.data_source,
             'direction': self.direction,
             'continuation_bars': self.continuation_bars,
+            'code_version': self.code_version,
+            'code_session': self.code_session,
+            'code_branch': self.code_branch,
         }
 
     def to_backtest_row(self) -> Dict[str, Any]:
