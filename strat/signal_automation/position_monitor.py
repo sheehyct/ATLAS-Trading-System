@@ -807,20 +807,47 @@ class PositionMonitor:
 
     def _is_market_hours(self) -> bool:
         """
-        Check if within options market hours (9:30 AM - 4:00 PM ET, Mon-Fri).
+        Check if within NYSE market hours.
 
         Session 83K-77: Prevent exit attempts outside market hours.
+        Session EQUITY-36: Uses pandas_market_calendars for accurate holiday
+        and early close handling (e.g., Christmas Eve 1PM, day after Christmas).
         """
         import pytz
+        import pandas_market_calendars as mcal
+
         et = pytz.timezone('America/New_York')
         now = datetime.now(et)
-        # Weekend check
-        if now.weekday() >= 5:
+
+        # Get NYSE calendar
+        nyse = mcal.get_calendar('NYSE')
+
+        # Get schedule for today
+        schedule = nyse.schedule(
+            start_date=now.date(),
+            end_date=now.date()
+        )
+
+        # Check if market is open today (handles holidays)
+        if schedule.empty:
+            logger.debug(f"Market closed: {now.date()} is not a trading day (holiday)")
             return False
-        # Market hours: 9:30 AM - 4:00 PM ET
-        market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
-        market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
-        return market_open <= now <= market_close
+
+        # Get market open/close times (handles early closes)
+        market_open = schedule.iloc[0]['market_open'].tz_convert(et)
+        market_close = schedule.iloc[0]['market_close'].tz_convert(et)
+
+        # Check if current time is within market hours
+        now_aware = now if now.tzinfo else et.localize(now)
+        is_open = market_open <= now_aware <= market_close
+
+        if not is_open:
+            logger.debug(
+                f"Outside market hours: {now.strftime('%H:%M ET')} "
+                f"(open: {market_open.strftime('%H:%M')}, close: {market_close.strftime('%H:%M')})"
+            )
+
+        return is_open
 
     def execute_exit(self, exit_signal: ExitSignal) -> Optional[Dict[str, Any]]:
         """

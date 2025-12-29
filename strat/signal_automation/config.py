@@ -50,9 +50,14 @@ class ScanConfig:
         min_risk_reward: Minimum R:R ratio to report
     """
     symbols: List[str] = field(default_factory=lambda: [
-        'SPY', 'QQQ', 'IWM', 'DIA', 'AAPL',  # Core ETFs + mega-cap
-        'TSLA', 'MSFT', 'GOOGL',              # Additional mega-caps
-        'HOOD', 'QBTS', 'ACHR'                # Retail momentum / lower price
+        # Core ETFs
+        'SPY', 'QQQ', 'IWM', 'DIA',
+        # Mega-caps (high volume, liquid options)
+        'AAPL', 'MSFT', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA',
+        # High-beta tech (good for STRAT momentum plays)
+        'AMD', 'NFLX', 'MU', 'PLTR',
+        # Crypto-correlated / retail momentum (high ATR, good premium)
+        'COIN', 'MSTR', 'HOOD', 'ACHR', 'QBTS'
     ])
 
     timeframes: List[str] = field(default_factory=lambda: [

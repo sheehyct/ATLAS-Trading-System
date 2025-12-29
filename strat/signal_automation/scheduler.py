@@ -593,18 +593,36 @@ class SignalScheduler:
         """
         Check if currently in US market hours.
 
+        Session EQUITY-36: Uses pandas_market_calendars for accurate holiday
+        and early close handling (e.g., Christmas Eve 1PM, day after Christmas).
+
         Returns:
-            True if market is open (9:30-16:00 ET, Mon-Fri)
+            True if market is open (handles holidays and early closes)
         """
+        import pandas_market_calendars as mcal
+
         now = datetime.now(self.timezone)
 
-        # Check weekday (0=Monday, 6=Sunday)
-        if now.weekday() >= 5:
+        # Get NYSE calendar
+        nyse = mcal.get_calendar('NYSE')
+
+        # Get schedule for today
+        schedule = nyse.schedule(
+            start_date=now.date(),
+            end_date=now.date()
+        )
+
+        # Check if market is open today (handles holidays)
+        if schedule.empty:
             return False
 
-        # Check time
-        current_time = now.time()
-        return self.MARKET_OPEN <= current_time <= self.MARKET_CLOSE
+        # Get market open/close times (handles early closes)
+        market_open = schedule.iloc[0]['market_open'].tz_convert(self.timezone)
+        market_close = schedule.iloc[0]['market_close'].tz_convert(self.timezone)
+
+        # Check if current time is within market hours
+        now_aware = now if now.tzinfo else self.timezone.localize(now)
+        return market_open <= now_aware <= market_close
 
     def start(self) -> None:
         """Start the scheduler."""

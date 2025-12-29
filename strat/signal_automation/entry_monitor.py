@@ -111,15 +111,31 @@ class EntryMonitor:
         self._trigger_count = 0
 
     def is_market_hours(self) -> bool:
-        """Check if currently within market hours (Eastern Time)."""
-        now = datetime.now()
-        current_time = now.time()
+        """Check if currently within market hours (Eastern Time).
 
-        # Check day of week (0=Monday, 6=Sunday)
-        if now.weekday() >= 5:  # Saturday or Sunday
+        Uses pandas_market_calendars for accurate holiday/early close handling.
+        Session EQUITY-36: Fixed to properly handle NYSE holidays.
+        """
+        import pytz
+        import pandas_market_calendars as mcal
+
+        et = pytz.timezone('America/New_York')
+        now = datetime.now(et)
+
+        # Use NYSE calendar for accurate holiday handling
+        nyse = mcal.get_calendar('NYSE')
+        schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
+
+        if schedule.empty:
+            # Not a trading day (weekend or holiday)
+            logger.debug(f"Market closed: {now.date()} is not a trading day")
             return False
 
-        return self.config.market_open <= current_time <= self.config.market_close
+        # Get actual market hours for today (handles early close days)
+        market_open = schedule.iloc[0]['market_open'].tz_convert(et)
+        market_close = schedule.iloc[0]['market_close'].tz_convert(et)
+
+        return market_open <= now <= market_close
 
     def is_hourly_entry_allowed(self, signal: StoredSignal) -> bool:
         """
@@ -142,7 +158,9 @@ class EntryMonitor:
         if signal.timeframe != '1H':
             return True
 
-        current_time = datetime.now().time()
+        import pytz
+        et = pytz.timezone('America/New_York')
+        current_time = datetime.now(et).time()
 
         # Determine if this is a 2-bar or 3-bar pattern by counting components
         # 3-bar patterns have 3 components: X-Y-Z (e.g., 3-2D-2U, 2D-1-2U, 2U-1-?)
