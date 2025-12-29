@@ -261,7 +261,7 @@ def cmd_before(args):
         pnl_str = f"${pnl:.2f}" if pnl else "-"
         print(f"{trade_id:<20} {symbol:<8} {status:<10} {pnl_str:<12} {exit_reason:<15}")
 
-    print("\n⚠️  These trades may have been affected by the bug that was fixed.")
+    print("\n[!] These trades may have been affected by the bug that was fixed.")
 
 
 def cmd_trace(args):
@@ -301,9 +301,9 @@ def cmd_trace(args):
         print(f"  Session: {trade.get('code_session')}")
         print(f"  Branch: {trade.get('code_branch')}")
         if trade.get('code_dirty'):
-            print("  ⚠️  Code had uncommitted changes!")
+            print("  [!] Code had uncommitted changes!")
     else:
-        print("  ⚠️  Trade predates version tracking")
+        print("  [!] Trade predates version tracking")
 
     # Find applicable fixes
     trade_time = parse_timestamp(trade.get('created_at') or trade.get('entry_time'))
@@ -312,7 +312,7 @@ def cmd_trace(args):
         print(f"\nAPPLICABLE FIXES ({len(applicable)}):")
         if applicable:
             for fix in sorted(applicable, key=lambda f: f.deployed_at, reverse=True)[:10]:
-                verified = "✓" if fix.verified else "○"
+                verified = "[x]" if fix.verified else "[ ]"
                 print(f"  {verified} [{fix.session_id}] {fix.description[:50]}")
         else:
             print("  No fixes in manifest before this trade.")
@@ -322,7 +322,7 @@ def cmd_trace(args):
         if after:
             print(f"\nFIXES DEPLOYED AFTER THIS TRADE ({len(after)}):")
             for fix in sorted(after, key=lambda f: f.deployed_at)[:5]:
-                print(f"  ⚠️  [{fix.session_id}] {fix.description[:50]}")
+                print(f"  [!] [{fix.session_id}] {fix.description[:50]}")
             if len(after) > 5:
                 print(f"  ... and {len(after) - 5} more")
 
@@ -406,7 +406,7 @@ def cmd_fix_add(args):
             trade_fields_affected=fields
         )
 
-    print(f"✓ Fix recorded: {entry.session_id}")
+    print(f"[OK] Fix recorded: {entry.session_id}")
     print(f"  Commit: {entry.commit_short}")
     print(f"  Description: {entry.description}")
     print(f"  Components: {', '.join(entry.components)}")
@@ -421,7 +421,7 @@ def cmd_fix_verify(args):
     success = manifest.mark_verified(args.session_id, args.notes or "")
 
     if success:
-        print(f"✓ Fix {args.session_id} marked as verified.")
+        print(f"[OK] Fix {args.session_id} marked as verified.")
         if args.notes:
             print(f"  Notes: {args.notes}")
     else:
@@ -440,7 +440,7 @@ def cmd_unverified(args):
     print("=" * 70)
 
     if not unverified:
-        print("\nAll fixes have been verified! ✓")
+        print("\nAll fixes have been verified! [OK]")
         return
 
     print(f"\n{len(unverified)} fixes need verification:\n")

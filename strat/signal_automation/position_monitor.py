@@ -36,6 +36,9 @@ class ExitReason(str, Enum):
     MANUAL = "MANUAL"           # Manually closed
     TIME_EXIT = "TIME"          # Max hold time exceeded
     EOD_EXIT = "EOD"            # Session EQUITY-35: End of day exit for 1H trades
+    # Session EQUITY-36: Optimal exit strategy
+    PARTIAL_EXIT = "PARTIAL"    # Partial exit at 1.0x R:R (multi-contract)
+    TRAILING_STOP = "TRAIL"     # Trailing stop hit after profit
 
 
 @dataclass
@@ -64,6 +67,20 @@ class MonitoringConfig:
     # All 1H timeframe trades must exit before market close to avoid overnight gap risk
     eod_exit_hour: int = 15              # Hour in ET for EOD exit
     eod_exit_minute: int = 55            # Minute in ET for EOD exit (15:55 = 5 min buffer)
+
+    # Session EQUITY-36: Optimal exit strategy
+    # 1H patterns get reduced target (1.0x R:R instead of 1.5x)
+    hourly_target_rr: float = 1.0        # R:R target for 1H patterns (was 1.5x)
+
+    # Trailing stop - activate once in profit, trail at percentage of max profit
+    use_trailing_stop: bool = True       # Enable trailing stop for single-contract or remainder
+    trailing_stop_activation_rr: float = 0.5  # Activate trailing stop at 0.5x R:R profit
+    trailing_stop_pct: float = 0.50      # Trail 50% below high water mark
+
+    # Partial exits - for multi-contract positions
+    partial_exit_enabled: bool = True    # Enable partial exits at 1.0x R:R
+    partial_exit_rr: float = 1.0         # Take partial profit at 1.0x R:R
+    partial_exit_pct: float = 0.50       # Exit 50% of contracts at partial target
 
 
 @dataclass
@@ -102,6 +119,20 @@ class TrackedPosition:
     exit_price: Optional[float] = None
     realized_pnl: Optional[float] = None
 
+    # Session EQUITY-36: Optimal exit strategy fields
+    # Target levels
+    target_1x: float = 0.0               # 1.0x R:R target (for partial exits and 1H patterns)
+    original_target: float = 0.0         # Original target before adjustment
+
+    # Trailing stop state
+    trailing_stop_active: bool = False   # Whether trailing stop is activated
+    trailing_stop_price: float = 0.0     # Current trailing stop level (underlying price)
+    high_water_mark: float = 0.0         # Best underlying price seen (for trailing calc)
+
+    # Partial exit state
+    partial_exit_done: bool = False      # Whether partial exit has been executed
+    contracts_remaining: int = 0         # Contracts remaining after partial exit
+
     # Tracking timestamps
     last_updated: datetime = field(default_factory=datetime.now)
 
@@ -131,6 +162,14 @@ class TrackedPosition:
             'exit_time': self.exit_time.isoformat() if self.exit_time else None,
             'exit_price': self.exit_price,
             'realized_pnl': self.realized_pnl,
+            # Session EQUITY-36: Optimal exit strategy fields
+            'target_1x': self.target_1x,
+            'original_target': self.original_target,
+            'trailing_stop_active': self.trailing_stop_active,
+            'trailing_stop_price': self.trailing_stop_price,
+            'high_water_mark': self.high_water_mark,
+            'partial_exit_done': self.partial_exit_done,
+            'contracts_remaining': self.contracts_remaining,
             'last_updated': self.last_updated.isoformat(),
         }
 
@@ -147,6 +186,8 @@ class ExitSignal:
     dte: int
     details: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
+    # Session EQUITY-36: Partial exit support
+    contracts_to_close: Optional[int] = None  # None = close all, int = close specific amount
 
 
 class PositionMonitor:
@@ -315,23 +356,53 @@ class PositionMonitor:
         if not direction:
             direction = 'CALL' if 'C' in osi_symbol[-9:] else 'PUT'
 
+        # Session EQUITY-36: Calculate optimal exit targets
+        entry_trigger = signal.entry_trigger
+        stop_price = signal.stop_price
+        original_target = signal.target_price
+        contracts = alpaca_pos.get('qty', 0)
+
+        # Calculate 1.0x R:R target
+        risk = abs(entry_trigger - stop_price)
+        is_bullish = direction.upper() in ['CALL', 'BULL', 'UP']
+
+        if is_bullish:
+            target_1x = entry_trigger + risk  # 1.0x R:R target for bullish
+        else:
+            target_1x = entry_trigger - risk  # 1.0x R:R target for bearish
+
+        # For 1H patterns, use 1.0x target instead of 1.5x
+        # (Session EQUITY-36: TSLA analysis showed 1.5x too aggressive for intraday)
+        effective_target = original_target
+        timeframe = signal.timeframe
+        if timeframe and timeframe.upper() in ['1H', '60MIN', '60M']:
+            effective_target = target_1x
+            logger.info(
+                f"1H pattern {osi_symbol}: Adjusted target from ${original_target:.2f} "
+                f"(1.5x) to ${target_1x:.2f} (1.0x R:R)"
+            )
+
         return TrackedPosition(
             osi_symbol=osi_symbol,
             signal_key=execution.signal_key if execution else "",
             symbol=signal.symbol,
             direction=direction,
-            entry_trigger=signal.entry_trigger,
-            target_price=signal.target_price,
-            stop_price=signal.stop_price,
+            entry_trigger=entry_trigger,
+            target_price=effective_target,
+            stop_price=stop_price,
             pattern_type=signal.pattern_type,
-            timeframe=signal.timeframe,
+            timeframe=timeframe,
             entry_price=alpaca_pos.get('avg_entry_price', 0.0),
-            contracts=alpaca_pos.get('qty', 0),
+            contracts=contracts,
             entry_time=datetime.now(),  # Approximate
             expiration=expiration,
             current_price=alpaca_pos.get('current_price', 0.0),
             unrealized_pnl=alpaca_pos.get('unrealized_pl', 0.0),
             dte=dte,
+            # Session EQUITY-36: Optimal exit fields
+            target_1x=target_1x,
+            original_target=original_target,
+            contracts_remaining=contracts,
         )
 
     def _parse_expiration(self, osi_symbol: str) -> str:
@@ -492,6 +563,19 @@ class PositionMonitor:
                 details=f"Loss {pos.unrealized_pct:.1%} >= max {self.config.max_loss_pct:.1%}",
             )
 
+        # Session EQUITY-36: Optimal exit strategy
+        # 3.5. Update trailing stop state and check conditions
+        if self.config.use_trailing_stop:
+            trailing_signal = self._check_trailing_stop(pos)
+            if trailing_signal:
+                return trailing_signal
+
+        # 3.6. Check partial exit for multi-contract positions
+        if self.config.partial_exit_enabled:
+            partial_signal = self._check_partial_exit(pos)
+            if partial_signal:
+                return partial_signal
+
         # 4. Check target hit
         if self._check_target_hit(pos):
             return ExitSignal(
@@ -537,6 +621,143 @@ class PositionMonitor:
         else:
             # For puts, stop is above entry
             return pos.underlying_price >= pos.stop_price
+
+    def _check_trailing_stop(self, pos: TrackedPosition) -> Optional[ExitSignal]:
+        """
+        Session EQUITY-36: Check and update trailing stop logic.
+
+        Logic:
+        1. Update high water mark as price moves in our favor
+        2. Activate trailing stop once 0.5x R:R profit is reached
+        3. Trail stop at 50% of profit from high water mark
+        4. Exit if price retraces to trailing stop level
+
+        Returns ExitSignal if trailing stop is hit, None otherwise.
+        """
+        is_bullish = pos.direction.upper() in ['CALL', 'BULL', 'UP']
+        risk = abs(pos.entry_trigger - pos.stop_price)
+        activation_threshold = self.config.trailing_stop_activation_rr * risk
+
+        # Calculate profit in direction of trade
+        if is_bullish:
+            current_profit = pos.underlying_price - pos.entry_trigger
+            # Update high water mark
+            if pos.underlying_price > pos.high_water_mark or pos.high_water_mark == 0:
+                pos.high_water_mark = pos.underlying_price
+        else:
+            current_profit = pos.entry_trigger - pos.underlying_price
+            # Update high water mark (lowest price for puts)
+            if pos.underlying_price < pos.high_water_mark or pos.high_water_mark == 0:
+                pos.high_water_mark = pos.underlying_price
+
+        # Check if we should activate trailing stop
+        if not pos.trailing_stop_active and current_profit >= activation_threshold:
+            pos.trailing_stop_active = True
+            logger.info(
+                f"Trailing stop ACTIVATED for {pos.osi_symbol}: "
+                f"profit ${current_profit:.2f} >= activation ${activation_threshold:.2f} (0.5x R:R)"
+            )
+
+        # If trailing stop is active, calculate and check trailing stop level
+        if pos.trailing_stop_active:
+            # Calculate trail amount (50% of max profit from high water mark)
+            if is_bullish:
+                max_profit_from_hwm = pos.high_water_mark - pos.entry_trigger
+                trail_amount = max_profit_from_hwm * self.config.trailing_stop_pct
+                pos.trailing_stop_price = pos.high_water_mark - trail_amount
+
+                # Check if trailing stop is hit
+                if pos.underlying_price <= pos.trailing_stop_price:
+                    logger.info(
+                        f"TRAILING STOP HIT for {pos.osi_symbol}: "
+                        f"${pos.underlying_price:.2f} <= trail ${pos.trailing_stop_price:.2f} "
+                        f"(HWM: ${pos.high_water_mark:.2f})"
+                    )
+                    return ExitSignal(
+                        osi_symbol=pos.osi_symbol,
+                        signal_key=pos.signal_key,
+                        reason=ExitReason.TRAILING_STOP,
+                        underlying_price=pos.underlying_price,
+                        current_option_price=pos.current_price,
+                        unrealized_pnl=pos.unrealized_pnl,
+                        dte=pos.dte,
+                        details=f"Trailing stop at ${pos.trailing_stop_price:.2f} hit (HWM: ${pos.high_water_mark:.2f})",
+                    )
+            else:  # Bearish (PUT)
+                max_profit_from_hwm = pos.entry_trigger - pos.high_water_mark
+                trail_amount = max_profit_from_hwm * self.config.trailing_stop_pct
+                pos.trailing_stop_price = pos.high_water_mark + trail_amount
+
+                # Check if trailing stop is hit
+                if pos.underlying_price >= pos.trailing_stop_price:
+                    logger.info(
+                        f"TRAILING STOP HIT for {pos.osi_symbol}: "
+                        f"${pos.underlying_price:.2f} >= trail ${pos.trailing_stop_price:.2f} "
+                        f"(HWM: ${pos.high_water_mark:.2f})"
+                    )
+                    return ExitSignal(
+                        osi_symbol=pos.osi_symbol,
+                        signal_key=pos.signal_key,
+                        reason=ExitReason.TRAILING_STOP,
+                        underlying_price=pos.underlying_price,
+                        current_option_price=pos.current_price,
+                        unrealized_pnl=pos.unrealized_pnl,
+                        dte=pos.dte,
+                        details=f"Trailing stop at ${pos.trailing_stop_price:.2f} hit (HWM: ${pos.high_water_mark:.2f})",
+                    )
+
+        return None
+
+    def _check_partial_exit(self, pos: TrackedPosition) -> Optional[ExitSignal]:
+        """
+        Session EQUITY-36: Check for partial exit at 1.0x R:R.
+
+        Logic:
+        1. Only for positions with contracts > 1
+        2. Only if partial exit not already done
+        3. Exit 50% of contracts when 1.0x R:R target is hit
+
+        Returns ExitSignal for partial exit if conditions met, None otherwise.
+        """
+        # Skip if only 1 contract (use trailing stop instead)
+        if pos.contracts <= 1:
+            return None
+
+        # Skip if partial exit already done
+        if pos.partial_exit_done:
+            return None
+
+        # Check if 1.0x R:R target reached
+        is_bullish = pos.direction.upper() in ['CALL', 'BULL', 'UP']
+
+        if is_bullish:
+            target_1x_reached = pos.underlying_price >= pos.target_1x
+        else:
+            target_1x_reached = pos.underlying_price <= pos.target_1x
+
+        if target_1x_reached:
+            # Calculate contracts to close (50% rounded up)
+            contracts_to_close = max(1, int(pos.contracts * self.config.partial_exit_pct + 0.5))
+
+            logger.info(
+                f"PARTIAL EXIT for {pos.osi_symbol}: "
+                f"Closing {contracts_to_close} of {pos.contracts} contracts at 1.0x R:R "
+                f"(underlying ${pos.underlying_price:.2f} hit target_1x ${pos.target_1x:.2f})"
+            )
+
+            return ExitSignal(
+                osi_symbol=pos.osi_symbol,
+                signal_key=pos.signal_key,
+                reason=ExitReason.PARTIAL_EXIT,
+                underlying_price=pos.underlying_price,
+                current_option_price=pos.current_price,
+                unrealized_pnl=pos.unrealized_pnl,
+                dte=pos.dte,
+                details=f"Partial exit: {contracts_to_close}/{pos.contracts} contracts at 1.0x R:R (${pos.target_1x:.2f})",
+                contracts_to_close=contracts_to_close,
+            )
+
+        return None
 
     def _update_underlying_prices(self) -> None:
         """
@@ -629,27 +850,44 @@ class PositionMonitor:
             return None
 
         try:
+            # Session EQUITY-36: Handle partial exits
+            is_partial = exit_signal.contracts_to_close is not None
+            qty_to_close = exit_signal.contracts_to_close
+
             logger.info(
-                f"Executing exit for {exit_signal.osi_symbol}: "
+                f"Executing {'partial ' if is_partial else ''}exit for {exit_signal.osi_symbol}: "
                 f"{exit_signal.reason.value} - {exit_signal.details}"
             )
 
-            result = self.trading_client.close_option_position(exit_signal.osi_symbol)
+            result = self.trading_client.close_option_position(
+                exit_signal.osi_symbol,
+                qty=qty_to_close  # None = close all, int = partial close
+            )
 
             if result:
-                # Update position state
-                pos.is_active = False
-                pos.exit_reason = exit_signal.reason.value
-                pos.exit_time = datetime.now()
-                pos.exit_price = pos.current_price
-                pos.realized_pnl = pos.unrealized_pnl
+                if is_partial:
+                    # Partial exit - update position state but keep active
+                    pos.partial_exit_done = True
+                    pos.contracts_remaining = pos.contracts - qty_to_close
+
+                    logger.info(
+                        f"Partial exit executed: {exit_signal.osi_symbol} - "
+                        f"Closed {qty_to_close}, remaining {pos.contracts_remaining}"
+                    )
+                else:
+                    # Full exit - mark position as inactive
+                    pos.is_active = False
+                    pos.exit_reason = exit_signal.reason.value
+                    pos.exit_time = datetime.now()
+                    pos.exit_price = pos.current_price
+                    pos.realized_pnl = pos.unrealized_pnl
+
+                    logger.info(
+                        f"Position closed: {exit_signal.osi_symbol} - "
+                        f"P&L: ${pos.realized_pnl:.2f}"
+                    )
 
                 self._exit_count += 1
-
-                logger.info(
-                    f"Position closed: {exit_signal.osi_symbol} - "
-                    f"P&L: ${pos.realized_pnl:.2f}"
-                )
 
                 # Callback for alerting
                 if self.on_exit_callback:

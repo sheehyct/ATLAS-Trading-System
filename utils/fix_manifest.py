@@ -310,7 +310,7 @@ class FixManifest:
         lines.append("-" * 70)
 
         for entry in sorted(self.entries, key=lambda e: e.deployed_at, reverse=True)[:10]:
-            verified_marker = "✓" if entry.verified else "○"
+            verified_marker = "[x]" if entry.verified else "[ ]"
             lines.append(f"{verified_marker} [{entry.session_id}] {entry.commit_short}")
             lines.append(f"   {entry.description}")
             lines.append(f"   Deployed: {entry.deployed_at[:19]}")
