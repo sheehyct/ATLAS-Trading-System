@@ -60,6 +60,9 @@ class ExecutionResult:
     side: str = ""
     timestamp: datetime = field(default_factory=datetime.now)
     error: Optional[str] = None
+    # Session EQUITY-36: Track actual underlying price at execution
+    # For gap-through scenarios, this differs from signal.entry_trigger
+    underlying_entry_price: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -75,6 +78,7 @@ class ExecutionResult:
             'side': self.side,
             'timestamp': self.timestamp.isoformat(),
             'error': self.error,
+            'underlying_entry_price': self.underlying_entry_price,  # Session EQUITY-36
         }
 
     @classmethod
@@ -102,6 +106,7 @@ class ExecutionResult:
             side=data.get('side', ''),
             timestamp=timestamp,
             error=data.get('error'),
+            underlying_entry_price=data.get('underlying_entry_price'),  # Session EQUITY-36
         )
 
 
@@ -371,6 +376,7 @@ class SignalExecutor:
                 )
 
             # Create result
+            # Session EQUITY-36: Store underlying_entry_price for gap-through tracking
             result = ExecutionResult(
                 signal_key=signal_key,
                 state=ExecutionState.ORDER_SUBMITTED,
@@ -381,6 +387,7 @@ class SignalExecutor:
                 contracts=contracts,
                 premium=option_price or 0.0,
                 side=side,
+                underlying_entry_price=underlying_price,  # Actual underlying at execution
             )
 
             self._executions[signal_key] = result

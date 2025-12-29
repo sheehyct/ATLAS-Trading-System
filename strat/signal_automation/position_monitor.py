@@ -124,6 +124,11 @@ class TrackedPosition:
     target_1x: float = 0.0               # 1.0x R:R target (for partial exits and 1H patterns)
     original_target: float = 0.0         # Original target before adjustment
 
+    # Session EQUITY-36: Track actual underlying price at execution
+    # For gap-through scenarios, this differs from entry_trigger (the trigger level)
+    # Used for accurate P/L and trailing stop calculations
+    actual_entry_underlying: float = 0.0
+
     # Trailing stop state
     trailing_stop_active: bool = False   # Whether trailing stop is activated
     trailing_stop_price: float = 0.0     # Current trailing stop level (underlying price)
@@ -165,6 +170,7 @@ class TrackedPosition:
             # Session EQUITY-36: Optimal exit strategy fields
             'target_1x': self.target_1x,
             'original_target': self.original_target,
+            'actual_entry_underlying': self.actual_entry_underlying,  # Gap-through fix
             'trailing_stop_active': self.trailing_stop_active,
             'trailing_stop_price': self.trailing_stop_price,
             'high_water_mark': self.high_water_mark,
@@ -362,14 +368,29 @@ class PositionMonitor:
         original_target = signal.target_price
         contracts = alpaca_pos.get('qty', 0)
 
-        # Calculate 1.0x R:R target
-        risk = abs(entry_trigger - stop_price)
+        # Session EQUITY-36: Get actual underlying entry price from execution
+        # For gap-through scenarios, this differs from entry_trigger
+        # Fallback to entry_trigger if not available (legacy executions)
+        actual_entry_underlying = entry_trigger  # Default to trigger level
+        if execution and hasattr(execution, 'underlying_entry_price'):
+            if execution.underlying_entry_price and execution.underlying_entry_price > 0:
+                actual_entry_underlying = execution.underlying_entry_price
+                if abs(actual_entry_underlying - entry_trigger) > 0.10:
+                    # Log significant gap-through scenarios
+                    logger.info(
+                        f"Gap-through entry for {osi_symbol}: "
+                        f"trigger=${entry_trigger:.2f}, actual=${actual_entry_underlying:.2f}"
+                    )
+
+        # Calculate 1.0x R:R target using ACTUAL entry, not trigger
+        # This ensures accurate P/L calculations for gap scenarios
+        risk = abs(actual_entry_underlying - stop_price)
         is_bullish = direction.upper() in ['CALL', 'BULL', 'UP']
 
         if is_bullish:
-            target_1x = entry_trigger + risk  # 1.0x R:R target for bullish
+            target_1x = actual_entry_underlying + risk  # 1.0x R:R target for bullish
         else:
-            target_1x = entry_trigger - risk  # 1.0x R:R target for bearish
+            target_1x = actual_entry_underlying - risk  # 1.0x R:R target for bearish
 
         # For 1H patterns, use 1.0x target instead of 1.5x
         # (Session EQUITY-36: TSLA analysis showed 1.5x too aggressive for intraday)
@@ -402,6 +423,7 @@ class PositionMonitor:
             # Session EQUITY-36: Optimal exit fields
             target_1x=target_1x,
             original_target=original_target,
+            actual_entry_underlying=actual_entry_underlying,  # Gap-through fix
             contracts_remaining=contracts,
         )
 
@@ -632,20 +654,30 @@ class PositionMonitor:
         3. Trail stop at 50% of profit from high water mark
         4. Exit if price retraces to trailing stop level
 
+        CRITICAL FIX (Session EQUITY-36): Uses actual_entry_underlying for P/L
+        calculations, not entry_trigger. For gap-through scenarios (e.g., META
+        Dec 29 2025), entry_trigger is the trigger level but actual entry may
+        be at a significantly different price due to gap open.
+
         Returns ExitSignal if trailing stop is hit, None otherwise.
         """
         is_bullish = pos.direction.upper() in ['CALL', 'BULL', 'UP']
-        risk = abs(pos.entry_trigger - pos.stop_price)
+
+        # Session EQUITY-36: Use actual entry price, fallback to trigger level
+        # This fixes the gap-through bug where trigger != actual entry
+        entry_price = pos.actual_entry_underlying if pos.actual_entry_underlying > 0 else pos.entry_trigger
+
+        risk = abs(entry_price - pos.stop_price)
         activation_threshold = self.config.trailing_stop_activation_rr * risk
 
-        # Calculate profit in direction of trade
+        # Calculate profit in direction of trade using ACTUAL entry price
         if is_bullish:
-            current_profit = pos.underlying_price - pos.entry_trigger
+            current_profit = pos.underlying_price - entry_price
             # Update high water mark
             if pos.underlying_price > pos.high_water_mark or pos.high_water_mark == 0:
                 pos.high_water_mark = pos.underlying_price
         else:
-            current_profit = pos.entry_trigger - pos.underlying_price
+            current_profit = entry_price - pos.underlying_price
             # Update high water mark (lowest price for puts)
             if pos.underlying_price < pos.high_water_mark or pos.high_water_mark == 0:
                 pos.high_water_mark = pos.underlying_price
@@ -662,7 +694,7 @@ class PositionMonitor:
         if pos.trailing_stop_active:
             # Calculate trail amount (50% of max profit from high water mark)
             if is_bullish:
-                max_profit_from_hwm = pos.high_water_mark - pos.entry_trigger
+                max_profit_from_hwm = pos.high_water_mark - entry_price
                 trail_amount = max_profit_from_hwm * self.config.trailing_stop_pct
                 pos.trailing_stop_price = pos.high_water_mark - trail_amount
 
@@ -671,7 +703,7 @@ class PositionMonitor:
                     logger.info(
                         f"TRAILING STOP HIT for {pos.osi_symbol}: "
                         f"${pos.underlying_price:.2f} <= trail ${pos.trailing_stop_price:.2f} "
-                        f"(HWM: ${pos.high_water_mark:.2f})"
+                        f"(HWM: ${pos.high_water_mark:.2f}, entry: ${entry_price:.2f})"
                     )
                     return ExitSignal(
                         osi_symbol=pos.osi_symbol,
@@ -684,7 +716,7 @@ class PositionMonitor:
                         details=f"Trailing stop at ${pos.trailing_stop_price:.2f} hit (HWM: ${pos.high_water_mark:.2f})",
                     )
             else:  # Bearish (PUT)
-                max_profit_from_hwm = pos.entry_trigger - pos.high_water_mark
+                max_profit_from_hwm = entry_price - pos.high_water_mark
                 trail_amount = max_profit_from_hwm * self.config.trailing_stop_pct
                 pos.trailing_stop_price = pos.high_water_mark + trail_amount
 
@@ -693,7 +725,7 @@ class PositionMonitor:
                     logger.info(
                         f"TRAILING STOP HIT for {pos.osi_symbol}: "
                         f"${pos.underlying_price:.2f} >= trail ${pos.trailing_stop_price:.2f} "
-                        f"(HWM: ${pos.high_water_mark:.2f})"
+                        f"(HWM: ${pos.high_water_mark:.2f}, entry: ${entry_price:.2f})"
                     )
                     return ExitSignal(
                         osi_symbol=pos.osi_symbol,
