@@ -1,9 +1,78 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 26, 2025 (Session EQUITY-35)
+**Last Updated:** December 29, 2025 (Session EQUITY-38)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Daemon Stability
-**Status:** Premarket alerts fixed, EOD exit for 1H trades implemented
+**Phase:** Paper Trading - Pattern Detection Unified
+**Status:** Unified pattern detector created, backtest ordering bug fixed
+
+---
+
+## Session EQUITY-38: Unified Pattern Detection (COMPLETE)
+
+**Date:** December 29, 2025
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Critical pattern detection bugs fixed
+
+### Problem Statement
+
+Paper trading and backtesting used **different pattern detection implementations**, causing:
+1. **Pattern ordering bug** - Backtest grouped patterns by TYPE (all 3-1-2 first, then 2-1-2, etc.) instead of chronologically
+2. **Missing patterns** - Backtest excluded 3-2 and 3-2-2 pattern types entirely
+3. **2-2 Down excluded** - Tier1Detector config had `include_22_down=False`
+
+When using `--limit 20`, the backtest returned ALL 3-1-2 patterns spanning 6 years (2019-2024), missing 62% of actual patterns (2-2 patterns).
+
+### Solution
+
+Created `strat/unified_pattern_detector.py` as the **single source of truth** for pattern detection, used by BOTH paper trading AND backtesting.
+
+### Files Created
+
+| File | Description |
+|------|-------------|
+| `strat/unified_pattern_detector.py` | Unified detector with all 5 pattern types, chronological sorting |
+| `tests/test_strat/test_unified_pattern_detector.py` | 34 unit tests covering ordering, filtering, naming |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `scripts/backtest_strat_options_unified.py` | Updated to use unified detector |
+
+### Key Features
+
+1. **Chronological Ordering**: `patterns.sort(key=lambda p: p['timestamp'])` - THE critical fix
+2. **All 5 Pattern Types**: 2-2, 3-2, 3-2-2, 2-1-2, 3-1-2 (matching paper trading)
+3. **2-2 Down Included**: `include_22_down=True` by default for data collection
+4. **Full Bar Sequence Naming**: `2D-2U` not `2-2 Up` (per CLAUDE.md Section 13)
+5. **Configuration Dataclass**: `PatternDetectionConfig` for flexible filtering
+
+### Validation Results
+
+Before Fix (Tier1Detector):
+- `--limit 20` showed ALL 3-1-2 patterns spanning 6 years
+- Only 290 patterns detected (missing 3-2, 3-2-2)
+- Invalid results due to non-chronological ordering
+
+After Fix (unified_pattern_detector):
+- `--limit 50` shows chronologically mixed pattern types from early 2019
+- 576 patterns detected (all 5 types)
+- Pattern distribution in first 50: 2D-2U, 3-2U, 3-2D, 2U-2D, 3-2D-2U, etc.
+- 44.8% return, 1.75 profit factor on validation run
+
+### Test Results
+
+- 331 tests passed, 2 skipped, 7 warnings
+- New test file: 34 tests for unified detector (all pass)
+
+### Remaining Tasks (Sessions EQUITY-39, EQUITY-40)
+
+1. **EQUITY-39**: Fix timezone issues from Codex audit, optionally align paper trading
+2. **EQUITY-40**: Full validation, documentation, deprecate Tier1Detector
+
+### Plan File
+
+Comprehensive plan at: `C:\Users\sheeh\.claude\plans\humble-skipping-lampson.md`
 
 ---
 
