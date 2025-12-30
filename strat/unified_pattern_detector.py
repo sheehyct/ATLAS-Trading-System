@@ -46,6 +46,49 @@ from strat.pattern_detector import (
 )
 
 
+def apply_timeframe_adjustment(
+    target: float,
+    entry: float,
+    stop: float,
+    direction: int,
+    timeframe: str
+) -> float:
+    """
+    Apply timeframe-specific target adjustment (EQUITY-39).
+
+    This is part of the SINGLE SOURCE OF TRUTH for target calculation.
+    Ensures paper trading and backtesting use identical target methodology.
+
+    Rules:
+        1. 1H timeframe: Always use 1.0x R:R (EQUITY-36 - intraday targets)
+        2. 1D/1W/1M with valid geometry: Use structural target unchanged
+        3. 3-2 patterns: Already use 1.5x fallback from geometry validation
+        4. Invalid geometry: 1.5x fallback (handled earlier in _detect_single_pattern_type)
+
+    Args:
+        target: Target price from pattern detector (may be structural or fallback)
+        entry: Entry trigger price
+        stop: Stop loss price
+        direction: 1 (bullish/CALL) or -1 (bearish/PUT)
+        timeframe: Timeframe string ('1H', '1D', '1W', '1M', '60MIN', '60M')
+
+    Returns:
+        Adjusted target price (1.0x R:R for 1H, unchanged for others)
+    """
+    # 1H patterns: Force 1.0x R:R (EQUITY-36)
+    # Intraday targets are more conservative due to shorter holding periods
+    if timeframe.upper() in ['1H', '60MIN', '60M']:
+        risk = abs(entry - stop)
+        if direction > 0:  # Bullish
+            return entry + risk  # 1.0x R:R
+        else:  # Bearish
+            return entry - risk  # 1.0x R:R
+
+    # All other timeframes (1D, 1W, 1M): Return structural target unchanged
+    # 3-2 patterns already have 1.5x fallback from geometry validation
+    return target
+
+
 # All supported pattern types in detection order
 ALL_PATTERN_TYPES = ['2-2', '3-2', '3-2-2', '2-1-2', '3-1-2']
 
@@ -426,6 +469,26 @@ def detect_all_patterns(
         patterns = _detect_single_pattern_type(
             df, pattern_type, classifications, high, low, config
         )
+
+        # EQUITY-39: Apply timeframe-specific target adjustments
+        # This ensures paper trading and backtesting use identical target methodology
+        for pattern in patterns:
+            pattern['target_price'] = apply_timeframe_adjustment(
+                target=pattern['target_price'],
+                entry=pattern['entry_price'],
+                stop=pattern['stop_price'],
+                direction=pattern['direction'],
+                timeframe=timeframe
+            )
+            # Recalculate magnitude and R:R after adjustment
+            if pattern['entry_price'] > 0:
+                pattern['magnitude_pct'] = abs(
+                    pattern['target_price'] - pattern['entry_price']
+                ) / pattern['entry_price'] * 100
+            risk = abs(pattern['entry_price'] - pattern['stop_price'])
+            reward = abs(pattern['target_price'] - pattern['entry_price'])
+            pattern['risk_reward'] = reward / risk if risk > 0 else 0
+
         all_patterns.extend(patterns)
 
     # CRITICAL: Sort chronologically by timestamp

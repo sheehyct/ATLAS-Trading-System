@@ -493,14 +493,26 @@ class UnifiedOptionsBacktest:
             trigger_price, next_bar['Open'], direction
         )
 
-        # Recalculate target with timeframe-specific R:R (EQUITY-36)
-        target_rr = self.config['target_rr_by_timeframe'].get(timeframe, 1.5)
-        risk = abs(actual_entry - stop_price)
+        # EQUITY-39: Use target from unified detector (single source of truth)
+        # Target already has timeframe adjustment applied (1.0x for 1H, structural for others)
+        target_price = pattern['target_price']
 
-        if direction == 1:  # Bullish
-            target_price = actual_entry + (risk * target_rr)
-        else:  # Bearish
-            target_price = actual_entry - (risk * target_rr)
+        # Adjust for gap-through: preserve R:R ratio when actual entry differs from trigger
+        if gap_through and trigger_price != actual_entry:
+            original_risk = abs(trigger_price - stop_price)
+            original_reward = abs(target_price - trigger_price)
+            original_rr = original_reward / original_risk if original_risk > 0 else 1.0
+            actual_risk = abs(actual_entry - stop_price)
+            if direction == 1:  # Bullish
+                target_price = actual_entry + (actual_risk * original_rr)
+            else:  # Bearish
+                target_price = actual_entry - (actual_risk * original_rr)
+
+        # EQUITY-39: Calculate effective target_rr from adjusted values
+        # (This replaces the old config-based target_rr calculation)
+        actual_risk_final = abs(actual_entry - stop_price)
+        actual_reward_final = abs(target_price - actual_entry)
+        target_rr = actual_reward_final / actual_risk_final if actual_risk_final > 0 else 0.0
 
         # Skip if entry exceeds target (83K-21 fix)
         if direction == 1 and actual_entry >= target_price:

@@ -25,6 +25,7 @@ from strat.unified_pattern_detector import (
     ALL_PATTERNS_CONFIG,
     _bar_to_str,
     _get_full_bar_sequence,
+    apply_timeframe_adjustment,
 )
 from strat.bar_classifier import classify_bars_nb
 
@@ -502,3 +503,165 @@ class TestBarSequenceNaming:
             has_directional = '2U' in pt or '2D' in pt
             assert has_directional, \
                 f"Pattern type should contain 2U or 2D: {pt}"
+
+
+class TestTimeframeAdjustment:
+    """
+    Tests for EQUITY-39 timeframe-specific target adjustment.
+
+    Validates the single source of truth for target calculation:
+    - 1H patterns: 1.0x R:R (EQUITY-36)
+    - 1D/1W/1M: Structural targets unchanged
+    """
+
+    def test_1h_bullish_uses_1x_rr(self):
+        """1H bullish patterns should use 1.0x R:R target."""
+        # Arrange
+        entry = 100.0
+        stop = 98.0  # Risk = $2
+        structural_target = 105.0  # Would be 2.5x R:R
+
+        # Act
+        adjusted = apply_timeframe_adjustment(
+            target=structural_target,
+            entry=entry,
+            stop=stop,
+            direction=1,
+            timeframe='1H'
+        )
+
+        # Assert: Target should be entry + 1x risk = 100 + 2 = 102
+        assert adjusted == 102.0, f"Expected 102.0, got {adjusted}"
+
+    def test_1h_bearish_uses_1x_rr(self):
+        """1H bearish patterns should use 1.0x R:R target."""
+        # Arrange
+        entry = 100.0
+        stop = 102.0  # Risk = $2
+        structural_target = 95.0  # Would be 2.5x R:R
+
+        # Act
+        adjusted = apply_timeframe_adjustment(
+            target=structural_target,
+            entry=entry,
+            stop=stop,
+            direction=-1,
+            timeframe='1H'
+        )
+
+        # Assert: Target should be entry - 1x risk = 100 - 2 = 98
+        assert adjusted == 98.0, f"Expected 98.0, got {adjusted}"
+
+    def test_1d_uses_structural_target(self):
+        """1D patterns should use structural target unchanged."""
+        # Arrange
+        entry = 100.0
+        stop = 98.0
+        structural_target = 105.0
+
+        # Act
+        adjusted = apply_timeframe_adjustment(
+            target=structural_target,
+            entry=entry,
+            stop=stop,
+            direction=1,
+            timeframe='1D'
+        )
+
+        # Assert: Target unchanged
+        assert adjusted == structural_target, f"Expected {structural_target}, got {adjusted}"
+
+    def test_1w_uses_structural_target(self):
+        """1W patterns should use structural target unchanged."""
+        # Arrange
+        entry = 100.0
+        stop = 98.0
+        structural_target = 108.0
+
+        # Act
+        adjusted = apply_timeframe_adjustment(
+            target=structural_target,
+            entry=entry,
+            stop=stop,
+            direction=1,
+            timeframe='1W'
+        )
+
+        # Assert: Target unchanged
+        assert adjusted == structural_target
+
+    def test_1m_uses_structural_target(self):
+        """1M patterns should use structural target unchanged."""
+        # Arrange
+        entry = 100.0
+        stop = 95.0
+        structural_target = 115.0
+
+        # Act
+        adjusted = apply_timeframe_adjustment(
+            target=structural_target,
+            entry=entry,
+            stop=stop,
+            direction=1,
+            timeframe='1M'
+        )
+
+        # Assert: Target unchanged
+        assert adjusted == structural_target
+
+    def test_60min_alias_uses_1x_rr(self):
+        """60MIN alias should use 1.0x R:R like 1H."""
+        # Arrange
+        entry = 100.0
+        stop = 98.0  # Risk = $2
+        structural_target = 105.0
+
+        # Act
+        adjusted = apply_timeframe_adjustment(
+            target=structural_target,
+            entry=entry,
+            stop=stop,
+            direction=1,
+            timeframe='60MIN'
+        )
+
+        # Assert: Target should be 1.0x R:R
+        assert adjusted == 102.0
+
+    def test_60m_alias_uses_1x_rr(self):
+        """60M alias should use 1.0x R:R like 1H."""
+        # Arrange
+        entry = 100.0
+        stop = 98.0  # Risk = $2
+        structural_target = 105.0
+
+        # Act
+        adjusted = apply_timeframe_adjustment(
+            target=structural_target,
+            entry=entry,
+            stop=stop,
+            direction=1,
+            timeframe='60M'
+        )
+
+        # Assert: Target should be 1.0x R:R
+        assert adjusted == 102.0
+
+    def test_case_insensitive_timeframe(self):
+        """Timeframe comparison should be case-insensitive."""
+        # Arrange
+        entry = 100.0
+        stop = 98.0
+        structural_target = 105.0
+
+        # Act - lowercase
+        adjusted_lower = apply_timeframe_adjustment(
+            target=structural_target,
+            entry=entry,
+            stop=stop,
+            direction=1,
+            timeframe='1h'  # lowercase
+        )
+
+        # Assert: Should still use 1.0x R:R
+        assert adjusted_lower == 102.0
