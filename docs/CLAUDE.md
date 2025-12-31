@@ -195,8 +195,23 @@ Schwab Level 1 Options (cash account):
 - CAN: Long stock, long calls/puts, cash-secured puts
 - CANNOT: Short stock, naked options, spreads
 
+## 18. Plugin Commands
+
+| Plugin | Command/Trigger | When to Use |
+|--------|-----------------|-------------|
+| `feature-dev` | `/feature-dev <description>` | New features spanning multiple files (7-phase workflow) |
+| `code-review` | `/code-review` | Before committing or merging PRs |
+| `pr-review-toolkit` | "Review for silent failures" | Trade execution code, error handling |
+| `pr-review-toolkit` | "Check test coverage" | After adding new functionality |
+| `pyright-lsp` | (automatic) | Python type checking in background |
+
+**Proactive usage:**
+- Run `/code-review` before every commit
+- Use `/feature-dev` for new strategy implementations (e.g., Quality-Momentum)
+- Request silent-failure review on ANY trade execution or order handling code
+
 ---
 
-**Version:** 3.3 (December 18, 2025)
+**Version:** 3.4 (December 29, 2025)
 **Status:** PRODUCTION - Token-optimized
 **Details:** See `docs/CLAUDE_REFERENCE.md` for verbose examples

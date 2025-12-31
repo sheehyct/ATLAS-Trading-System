@@ -1,6 +1,6 @@
-# IMPLEMENTATION STATUS: SKELETON - Roadmap for future development
-# PRIORITY: Deferred - Focus on STRAT options execution first
-# See docs/HANDOFF.md for current priorities
+# IMPLEMENTATION STATUS: ACTIVE - Session EQUITY-35
+# PRIORITY: Phase 1 - All-weather strategy for ATLAS portfolio
+# Data Source: Alpha Vantage (fundamental data with 90-day caching)
 #
 """
 Quality-Momentum Combination Strategy for ATLAS Trading System v2.0
@@ -47,7 +47,7 @@ Reference:
 - docs/SYSTEM_ARCHITECTURE/1_ATLAS_OVERVIEW_AND_PROPOSED_STRATEGIES.md (lines 210-268)
 """
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Union
 import pandas as pd
 import numpy as np
 from strategies.base_strategy import BaseStrategy, StrategyConfig
@@ -177,7 +177,9 @@ class QualityMomentum(BaseStrategy):
     def generate_signals(
         self,
         data: pd.DataFrame,
-        regime: Optional[str] = None
+        regime: Optional[str] = None,
+        universe_data: Optional[Dict[str, pd.DataFrame]] = None,
+        fundamental_data: Optional[pd.DataFrame] = None
     ) -> Dict[str, pd.Series]:
         """
         Generate entry/exit signals for Quality-Momentum strategy.
@@ -193,9 +195,13 @@ class QualityMomentum(BaseStrategy):
         Args:
             data: OHLCV DataFrame with DatetimeIndex
                 For single-stock backtesting, uses price-based quality proxies
-                For multi-stock portfolio, requires fundamental data
+                For multi-stock portfolio, this is the index-aligned combined data
             regime: Optional market regime for allocation adjustment
                 ('TREND_BULL', 'TREND_NEUTRAL', 'TREND_BEAR', 'CRASH')
+            universe_data: Optional dict of symbol -> OHLCV DataFrames
+                When provided, enables portfolio mode with cross-sectional ranking
+            fundamental_data: Optional DataFrame with fundamental metrics
+                When provided, uses actual quality scores instead of proxies
 
         Returns:
             Dictionary with v2.0 format signals:
@@ -204,85 +210,83 @@ class QualityMomentum(BaseStrategy):
             - 'stop_distance': Float Series for stop losses
             - 'quality_score': Float Series (for debugging)
             - 'momentum_score': Float Series (for debugging)
-
-        TODO: Implementation required
-        - Integrate fundamental data source for quality metrics
-        - Implement quarterly rebalance logic
-        - Add multi-stock portfolio support
         """
-        # Regime filter: Strategy works in all regimes but may adjust sizing
-        # For now, return empty signals if regime is CRASH (most conservative)
-        if regime == 'CRASH':
-            # In CRASH, only trade highest quality - requires special handling
-            # TODO: Implement CRASH-specific filtering (only top 10% quality)
-            pass
-
         # Calculate ATR for stop loss
         atr = self._calculate_atr(data, period=14)
         stop_distance = atr * self.atr_multiplier
 
-        # ============================================================
-        # TODO: IMPLEMENT QUALITY SCORE CALCULATION
-        # ============================================================
-        # For single-stock backtesting, use price-based quality proxies:
-        # - Price stability (low volatility) as proxy for quality
-        # - Trend consistency as proxy for earnings quality
-        #
-        # For multi-stock portfolio, integrate fundamental data:
-        # quality_score = (
-        #     0.40 * roe_rank +           # Return on Equity
-        #     0.30 * earnings_quality +    # Accruals ratio (lower = better)
-        #     0.30 * (1 / leverage_rank)   # Low leverage preferred
-        # )
-        # ============================================================
+        # CRASH regime: Only trade highest quality (top 10%)
+        # Other regimes: Strategy works in all with different allocations
+        crash_mode = regime == 'CRASH'
+        quality_threshold = 0.90 if crash_mode else self.quality_threshold
 
-        # Placeholder: Use volatility as quality proxy for single stock
+        # Portfolio mode: Use actual fundamental data and cross-sectional ranking
+        if universe_data is not None and fundamental_data is not None:
+            return self._generate_portfolio_signals(
+                data=data,
+                universe_data=universe_data,
+                fundamental_data=fundamental_data,
+                stop_distance=stop_distance,
+                quality_threshold=quality_threshold
+            )
+
+        # Single-stock mode: Use price-based quality proxies
+        return self._generate_single_stock_signals(
+            data=data,
+            stop_distance=stop_distance,
+            quality_threshold=quality_threshold
+        )
+
+    def _generate_single_stock_signals(
+        self,
+        data: pd.DataFrame,
+        stop_distance: pd.Series,
+        quality_threshold: float
+    ) -> Dict[str, pd.Series]:
+        """
+        Generate signals for single-stock backtesting.
+
+        Uses price-based quality proxies:
+        - Low volatility as proxy for quality (stable companies)
+        - 12-1 momentum for momentum score
+
+        Args:
+            data: OHLCV DataFrame
+            stop_distance: ATR-based stop distances
+            quality_threshold: Minimum quality percentile for entry
+
+        Returns:
+            Signal dictionary with v2.0 format
+        """
+        # Quality proxy: Inverse volatility (lower vol = higher quality)
         volatility = data['Close'].pct_change().rolling(60).std()
-        quality_score = 1 - volatility.rank(pct=True)  # Lower vol = higher quality
+        quality_score = 1 - volatility.rank(pct=True)
 
-        # ============================================================
-        # TODO: IMPLEMENT MOMENTUM SCORE CALCULATION
-        # ============================================================
-        # momentum_score = price.pct_change(252).shift(21)  # 12-month return, 1-month lag
-        # ============================================================
-
-        # Placeholder: Calculate 12-1 momentum
+        # Momentum: 12-month return with 1-month lag
         if len(data) > self.momentum_lookback + self.momentum_lag:
             momentum_score = data['Close'].pct_change(self.momentum_lookback).shift(self.momentum_lag)
         else:
             momentum_score = pd.Series(0.0, index=data.index)
 
-        # ============================================================
-        # TODO: IMPLEMENT QUALITY-MOMENTUM FILTER
-        # ============================================================
-        # For single stock: Compare against historical percentiles
-        # For multi-stock: Rank across universe
-        #
-        # quality_filter = quality_score.rank(pct=True) >= self.quality_threshold
-        # momentum_rank = momentum_score[quality_filter].rank(pct=True)
-        # entry_signal = momentum_rank >= self.momentum_threshold
-        # exit_signal = ~(quality_filter & (momentum_rank >= self.exit_buffer))
-        # ============================================================
-
-        # Placeholder signals for single-stock testing
+        # Calculate percentile ranks for filtering
         quality_rank = quality_score.rank(pct=True)
         momentum_rank = momentum_score.rank(pct=True)
 
-        # Entry: Both quality and momentum above thresholds
+        # Entry zone: Both quality and momentum above thresholds
         in_entry_zone = (
-            (quality_rank >= self.quality_threshold) &
+            (quality_rank >= quality_threshold) &
             (momentum_rank >= self.momentum_threshold) &
             quality_rank.notna() &
             momentum_rank.notna()
         )
 
-        # Exit: Either quality or momentum falls below exit buffer
+        # Exit zone: Either quality or momentum falls below exit buffer (40%)
         in_exit_zone = (
             (quality_rank < self.exit_buffer) |
             (momentum_rank < self.exit_buffer)
         ) & quality_rank.notna()
 
-        # Convert states to events (state transitions)
+        # Convert states to events (state transitions) per reference implementation
         entry_signal = in_entry_zone & ~in_entry_zone.shift(1).fillna(False)
         exit_signal = in_exit_zone & ~in_exit_zone.shift(1).fillna(False)
 
@@ -292,6 +296,90 @@ class QualityMomentum(BaseStrategy):
             'stop_distance': stop_distance.fillna(0.0),
             'quality_score': quality_score.fillna(0.0),
             'momentum_score': momentum_score.fillna(0.0)
+        }
+
+    def _generate_portfolio_signals(
+        self,
+        data: pd.DataFrame,
+        universe_data: Dict[str, pd.DataFrame],
+        fundamental_data: pd.DataFrame,
+        stop_distance: pd.Series,
+        quality_threshold: float
+    ) -> Dict[str, pd.Series]:
+        """
+        Generate signals for portfolio mode with cross-sectional ranking.
+
+        Uses actual fundamental data for quality scores and ranks
+        across the universe for both quality and momentum.
+
+        Args:
+            data: Index-aligned OHLCV DataFrame (for signal index)
+            universe_data: Dict of symbol -> OHLCV DataFrames
+            fundamental_data: DataFrame with quality metrics
+            stop_distance: ATR-based stop distances
+            quality_threshold: Minimum quality percentile for entry
+
+        Returns:
+            Signal dictionary with v2.0 format
+        """
+        # Calculate quality scores from fundamental data
+        quality_df = self.calculate_quality_scores_from_data(fundamental_data)
+
+        # Filter to top stocks by quality
+        quality_filtered_symbols = self.filter_by_quality(quality_df, quality_threshold)
+
+        if not quality_filtered_symbols:
+            # No stocks pass quality filter
+            return {
+                'entry_signal': pd.Series(False, index=data.index),
+                'exit_signal': pd.Series(False, index=data.index),
+                'stop_distance': stop_distance.fillna(0.0),
+                'quality_score': pd.Series(0.0, index=data.index),
+                'momentum_score': pd.Series(0.0, index=data.index)
+            }
+
+        # Calculate momentum for quality-filtered symbols
+        momentum_df = self.calculate_momentum_scores(quality_filtered_symbols, universe_data)
+
+        if momentum_df.empty:
+            return {
+                'entry_signal': pd.Series(False, index=data.index),
+                'exit_signal': pd.Series(False, index=data.index),
+                'stop_distance': stop_distance.fillna(0.0),
+                'quality_score': pd.Series(0.0, index=data.index),
+                'momentum_score': pd.Series(0.0, index=data.index)
+            }
+
+        # Filter to top momentum stocks
+        momentum_threshold_value = momentum_df['momentum_rank'].quantile(1 - self.momentum_threshold)
+        selected_symbols = momentum_df[
+            momentum_df['momentum_rank'] >= momentum_threshold_value
+        ]['symbol'].tolist()
+
+        # Generate entry signals for selected symbols on rebalance days
+        entry_signal = pd.Series(False, index=data.index)
+        exit_signal = pd.Series(False, index=data.index)
+
+        for date in data.index:
+            if self.is_rebalance_day(date):
+                # Entry on rebalance day if symbols are selected
+                if selected_symbols:
+                    entry_signal.loc[date] = True
+
+        # Get average quality and momentum scores for debugging
+        avg_quality = quality_df[quality_df['symbol'].isin(selected_symbols)]['quality_score'].mean()
+        avg_momentum = momentum_df[momentum_df['symbol'].isin(selected_symbols)]['momentum'].mean()
+
+        quality_score = pd.Series(avg_quality if pd.notna(avg_quality) else 0.0, index=data.index)
+        momentum_score = pd.Series(avg_momentum if pd.notna(avg_momentum) else 0.0, index=data.index)
+
+        return {
+            'entry_signal': entry_signal,
+            'exit_signal': exit_signal,
+            'stop_distance': stop_distance.fillna(0.0),
+            'quality_score': quality_score,
+            'momentum_score': momentum_score,
+            'selected_symbols': selected_symbols  # Bonus: which symbols were selected
         }
 
     def calculate_position_size(
@@ -360,28 +448,194 @@ class QualityMomentum(BaseStrategy):
         return atr
 
     # ================================================================
-    # TODO: IMPLEMENT FUNDAMENTAL DATA INTEGRATION
+    # FUNDAMENTAL DATA INTEGRATION - Session EQUITY-35
     # ================================================================
-    # The following methods need fundamental data source integration:
-    #
-    # def calculate_roe(self, symbol: str) -> float:
-    #     """Calculate Return on Equity from financial statements."""
-    #     pass
-    #
-    # def calculate_accruals_ratio(self, symbol: str) -> float:
-    #     """Calculate earnings quality via accruals ratio."""
-    #     pass
-    #
-    # def calculate_leverage(self, symbol: str) -> float:
-    #     """Calculate debt-to-equity ratio."""
-    #     pass
-    #
-    # def get_fundamental_data(self, symbols: List[str]) -> pd.DataFrame:
-    #     """Fetch fundamental data for universe of stocks."""
-    #     # Options:
-    #     # - Alpha Vantage (free tier limited)
-    #     # - Financial Modeling Prep API
-    #     # - Yahoo Finance (yfinance library)
-    #     # - Tiingo fundamentals
-    #     pass
-    # ================================================================
+
+    def calculate_quality_scores(
+        self,
+        symbols: List[str],
+        max_new_fetches: int = 6
+    ) -> pd.DataFrame:
+        """
+        Calculate quality scores for a universe of stocks.
+
+        Uses Alpha Vantage to fetch fundamental data (ROE, accruals, leverage)
+        and calculates composite quality scores per architecture spec:
+
+        Quality Score = 0.40 * ROE_rank + 0.30 * Earnings_quality + 0.30 * Inverse_leverage
+
+        Args:
+            symbols: List of stock symbols to evaluate
+            max_new_fetches: Maximum new symbols to fetch from API per call.
+                            Each symbol requires 4 API calls.
+                            With 25 calls/day limit, default is 6 symbols.
+
+        Returns:
+            DataFrame with columns: symbol, roe, accruals_ratio, debt_to_equity,
+                                   roe_rank, earnings_quality, inverse_leverage, quality_score
+
+        Note:
+            Cached data is used when available (90-day cache expiration).
+            New API calls are rate-limited to avoid exceeding daily quota.
+        """
+        from integrations.alphavantage_fundamentals import AlphaVantageFundamentals
+
+        fetcher = AlphaVantageFundamentals()
+
+        # Fetch metrics for all symbols (uses caching)
+        metrics_df = fetcher.get_quality_metrics_batch(symbols, max_new_fetches)
+
+        # Calculate composite quality scores
+        quality_df = fetcher.calculate_quality_scores(metrics_df)
+
+        return quality_df
+
+    def calculate_quality_scores_from_data(
+        self,
+        fundamental_data: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        Calculate quality scores from pre-fetched fundamental data.
+
+        Useful for testing with mock data or pre-cached fundamentals.
+
+        Args:
+            fundamental_data: DataFrame with columns: symbol, roe, accruals_ratio, debt_to_equity
+
+        Returns:
+            DataFrame with additional columns: roe_rank, earnings_quality,
+                                              inverse_leverage, quality_score
+        """
+        df = fundamental_data.copy()
+
+        # ROE rank: higher ROE = higher rank (0-1 percentile)
+        df['roe_rank'] = df['roe'].rank(pct=True, na_option='bottom')
+
+        # Earnings quality: lower accruals ratio = higher quality
+        df['accruals_rank'] = df['accruals_ratio'].rank(pct=True, na_option='top')
+        df['earnings_quality'] = 1 - df['accruals_rank']
+
+        # Leverage rank: lower debt/equity = higher rank
+        df['leverage_rank'] = df['debt_to_equity'].rank(pct=True, na_option='top')
+        df['inverse_leverage'] = 1 - df['leverage_rank']
+
+        # Composite quality score (per architecture spec)
+        df['quality_score'] = (
+            0.40 * df['roe_rank'] +
+            0.30 * df['earnings_quality'] +
+            0.30 * df['inverse_leverage']
+        )
+
+        return df
+
+    def filter_by_quality(
+        self,
+        quality_df: pd.DataFrame,
+        threshold: Optional[float] = None
+    ) -> List[str]:
+        """
+        Filter to top stocks by quality score.
+
+        Args:
+            quality_df: DataFrame from calculate_quality_scores()
+            threshold: Minimum quality percentile (default: self.quality_threshold = 0.50)
+
+        Returns:
+            List of symbols that pass quality filter
+        """
+        threshold = threshold or self.quality_threshold
+        quality_percentile = quality_df['quality_score'].quantile(1 - threshold)
+        passing = quality_df[quality_df['quality_score'] >= quality_percentile]
+        return passing['symbol'].tolist()
+
+    def calculate_momentum_scores(
+        self,
+        symbols: List[str],
+        price_data: Dict[str, pd.DataFrame]
+    ) -> pd.DataFrame:
+        """
+        Calculate 12-1 momentum for multiple symbols.
+
+        12-1 momentum = 12-month return with 1-month lag
+        This avoids short-term reversal effect at monthly frequency.
+
+        Args:
+            symbols: List of quality-filtered symbols
+            price_data: Dict mapping symbol to OHLCV DataFrame
+
+        Returns:
+            DataFrame with columns: symbol, momentum, momentum_rank
+        """
+        momentum_scores = []
+
+        for symbol in symbols:
+            if symbol not in price_data:
+                continue
+
+            df = price_data[symbol]
+
+            if len(df) < self.momentum_lookback + self.momentum_lag:
+                continue
+
+            # 12-month return with 1-month lag
+            momentum = df['Close'].pct_change(self.momentum_lookback).shift(self.momentum_lag).iloc[-1]
+
+            if pd.notna(momentum):
+                momentum_scores.append({
+                    'symbol': symbol,
+                    'momentum': momentum
+                })
+
+        if not momentum_scores:
+            return pd.DataFrame(columns=['symbol', 'momentum', 'momentum_rank'])
+
+        result = pd.DataFrame(momentum_scores)
+
+        # Rank momentum (higher is better)
+        result['momentum_rank'] = result['momentum'].rank(pct=True, na_option='bottom')
+
+        return result
+
+    def is_rebalance_day(self, date: pd.Timestamp) -> bool:
+        """
+        Check if date is a quarterly rebalance day.
+
+        Rebalance months: January, April, July, October
+        Rebalance happens on first trading day of the month.
+
+        Args:
+            date: Date to check
+
+        Returns:
+            True if this is a rebalance day
+        """
+        rebalance_months = [1, 4, 7, 10]  # Q1, Q2, Q3, Q4
+
+        if date.month in rebalance_months and date.day <= 5:
+            # First trading day of rebalance month (within first 5 calendar days)
+            return True
+
+        return False
+
+    def get_next_rebalance_date(self, current_date: pd.Timestamp) -> pd.Timestamp:
+        """
+        Get the next quarterly rebalance date.
+
+        Args:
+            current_date: Current date
+
+        Returns:
+            Next rebalance date (first of next rebalance month)
+        """
+        rebalance_months = [1, 4, 7, 10]
+
+        current_month = current_date.month
+        current_year = current_date.year
+
+        # Find next rebalance month
+        for month in rebalance_months:
+            if month > current_month:
+                return pd.Timestamp(year=current_year, month=month, day=1)
+
+        # Next year
+        return pd.Timestamp(year=current_year + 1, month=1, day=1)

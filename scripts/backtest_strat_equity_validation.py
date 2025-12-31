@@ -61,6 +61,23 @@ from validation.strat_validator import EXPANDED_SYMBOLS, TICKER_CATEGORIES, get_
 # Example: target=196.37 but bar_high=196.369999 should still count as hit
 MAGNITUDE_EPSILON = 0.01  # 1 cent tolerance
 
+# EQUITY-36: Timeframe-specific target R:R
+# 1H reduced from 1.5x to 1.0x (too aggressive for intraday moves)
+TARGET_RR_BY_TIMEFRAME = {
+    '1H': 1.0,   # EQUITY-36: Reduced from 1.5x (intraday realistic)
+    '1D': 1.5,
+    '1W': 1.5,
+    '1M': 1.5,
+}
+
+# EQUITY-36: 2-bar patterns can enter earlier than 3-bar patterns
+# 2-bar: Only need 2 bars (10:30, 11:30), can enter at 11:30
+# 3-bar: Need 3 bars (9:30, 10:30, 11:30), can enter at 11:30
+# But for momentum, 2-bar can enter at 10:30 (after 1st bar completes)
+TWO_BAR_PATTERNS = ['2-2 Up', '2-2 Down', '2D-2U', '2U-2D']
+THREE_BAR_PATTERNS = ['3-1-2 Up', '3-1-2 Down', '2-1-2 Up', '2-1-2 Down',
+                      '3-2 Up', '3-2 Down', '3-2-2 Up', '3-2-2 Down']
+
 
 # Configuration
 VALIDATION_CONFIG = {
@@ -561,11 +578,11 @@ class EquityValidationBacktest:
             if entries_22.iloc[i] and directions_22.iloc[i] == 1:
                 pattern_date = entries_22.index[i]
 
-                # Market open filter: For hourly patterns, need 2 bars minimum
-                # 10:30 (bar 1), 11:30 (bar 2 triggers pattern)
+                # EQUITY-36: Market open filter for 2-bar patterns (earlier than 3-bar)
+                # 2-bar patterns only need 1 prior bar, so can trigger at 10:30
                 if detection_timeframe == '1H':
-                    if pattern_date.hour < 11 or (pattern_date.hour == 11 and pattern_date.minute < 30):
-                        continue  # Skip patterns before 11:30 AM
+                    if pattern_date.hour < 10 or (pattern_date.hour == 10 and pattern_date.minute < 30):
+                        continue  # Skip patterns before 10:30 AM
 
                 # CORRECTED (Session 59): Entry is LIVE when bar breaks previous bar's extreme
                 # For 2D-2U: Entry when price breaks ABOVE previous bar (i-1) HIGH
@@ -620,10 +637,11 @@ class EquityValidationBacktest:
             if entries_22.iloc[i] and directions_22.iloc[i] == -1:
                 pattern_date = entries_22.index[i]
 
-                # Market open filter: For hourly patterns, need 2 bars minimum
+                # EQUITY-36: Market open filter for 2-bar patterns (earlier than 3-bar)
+                # 2-bar patterns only need 1 prior bar, so can trigger at 10:30
                 if detection_timeframe == '1H':
-                    if pattern_date.hour < 11 or (pattern_date.hour == 11 and pattern_date.minute < 30):
-                        continue  # Skip patterns before 11:30 AM
+                    if pattern_date.hour < 10 or (pattern_date.hour == 10 and pattern_date.minute < 30):
+                        continue  # Skip patterns before 10:30 AM
 
                 # CORRECTED (Session 59): Entry is LIVE when bar breaks previous bar's extreme
                 # For 2U-2D: Entry when price breaks BELOW previous bar (i-1) LOW
@@ -884,10 +902,19 @@ class EquityValidationBacktest:
             # Determine direction string
             direction_str = 'bullish' if signal.direction == 1 else 'bearish'
 
-            # Market open filter for hourly patterns
+            # EQUITY-36: Market open filter for hourly patterns
+            # 2-bar patterns (2-2) can enter at 10:30 (after 1st bar completes)
+            # 3-bar patterns (3-1-2, 2-1-2, 3-2, 3-2-2) need 11:30
             if detection_timeframe == '1H':
-                if signal.timestamp.hour < 11 or (signal.timestamp.hour == 11 and signal.timestamp.minute < 30):
-                    continue  # Skip patterns before 11:30 AM
+                is_two_bar = any(p in pattern_type_str for p in ['2-2', '2D-2U', '2U-2D'])
+                if is_two_bar:
+                    # 2-bar: Allow at 10:30
+                    if signal.timestamp.hour < 10 or (signal.timestamp.hour == 10 and signal.timestamp.minute < 30):
+                        continue  # Skip patterns before 10:30 AM
+                else:
+                    # 3-bar: Require 11:30
+                    if signal.timestamp.hour < 11 or (signal.timestamp.hour == 11 and signal.timestamp.minute < 30):
+                        continue  # Skip patterns before 11:30 AM
 
             patterns_found.append({
                 'symbol': symbol,
@@ -910,10 +937,16 @@ class EquityValidationBacktest:
         self,
         pattern: dict,
         future_data: pd.DataFrame,
-        max_holding_bars: int = 30
+        max_holding_bars: int = 30,
+        detection_timeframe: str = '1H'
     ) -> dict:
         """
         Measure whether pattern reached magnitude target and calculate metrics.
+
+        EQUITY-36 Enhancements:
+        - Gap-through entry detection (actual_entry vs trigger_price)
+        - Timeframe-specific target R:R (1H=1.0x, others=1.5x)
+        - EOD exit for 1H patterns (15:55 ET)
 
         Parameters:
         -----------
@@ -923,6 +956,8 @@ class EquityValidationBacktest:
             OHLC data after pattern trigger (for measuring outcome)
         max_holding_bars : int
             Maximum bars to hold before considering pattern failed
+        detection_timeframe : str
+            Timeframe for pattern detection (for EOD exit and target R:R)
 
         Returns:
         --------
@@ -934,11 +969,45 @@ class EquityValidationBacktest:
             - bars_to_stop: int (bars to hit stop, or None)
             - actual_pnl_pct: float (actual P&L if exited at target or stop)
             - continuation_bars: int (count of consecutive 2D/2U bars after entry)
+            - exit_type: str (TARGET, STOP, TIME_EXIT, EOD_EXIT)
+            - actual_entry: float (actual fill price, may differ from trigger on gap-through)
+            - gap_through: bool (True if entry was a gap-through)
         """
-        entry_price = pattern['entry_price']
+        # Original trigger price from pattern detection
+        trigger_price = pattern['entry_price']
         stop_price = pattern['stop_price']
-        target_price = pattern['target_price']
         direction = pattern['direction']
+
+        # EQUITY-36: Gap-through entry detection
+        # On gap-through, we enter at the bar's open, not the trigger level
+        gap_through = False
+        actual_entry = trigger_price  # Default: no gap-through
+
+        if len(future_data) > 0:
+            first_bar_open = future_data['Open'].iloc[0]
+
+            if direction == 'bullish':
+                # Bullish: Gap-through if bar opens ABOVE trigger (breakout already happened)
+                if first_bar_open > trigger_price:
+                    actual_entry = first_bar_open
+                    gap_through = True
+            elif direction == 'bearish':
+                # Bearish: Gap-through if bar opens BELOW trigger (breakdown already happened)
+                if first_bar_open < trigger_price:
+                    actual_entry = first_bar_open
+                    gap_through = True
+
+        # EQUITY-36: Recalculate risk and target using actual_entry and timeframe-specific R:R
+        target_rr = TARGET_RR_BY_TIMEFRAME.get(detection_timeframe, 1.5)
+        risk = abs(actual_entry - stop_price)
+
+        if direction == 'bullish':
+            target_price = actual_entry + (risk * target_rr)
+        else:
+            target_price = actual_entry - (risk * target_rr)
+
+        # Use actual_entry for all calculations from here
+        entry_price = actual_entry
 
         magnitude_hit = False
         bars_to_magnitude = None
@@ -979,38 +1048,64 @@ class EquityValidationBacktest:
                         break  # Outside bar = exhaustion
                     # Inside bars (1.0) - continue without counting or breaking
 
+        # EQUITY-36: Track exit type and EOD exit
+        exit_type = None
+        exit_price = None
+        eod_exit = False
+
         # Track outcomes bar by bar
         for bar_idx in range(min(len(future_data), max_holding_bars)):
             bar_high = future_data['High'].iloc[bar_idx]
             bar_low = future_data['Low'].iloc[bar_idx]
+            bar_close = future_data['Close'].iloc[bar_idx]
+
+            # EQUITY-36: EOD exit for 1H patterns (15:55 ET)
+            if detection_timeframe == '1H' and hasattr(future_data.index[bar_idx], 'hour'):
+                bar_time = future_data.index[bar_idx]
+                # Exit at 15:55 ET or later (before market close)
+                if bar_time.hour >= 15 and bar_time.minute >= 55:
+                    eod_exit = True
+                    exit_type = 'EOD_EXIT'
+                    exit_price = bar_close
+                    break
 
             if direction == 'bullish':
                 # Check if target hit (with epsilon tolerance for rounding)
                 if bar_high >= (target_price - MAGNITUDE_EPSILON) and not magnitude_hit:
                     magnitude_hit = True
                     bars_to_magnitude = bar_idx
+                    exit_type = 'TARGET'
+                    exit_price = target_price
 
                 # Check if stop hit
                 if bar_low <= stop_price and not stop_hit:
                     stop_hit = True
                     bars_to_stop = bar_idx
+                    if exit_type is None:  # Only set if target not already hit
+                        exit_type = 'STOP'
+                        exit_price = stop_price
 
             elif direction == 'bearish':
                 # Check if target hit (price falls to target, with epsilon tolerance)
                 if bar_low <= (target_price + MAGNITUDE_EPSILON) and not magnitude_hit:
                     magnitude_hit = True
                     bars_to_magnitude = bar_idx
+                    exit_type = 'TARGET'
+                    exit_price = target_price
 
                 # Check if stop hit (price rises to stop)
                 if bar_high >= stop_price and not stop_hit:
                     stop_hit = True
                     bars_to_stop = bar_idx
+                    if exit_type is None:  # Only set if target not already hit
+                        exit_type = 'STOP'
+                        exit_price = stop_price
 
-            # If both hit, break early
+            # If target or stop hit, break early
             if magnitude_hit or stop_hit:
                 break
 
-        # Calculate actual P&L
+        # Calculate actual P&L based on exit type
         if magnitude_hit:
             # Exited at target
             if direction == 'bullish':
@@ -1023,9 +1118,17 @@ class EquityValidationBacktest:
                 actual_pnl_pct = (stop_price - entry_price) / entry_price * 100
             else:
                 actual_pnl_pct = (entry_price - stop_price) / entry_price * 100
+        elif eod_exit:
+            # EQUITY-36: EOD exit (close position at market close)
+            if direction == 'bullish':
+                actual_pnl_pct = (exit_price - entry_price) / entry_price * 100
+            else:
+                actual_pnl_pct = (entry_price - exit_price) / entry_price * 100
         else:
-            # Held until max bars, exit at close
+            # Held until max bars, exit at close (TIME_EXIT)
+            exit_type = 'TIME_EXIT'
             final_close = future_data['Close'].iloc[min(len(future_data)-1, max_holding_bars-1)]
+            exit_price = final_close
             if direction == 'bullish':
                 actual_pnl_pct = (final_close - entry_price) / entry_price * 100
             else:
@@ -1037,7 +1140,15 @@ class EquityValidationBacktest:
             'stop_hit': stop_hit,
             'bars_to_stop': bars_to_stop,
             'actual_pnl_pct': actual_pnl_pct,
-            'continuation_bars': continuation_bars
+            'continuation_bars': continuation_bars,
+            # EQUITY-36: New fields
+            'exit_type': exit_type,
+            'actual_entry': actual_entry,
+            'trigger_price': trigger_price,
+            'gap_through': gap_through,
+            'target_price_used': target_price,
+            'target_rr': target_rr,
+            'risk': risk
         }
 
     def run_validation(self) -> Dict[str, pd.DataFrame]:
@@ -1144,7 +1255,7 @@ class EquityValidationBacktest:
                         continue
 
                     # Measure outcome
-                    outcome = self.measure_pattern_outcome(pattern, future_data, max_holding_bars)
+                    outcome = self.measure_pattern_outcome(pattern, future_data, max_holding_bars, detection_tf)
 
                     # Session 63/71: Apply continuation bar filter if enabled
                     # SKIP if using Tier1Detector (already filtered by detector)
@@ -1330,6 +1441,18 @@ def main():
         default=None,
         help='Comma-separated symbols to run (e.g., "SPY,QQQ"). Overrides --universe'
     )
+    parser.add_argument(
+        '--start-date',
+        type=str,
+        default=None,
+        help='Start date override (YYYY-MM-DD). For 1H, use 2019-01-01 (Alpaca 6-year limit)'
+    )
+    parser.add_argument(
+        '--end-date',
+        type=str,
+        default=None,
+        help='End date override (YYYY-MM-DD). Default: 2025-01-01'
+    )
     args = parser.parse_args()
 
     # Select symbols based on --symbols or --universe choice
@@ -1370,6 +1493,16 @@ def main():
         config['timeframes'] = config['timeframes'].copy()
         config['timeframes']['detection'] = timeframes_list
         print(f"[INFO] Using TIMEFRAMES: {timeframes_list}")
+
+    # Handle date overrides
+    if args.start_date or args.end_date:
+        config['backtest_period'] = config['backtest_period'].copy()
+        if args.start_date:
+            config['backtest_period']['start'] = args.start_date
+            print(f"[INFO] Using START DATE: {args.start_date}")
+        if args.end_date:
+            config['backtest_period']['end'] = args.end_date
+            print(f"[INFO] Using END DATE: {args.end_date}")
 
     backtest = EquityValidationBacktest(config)
     results = backtest.run_validation()
