@@ -422,6 +422,15 @@ class CryptoSignalDaemon:
             logger.warning(f"SKIPPING TRADE: {reason}")
             return
 
+        # Timeframe continuity-driven filtering and sizing
+        tfc_passes = getattr(signal.context, "tfc_passes", False)
+        risk_multiplier = getattr(signal.context, "risk_multiplier", 1.0) or 0.0
+        if not tfc_passes:
+            logger.info(
+                "Skipping trade due to failing timeframe continuity filter"
+            )
+            return
+
         # Calculate position size with time-based leverage (Session EQUITY-34: use available balance)
         available_balance = self.paper_trader.get_available_balance()
         position_size, implied_leverage, actual_risk = calculate_position_size(
@@ -431,6 +440,10 @@ class CryptoSignalDaemon:
             stop_price=stop_price,  # Use corrected stop
             max_leverage=max_leverage,
         )
+
+        # Apply continuity-based risk multiplier
+        position_size *= risk_multiplier
+        actual_risk *= risk_multiplier
 
         if position_size <= 0:
             logger.warning("Position size is zero or negative - skipping trade")
@@ -459,6 +472,7 @@ class CryptoSignalDaemon:
                 timeframe=signal.timeframe,
                 pattern_type=actual_pattern,  # Use resolved pattern
                 tfc_score=signal.context.tfc_score,  # Session CRYPTO-9
+                risk_multiplier=risk_multiplier,
                 leverage=implied_leverage,  # Session EQUITY-34: margin tracking
             )
 
@@ -733,6 +747,12 @@ class CryptoSignalDaemon:
             logger.warning(f"SKIPPING TRIGGERED: {reason}")
             return
 
+        tfc_passes = getattr(signal.context, "tfc_passes", False)
+        risk_multiplier = getattr(signal.context, "risk_multiplier", 1.0) or 0.0
+        if not tfc_passes:
+            logger.info("Skipping triggered trade: timeframe continuity failed")
+            return
+
         # Calculate position size using available balance (Session EQUITY-34)
         available_balance = self.paper_trader.get_available_balance()
         position_size, implied_leverage, actual_risk = calculate_position_size(
@@ -742,6 +762,9 @@ class CryptoSignalDaemon:
             stop_price=stop_price,
             max_leverage=max_leverage,
         )
+
+        position_size *= risk_multiplier
+        actual_risk *= risk_multiplier
 
         if position_size <= 0:
             logger.warning("Position size is zero or negative - skipping")
@@ -761,6 +784,7 @@ class CryptoSignalDaemon:
                 timeframe=signal.timeframe,
                 pattern_type=signal.pattern_type,
                 tfc_score=signal.context.tfc_score,
+                risk_multiplier=risk_multiplier,
                 leverage=implied_leverage,  # Session EQUITY-34: margin tracking
             )
 

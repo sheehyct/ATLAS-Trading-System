@@ -26,6 +26,9 @@ class CryptoSignalContext:
     funding_rate: float = 0.0  # Crypto-specific: current funding rate
     tfc_score: int = 0  # Full Timeframe Continuity score (0-4)
     tfc_alignment: str = ""  # e.g., "4/4 BULLISH"
+    tfc_passes: bool = False
+    risk_multiplier: float = 1.0
+    priority_rank: int = 0
 
 
 @dataclass
@@ -99,5 +102,8 @@ class CryptoDetectedSignal:
                 "funding_rate": self.context.funding_rate,
                 "tfc_score": self.context.tfc_score,
                 "tfc_alignment": self.context.tfc_alignment,
+                "tfc_passes": self.context.tfc_passes,
+                "risk_multiplier": self.context.risk_multiplier,
+                "priority_rank": self.context.priority_rank,
             },
         }

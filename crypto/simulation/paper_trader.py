@@ -37,6 +37,7 @@ class SimulatedTrade:
     pattern_type: Optional[str] = None
     exit_reason: Optional[str] = None  # 'STOP', 'TARGET', 'MANUAL'
     tfc_score: Optional[int] = None  # Timeframe Continuity score (0-4)
+    risk_multiplier: float = 1.0
     # Session EQUITY-34: Margin tracking
     margin_reserved: float = 0.0  # Margin reserved for this position
 
@@ -80,6 +81,7 @@ class SimulatedTrade:
             "pattern_type": self.pattern_type,
             "exit_reason": self.exit_reason,
             "tfc_score": self.tfc_score,
+            "risk_multiplier": self.risk_multiplier,
             "margin_reserved": self.margin_reserved,  # Session EQUITY-34
         }
 
@@ -100,6 +102,7 @@ class SimulatedTrade:
             pattern_type=data.get("pattern_type"),
             exit_reason=data.get("exit_reason"),
             tfc_score=data.get("tfc_score"),
+            risk_multiplier=data.get("risk_multiplier", 1.0),
             margin_reserved=data.get("margin_reserved", 0.0),  # Session EQUITY-34
         )
         if data.get("exit_price"):
@@ -185,6 +188,7 @@ class PaperTrader:
         timeframe: Optional[str] = None,
         pattern_type: Optional[str] = None,
         tfc_score: Optional[int] = None,
+        risk_multiplier: float = 1.0,
         leverage: float = 4.0,
     ) -> Optional[SimulatedTrade]:
         """
@@ -237,6 +241,7 @@ class PaperTrader:
             timeframe=timeframe,
             pattern_type=pattern_type,
             tfc_score=tfc_score,
+            risk_multiplier=risk_multiplier,
             margin_reserved=margin_required,
         )
 

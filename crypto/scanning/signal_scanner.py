@@ -43,6 +43,7 @@ from strat.pattern_detector import (
     detect_22_setups_nb,
     detect_outside_bar_setups_nb,
 )
+from strat.timeframe_continuity_adapter import TimeframeContinuityAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,9 @@ class CryptoSignalScanner:
             client: CoinbaseClient instance (creates new if None)
         """
         self.client = client or CoinbaseClient(simulation_mode=True)
+        self.tfc_adapter = TimeframeContinuityAdapter(
+            timeframes=["1W", "1D", "4H", "1H", "15M"]
+        )
 
     # =========================================================================
     # MAINTENANCE WINDOW HANDLING
@@ -996,16 +1000,19 @@ class CryptoSignalScanner:
                     # Calculate TFC score based on signal direction (EQUITY-23 fix)
                     # LONG = 1 (want 2U bars), SHORT = -1 (want 2D bars)
                     direction_int = 1 if p["direction"] == "LONG" else -1
-                    tfc_score = self.get_tfc_score(symbol, direction_int)
-                    tfc_alignment = f"{tfc_score}/4 {'BULLISH' if direction_int == 1 else 'BEARISH'}"
+                    tfc_assessment = self.evaluate_tfc(symbol, timeframe, direction_int)
+                    tfc_alignment = tfc_assessment.alignment_label()
 
                     # Create context with TFC for this signal
                     context = CryptoSignalContext(
                         atr_14=base_context.atr_14,
                         atr_percent=base_context.atr_percent,
                         volume_ratio=base_context.volume_ratio,
-                        tfc_score=tfc_score,
+                        tfc_score=tfc_assessment.strength,
                         tfc_alignment=tfc_alignment,
+                        tfc_passes=tfc_assessment.passes_flexible,
+                        risk_multiplier=tfc_assessment.risk_multiplier,
+                        priority_rank=tfc_assessment.priority_rank,
                     )
 
                     signal = CryptoDetectedSignal(
@@ -1100,16 +1107,19 @@ class CryptoSignalScanner:
                 # Calculate TFC score based on signal direction (EQUITY-23 fix)
                 # LONG = 1 (want 2U bars), SHORT = -1 (want 2D bars)
                 direction_int = 1 if p["direction"] == "LONG" else -1
-                tfc_score = self.get_tfc_score(symbol, direction_int)
-                tfc_alignment = f"{tfc_score}/4 {'BULLISH' if direction_int == 1 else 'BEARISH'}"
+                tfc_assessment = self.evaluate_tfc(symbol, timeframe, direction_int)
+                tfc_alignment = tfc_assessment.alignment_label()
 
                 # Create context with TFC for this signal
                 context = CryptoSignalContext(
                     atr_14=base_context.atr_14,
                     atr_percent=base_context.atr_percent,
                     volume_ratio=base_context.volume_ratio,
-                    tfc_score=tfc_score,
+                    tfc_score=tfc_assessment.strength,
                     tfc_alignment=tfc_alignment,
+                    tfc_passes=tfc_assessment.passes_flexible,
+                    risk_multiplier=tfc_assessment.risk_multiplier,
+                    priority_rank=tfc_assessment.priority_rank,
                 )
 
                 signal = CryptoDetectedSignal(
@@ -1174,38 +1184,24 @@ class CryptoSignalScanner:
 
         return results
 
-    def get_tfc_score(self, symbol: str, direction: int) -> int:
-        """
-        Calculate Full Timeframe Continuity (FTFC) score.
+    def evaluate_tfc(
+        self, symbol: str, detection_timeframe: str, direction: int
+    ):
+        """Run timeframe continuity adapter and return assessment."""
 
-        Checks alignment of bar classifications across timeframes.
-        Score of 4 = all timeframes aligned (strongest setup).
+        direction_label = "bullish" if direction == 1 else "bearish"
 
-        Args:
-            symbol: Trading symbol
-            direction: 1 for bullish (want 2U bars), -1 for bearish (want 2D bars)
+        timeframe_aliases = {"1W": "1w", "1D": "1d", "4H": "4h", "1H": "1h", "15M": "15m"}
 
-        Returns:
-            Score from 0-4
-        """
-        score = 0
-        target_class = 2 * direction  # 2 for bull, -2 for bear
+        def _fetch(tf: str):
+            return self._fetch_data(symbol, tf, lookback_bars=50)
 
-        # Check each timeframe (1w, 1d, 4h, 1h)
-        for tf in ["1w", "1d", "4h", "1h"]:
-            df = self._fetch_data(symbol, tf, lookback_bars=5)
-            if df is not None and not df.empty:
-                high = df["High"].values.astype(np.float64)
-                low = df["Low"].values.astype(np.float64)
-                classifications = classify_bars_nb(high, low)
-
-                # Check last bar classification
-                if len(classifications) > 0:
-                    last_class = int(classifications[-1])
-                    if last_class == target_class:
-                        score += 1
-
-        return score
+        return self.tfc_adapter.evaluate(
+            fetcher=_fetch,
+            detection_timeframe=detection_timeframe,
+            direction=direction_label,
+            timeframe_aliases=timeframe_aliases,
+        )
 
     # =========================================================================
     # OUTPUT METHODS

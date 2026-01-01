@@ -45,6 +45,7 @@ from strat.paper_trading import (
 # Session 83K-52: Import from single source of truth
 from strat.tier1_detector import PatternType, Timeframe
 from integrations.tiingo_data_fetcher import TiingoDataFetcher
+from strat.timeframe_continuity_adapter import TimeframeContinuityAdapter
 
 
 @dataclass
@@ -59,6 +60,9 @@ class SignalContext:
     market_regime: str = ''
     tfc_score: int = 0
     tfc_alignment: str = ''
+    tfc_passes: bool = False
+    risk_multiplier: float = 1.0
+    priority_rank: int = 0
 
 
 @dataclass
@@ -131,6 +135,7 @@ class PaperSignalScanner:
         self._vbt = None
         self._thetadata = None
         self._tiingo = None
+        self._tfc_adapter = TimeframeContinuityAdapter(timeframes=self.DEFAULT_TIMEFRAMES)
 
     def _get_tiingo(self):
         """Lazy load Tiingo fetcher."""
@@ -467,38 +472,21 @@ class PaperSignalScanner:
             volume_ratio=volume_ratio,
         )
 
-    def get_tfc_score(self, symbol: str, direction: int) -> int:
-        """
-        Calculate Full Timeframe Continuity (FTFC) score.
+    def evaluate_tfc(
+        self, symbol: str, detection_timeframe: str, direction: int
+    ):
+        """Run timeframe continuity adapter and return assessment."""
 
-        Checks alignment of bar classifications across timeframes.
-        Score of 4 = all timeframes aligned (strongest setup).
+        direction_label = "bullish" if direction == 1 else "bearish"
 
-        Args:
-            symbol: Trading symbol
-            direction: 1 for bullish (want 2U bars), -1 for bearish (want 2D bars)
+        def _fetch(tf: str):
+            return self._fetch_data(symbol, tf, lookback_bars=50)
 
-        Returns:
-            Score from 0-4
-        """
-        score = 0
-        target_class = 2 * direction  # 2 for bull (2U), -2 for bear (2D)
-
-        # Check each timeframe (1H, 1D, 1W, 1M)
-        for tf in ["1H", "1D", "1W", "1M"]:
-            df = self._fetch_data(symbol, tf, lookback_bars=5)
-            if df is not None and not df.empty:
-                high = df["High"].values.astype(np.float64)
-                low = df["Low"].values.astype(np.float64)
-                classifications = classify_bars_nb(high, low)
-
-                # Check last bar classification
-                if len(classifications) > 0:
-                    last_class = int(classifications[-1])
-                    if last_class == target_class:
-                        score += 1
-
-        return score
+        return self._tfc_adapter.evaluate(
+            fetcher=_fetch,
+            detection_timeframe=detection_timeframe,
+            direction=direction_label,
+        )
 
     def _get_full_bar_sequence(self, pattern_type: str, classifications: np.ndarray,
                                 idx: int, direction: int) -> str:
@@ -1200,8 +1188,8 @@ class PaperSignalScanner:
                     # Calculate TFC score based on signal direction (EQUITY-23 fix)
                     # CALL = 1 (want 2U bars), PUT = -1 (want 2D bars)
                     direction_int = 1 if p['direction'] == 'CALL' else -1
-                    tfc_score = self.get_tfc_score(symbol, direction_int)
-                    tfc_alignment = f"{tfc_score}/4 {'BULLISH' if direction_int == 1 else 'BEARISH'}"
+                    tfc_assessment = self.evaluate_tfc(symbol, timeframe, direction_int)
+                    tfc_alignment = tfc_assessment.alignment_label()
 
                     # Create context with TFC for this signal
                     context = SignalContext(
@@ -1209,8 +1197,11 @@ class PaperSignalScanner:
                         atr_14=base_context.atr_14,
                         atr_percent=base_context.atr_percent,
                         volume_ratio=base_context.volume_ratio,
-                        tfc_score=tfc_score,
+                        tfc_score=tfc_assessment.strength,
                         tfc_alignment=tfc_alignment,
+                        tfc_passes=tfc_assessment.passes_flexible,
+                        risk_multiplier=tfc_assessment.risk_multiplier,
+                        priority_rank=tfc_assessment.priority_rank,
                     )
 
                     signal = DetectedSignal(
@@ -1305,8 +1296,8 @@ class PaperSignalScanner:
                 # Calculate TFC score based on signal direction (EQUITY-23 fix)
                 # CALL = 1 (want 2U bars), PUT = -1 (want 2D bars)
                 direction_int = 1 if p['direction'] == 'CALL' else -1
-                tfc_score = self.get_tfc_score(symbol, direction_int)
-                tfc_alignment = f"{tfc_score}/4 {'BULLISH' if direction_int == 1 else 'BEARISH'}"
+                tfc_assessment = self.evaluate_tfc(symbol, timeframe, direction_int)
+                tfc_alignment = tfc_assessment.alignment_label()
 
                 # Create context with TFC for this signal
                 context = SignalContext(
@@ -1314,8 +1305,11 @@ class PaperSignalScanner:
                     atr_14=base_context.atr_14,
                     atr_percent=base_context.atr_percent,
                     volume_ratio=base_context.volume_ratio,
-                    tfc_score=tfc_score,
+                    tfc_score=tfc_assessment.strength,
                     tfc_alignment=tfc_alignment,
+                    tfc_passes=tfc_assessment.passes_flexible,
+                    risk_multiplier=tfc_assessment.risk_multiplier,
+                    priority_rank=tfc_assessment.priority_rank,
                 )
 
                 signal = DetectedSignal(
