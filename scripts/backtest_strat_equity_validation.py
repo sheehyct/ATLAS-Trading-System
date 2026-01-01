@@ -49,6 +49,10 @@ from analysis.vix_data import fetch_vix_data, get_vix_at_date, categorize_vix, g
 from strat.bar_classifier import StratBarClassifier, classify_bars
 from strat.pattern_detector import StratPatternDetector
 from strat.timeframe_continuity import TimeframeContinuityChecker, get_continuity_strength
+from strat.timeframe_continuity_adapter import (
+    strength_to_priority_rank,
+    strength_to_risk_multiplier,
+)
 from strat.tier1_detector import Tier1Detector, Timeframe as T1Timeframe, PatternType
 from integrations.tiingo_data_fetcher import TiingoDataFetcher
 # Session 83K-53: Import expanded symbols for cross-instrument comparison
@@ -161,6 +165,18 @@ class EquityValidationBacktest:
         self.config = config or VALIDATION_CONFIG
         self.results = []
         self.summary_stats = {}
+
+    @staticmethod
+    def _annotate_continuity(continuity: dict) -> dict:
+        """Attach risk multiplier and priority rank to continuity dict."""
+
+        if continuity is None:
+            return None
+
+        strength = continuity.get('strength', 0)
+        continuity['risk_multiplier'] = strength_to_risk_multiplier(strength)
+        continuity['priority_rank'] = strength_to_priority_rank(strength)
+        return continuity
 
     def pull_historical_data(
         self,
@@ -396,6 +412,8 @@ class EquityValidationBacktest:
                         if not continuity['full_continuity']:
                             continue
 
+                continuity = self._annotate_continuity(continuity)
+
                 # Record pattern
                 patterns_found.append({
                     'symbol': symbol,
@@ -451,6 +469,8 @@ class EquityValidationBacktest:
                         if not continuity['full_continuity']:
                             continue
 
+                continuity = self._annotate_continuity(continuity)
+
                 patterns_found.append({
                     'symbol': symbol,
                     'pattern_type': '3-1-2 Down',
@@ -505,6 +525,8 @@ class EquityValidationBacktest:
                         if not continuity['full_continuity']:
                             continue
 
+                continuity = self._annotate_continuity(continuity)
+
                 patterns_found.append({
                     'symbol': symbol,
                     'pattern_type': '2-1-2 Up',
@@ -558,6 +580,8 @@ class EquityValidationBacktest:
                     if self.config['filters']['require_full_continuity']:
                         if not continuity['full_continuity']:
                             continue
+
+                continuity = self._annotate_continuity(continuity)
 
                 patterns_found.append({
                     'symbol': symbol,
@@ -616,6 +640,8 @@ class EquityValidationBacktest:
                     if self.config['filters']['require_full_continuity']:
                         if not continuity['full_continuity']:
                             continue
+
+                continuity = self._annotate_continuity(continuity)
 
                 # Record pattern
                 patterns_found.append({
@@ -676,6 +702,8 @@ class EquityValidationBacktest:
                         if not continuity['full_continuity']:
                             continue
 
+                continuity = self._annotate_continuity(continuity)
+
                 # Record pattern
                 patterns_found.append({
                     'symbol': symbol,
@@ -731,6 +759,8 @@ class EquityValidationBacktest:
                 if not continuity.get('passes_flexible', continuity.get('full_continuity', False)):
                     continue
 
+                continuity = self._annotate_continuity(continuity)
+
                 # Record pattern
                 patterns_found.append({
                     'symbol': symbol,
@@ -783,6 +813,8 @@ class EquityValidationBacktest:
 
                 if not continuity.get('passes_flexible', continuity.get('full_continuity', False)):
                     continue
+
+                continuity = self._annotate_continuity(continuity)
 
                 # Record pattern
                 patterns_found.append({
