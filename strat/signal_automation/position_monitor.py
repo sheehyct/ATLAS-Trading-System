@@ -938,12 +938,25 @@ class PositionMonitor:
                     pos.is_active = False
                     pos.exit_reason = exit_signal.reason.value
                     pos.exit_time = datetime.now()
-                    pos.exit_price = pos.current_price
+
+                    # Session EQUITY-41: Use actual fill price from order, not cached quote
+                    # pos.current_price can be $0 when Alpaca fails to provide quote
+                    filled_price = result.get('filled_avg_price') if isinstance(result, dict) else None
+                    if filled_price and filled_price > 0:
+                        pos.exit_price = filled_price
+                    else:
+                        pos.exit_price = pos.current_price
+                        if pos.current_price <= 0:
+                            logger.warning(
+                                f"Invalid exit price for {exit_signal.osi_symbol}: "
+                                f"fill={filled_price}, quote={pos.current_price}"
+                            )
+
                     pos.realized_pnl = pos.unrealized_pnl
 
                     logger.info(
                         f"Position closed: {exit_signal.osi_symbol} - "
-                        f"P&L: ${pos.realized_pnl:.2f}"
+                        f"P&L: ${pos.realized_pnl:.2f} (exit @ ${pos.exit_price:.2f})"
                     )
 
                 self._exit_count += 1

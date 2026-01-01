@@ -254,6 +254,16 @@ class DiscordAlerter(BaseAlerter):
                 'inline': True
             },
             {
+                'name': 'Continuity',
+                'value': f"{getattr(signal, 'continuity_strength', 0)}/5",
+                'inline': True
+            },
+            {
+                'name': 'Priority',
+                'value': f"{getattr(signal, 'priority', 0)}",
+                'inline': True
+            },
+            {
                 'name': 'VIX',
                 'value': f'{signal.vix:.1f}',
                 'inline': True

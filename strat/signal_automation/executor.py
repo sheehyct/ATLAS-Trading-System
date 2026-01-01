@@ -308,6 +308,17 @@ class SignalExecutor:
                 signal_key, "Not connected to Alpaca"
             )
 
+        # Session EQUITY-40: Respect flexible continuity filter from upstream adapter
+        if hasattr(signal, 'passes_flexible') and not getattr(signal, 'passes_flexible', True):
+            result = ExecutionResult(
+                signal_key=signal_key,
+                state=ExecutionState.SKIPPED,
+                error="Signal failed flexible continuity check",
+            )
+            self._executions[signal_key] = result
+            self._save()
+            return result
+
         # Apply quality filters
         if not self._passes_filters(signal):
             result = ExecutionResult(
@@ -346,8 +357,8 @@ class SignalExecutor:
                     signal_key, "No suitable contract found"
                 )
 
-            # Calculate position size
-            contracts = self._calculate_position_size(contract, underlying_price)
+            # Calculate position size (Session EQUITY-40: Pass signal for TFC-based sizing)
+            contracts = self._calculate_position_size(contract, underlying_price, signal)
             if contracts < 1:
                 return self._create_failed_result(
                     signal_key, "Insufficient capital for 1 contract"
@@ -563,9 +574,15 @@ class SignalExecutor:
     def _calculate_position_size(
         self,
         contract: OptionContract,
-        underlying_price: float
+        underlying_price: float,
+        signal: Optional[StoredSignal] = None
     ) -> int:
-        """Calculate number of contracts based on capital."""
+        """
+        Calculate number of contracts based on capital and TFC risk multiplier.
+
+        Session EQUITY-40: Applies risk_multiplier from TFC adapter for position sizing.
+        Higher continuity = larger position, lower continuity = smaller position.
+        """
         # Estimate premium (rough: 3-5% of underlying for ATM)
         estimated_premium = underlying_price * 0.03
 
@@ -574,7 +591,17 @@ class SignalExecutor:
             self.config.max_capital_per_trade / (estimated_premium * 100)
         )
 
-        return max(1, min(max_contracts, 5))  # 1-5 contracts
+        base_contracts = max(1, min(max_contracts, 5))  # 1-5 contracts
+
+        # Session EQUITY-40: Apply TFC-based risk multiplier
+        risk_multiplier = 1.0
+        if signal is not None:
+            risk_multiplier = max(0.0, float(getattr(signal, 'risk_multiplier', 1.0)))
+
+        adjusted_contracts = int(round(base_contracts * risk_multiplier))
+        max_allowed = max(1, min(max_contracts, 5))
+
+        return max(1, min(adjusted_contracts if adjusted_contracts > 0 else 1, max_allowed))
 
     def _get_option_price(
         self,

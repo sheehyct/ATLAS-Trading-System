@@ -38,6 +38,7 @@ class SimulatedTrade:
     exit_reason: Optional[str] = None  # 'STOP', 'TARGET', 'MANUAL'
     tfc_score: Optional[int] = None  # Timeframe Continuity score (0-4)
     risk_multiplier: float = 1.0
+    priority_rank: int = 0  # Session EQUITY-40: Priority for trade queueing
     # Session EQUITY-34: Margin tracking
     margin_reserved: float = 0.0  # Margin reserved for this position
 
@@ -82,6 +83,7 @@ class SimulatedTrade:
             "exit_reason": self.exit_reason,
             "tfc_score": self.tfc_score,
             "risk_multiplier": self.risk_multiplier,
+            "priority_rank": self.priority_rank,  # Session EQUITY-40
             "margin_reserved": self.margin_reserved,  # Session EQUITY-34
         }
 
@@ -103,6 +105,7 @@ class SimulatedTrade:
             exit_reason=data.get("exit_reason"),
             tfc_score=data.get("tfc_score"),
             risk_multiplier=data.get("risk_multiplier", 1.0),
+            priority_rank=data.get("priority_rank", 0),  # Session EQUITY-40
             margin_reserved=data.get("margin_reserved", 0.0),  # Session EQUITY-34
         )
         if data.get("exit_price"):
@@ -189,6 +192,7 @@ class PaperTrader:
         pattern_type: Optional[str] = None,
         tfc_score: Optional[int] = None,
         risk_multiplier: float = 1.0,
+        priority_rank: int = 0,
         leverage: float = 4.0,
     ) -> Optional[SimulatedTrade]:
         """
@@ -208,11 +212,23 @@ class PaperTrader:
             timeframe: Signal timeframe (e.g., '1d', '4h')
             pattern_type: STRAT pattern (e.g., '3-2U', '2D-1-2U')
             tfc_score: Timeframe Continuity score (0-4)
+            priority_rank: Priority rank for trade queueing (Session EQUITY-40)
             leverage: Leverage used for margin calculation (default: 4x swing)
 
         Returns:
             SimulatedTrade object if opened, None if insufficient margin
         """
+        # Session EQUITY-40: Apply risk_multiplier to adjust quantity
+        adjusted_quantity = quantity * max(0.0, risk_multiplier)
+        if adjusted_quantity <= 0:
+            logger.info(
+                "Skipping trade: risk_multiplier %.2f reduced quantity to 0 for %s",
+                risk_multiplier,
+                symbol
+            )
+            return None
+        quantity = adjusted_quantity
+
         # Calculate margin required for this position
         # Session EQUITY-34: Use max(1.0, leverage) to avoid margin > notional when leverage < 1
         position_notional = quantity * entry_price
@@ -242,6 +258,7 @@ class PaperTrader:
             pattern_type=pattern_type,
             tfc_score=tfc_score,
             risk_multiplier=risk_multiplier,
+            priority_rank=priority_rank,
             margin_reserved=margin_required,
         )
 

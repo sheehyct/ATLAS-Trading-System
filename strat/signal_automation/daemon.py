@@ -805,6 +805,17 @@ class SignalDaemon:
             f"alert_on_signal_detection={self.config.alerts.alert_on_signal_detection}"
         )
 
+        # Session EQUITY-40: Sort signals by priority and continuity strength for deterministic batching
+        signals = sorted(
+            signals,
+            key=lambda s: (
+                getattr(s, 'priority', 0),
+                getattr(s, 'continuity_strength', 0),
+                getattr(s, 'magnitude_pct', 0),
+            ),
+            reverse=True,
+        )
+
         # Session EQUITY-33: Skip ALL alerting during premarket/afterhours
         if not self._is_market_hours():
             logger.info(

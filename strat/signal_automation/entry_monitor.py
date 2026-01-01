@@ -25,6 +25,7 @@ from strat.signal_automation.signal_store import (
     SignalType,
     TIMEFRAME_PRIORITY,
 )
+from strat.pattern_registry import is_bidirectional_pattern
 
 logger = logging.getLogger(__name__)
 
@@ -251,40 +252,78 @@ class EntryMonitor:
             if current_price is None:
                 continue
 
-            # Session CRYPTO-11: BIDIRECTIONAL trigger checking for SETUP signals
-            # Per STRAT: "Where is the next 2?" - whichever direction breaks first
-            # This fixes the bug where we only checked the signal's declared direction
+            # Session EQUITY-41: Respect pattern bidirectionality from registry
+            # BIDIRECTIONAL patterns (3-?, 3-1-?, X-1-?): Check both directions
+            # UNIDIRECTIONAL patterns (3-2D-?, 3-2U-?, X-2D-?, X-2U-?): Only declared direction
             is_triggered = False
             trigger_level = 0.0
-            actual_direction = signal.direction  # May change if opposite break happens
+            actual_direction = signal.direction
 
             # Get setup bar levels
             setup_high = signal.setup_bar_high if signal.setup_bar_high > 0 else 0
             setup_low = signal.setup_bar_low if signal.setup_bar_low > 0 else 0
 
-            # Check for breaks in both directions
-            broke_up = setup_high > 0 and current_price > setup_high
-            broke_down = setup_low > 0 and current_price < setup_low
+            # Session EQUITY-41: Use stored is_bidirectional flag, fall back to registry
+            # Prefer the flag stored on the signal (set by scanner using pattern_registry)
+            is_bidirectional = getattr(signal, 'is_bidirectional', None)
+            if is_bidirectional is None:
+                # Fallback: check registry directly
+                is_bidirectional = is_bidirectional_pattern(signal.pattern_type)
 
-            if broke_up and not broke_down:
-                # Inside bar broke UP -> X-1-2U -> CALL
-                trigger_level = setup_high
-                actual_direction = 'CALL'
-                is_triggered = True
-            elif broke_down and not broke_up:
-                # Inside bar broke DOWN -> X-2D or X-1-2D -> PUT
-                trigger_level = setup_low
-                actual_direction = 'PUT'
-                is_triggered = True
-            elif broke_up and broke_down:
-                # Both bounds broken -> outside bar (type 3) - unusual during monitoring
-                logger.warning(
-                    f"OUTSIDE BAR: {signal.symbol} {signal.pattern_type} broke both bounds "
-                    f"(high: ${setup_high:.2f}, low: ${setup_low:.2f}, price: ${current_price:.2f})"
-                )
-                # Skip this signal - let next scan reclassify it
-                continue
-            # else: Neither broken - is_triggered remains False
+            if is_bidirectional:
+                # BIDIRECTIONAL: Check both directions (X-1-?, 3-?, etc.)
+                # "Where is the next 2?" - whichever direction breaks first
+                broke_up = setup_high > 0 and current_price > setup_high
+                broke_down = setup_low > 0 and current_price < setup_low
+
+                if broke_up and not broke_down:
+                    trigger_level = setup_high
+                    actual_direction = 'CALL'
+                    is_triggered = True
+                elif broke_down and not broke_up:
+                    trigger_level = setup_low
+                    actual_direction = 'PUT'
+                    is_triggered = True
+                elif broke_up and broke_down:
+                    # Both bounds broken -> outside bar (type 3) - unusual
+                    logger.warning(
+                        f"OUTSIDE BAR: {signal.symbol} {signal.pattern_type} broke both bounds "
+                        f"(high: ${setup_high:.2f}, low: ${setup_low:.2f}, price: ${current_price:.2f})"
+                    )
+                    continue
+            else:
+                # UNIDIRECTIONAL: Only check declared direction (3-2D-?, 3-2U-?, etc.)
+                # Opposite break INVALIDATES the setup, does NOT reverse it
+                if signal.direction == 'CALL':
+                    # Only trigger on break UP
+                    if setup_high > 0 and current_price > setup_high:
+                        trigger_level = setup_high
+                        actual_direction = 'CALL'
+                        is_triggered = True
+                    elif setup_low > 0 and current_price < setup_low:
+                        # Opposite break - invalidate this setup
+                        logger.info(
+                            f"INVALIDATED: {signal.symbol} {signal.pattern_type} CALL "
+                            f"broke DOWN instead (price ${current_price:.2f} < ${setup_low:.2f})"
+                        )
+                        # Session EQUITY-41: Use signal store's mark_expired to persist change
+                        self.signal_store.mark_expired(signal.signal_key)
+                        continue
+                elif signal.direction == 'PUT':
+                    # Only trigger on break DOWN
+                    if setup_low > 0 and current_price < setup_low:
+                        trigger_level = setup_low
+                        actual_direction = 'PUT'
+                        is_triggered = True
+                    elif setup_high > 0 and current_price > setup_high:
+                        # Opposite break - invalidate this setup
+                        logger.info(
+                            f"INVALIDATED: {signal.symbol} {signal.pattern_type} PUT "
+                            f"broke UP instead (price ${current_price:.2f} > ${setup_high:.2f})"
+                        )
+                        # Session EQUITY-41: Use signal store's mark_expired to persist change
+                        self.signal_store.mark_expired(signal.signal_key)
+                        continue
 
             if is_triggered:
                 event = TriggerEvent(

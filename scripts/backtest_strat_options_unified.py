@@ -194,8 +194,9 @@ def adjust_to_trading_day(date: datetime, direction: str = 'previous') -> dateti
             valid_days = [d for d in trading_days if d.date() >= date.date()]
             if valid_days:
                 return valid_days[0]
-    except Exception:
-        pass
+    except Exception as e:
+        # Session EQUITY-41: Log calendar lookup failures instead of silent pass
+        logger.warning(f"Calendar lookup failed for {date}: {e}, using weekend-skip fallback")
 
     # Fallback: skip weekends
     while date.weekday() >= 5:
@@ -233,6 +234,11 @@ def is_valid_entry_time(timestamp: pd.Timestamp, pattern_type: str, timeframe: s
     if hour < min_hour:
         return False
     if hour == min_hour and minute < min_minute:
+        return False
+
+    # Session EQUITY-41: Block after-hours entries (16:00+)
+    # Entries allowed until 15:59, must exit by EOD
+    if hour >= 16:
         return False
 
     return True

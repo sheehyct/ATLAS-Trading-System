@@ -82,12 +82,21 @@ class StoredSignal:
     # Session EQUITY-33: TFC (Timeframe Continuity) data
     tfc_score: int = 0
     tfc_alignment: str = ''
+    # Session EQUITY-40: TFC integration for sizing/prioritization
+    continuity_strength: int = 0
+    passes_flexible: bool = True
+    risk_multiplier: float = 1.0
 
     # Setup-specific fields (Session 83K-68: Setup-based detection)
     signal_type: str = SignalType.SETUP.value  # SETUP or COMPLETED
     setup_bar_high: float = 0.0     # Level to monitor for bullish break
     setup_bar_low: float = 0.0      # Level to monitor for bearish break
     setup_bar_timestamp: Optional[datetime] = None  # When setup bar closed
+
+    # Session EQUITY-41: Pattern bidirectionality (from pattern_registry)
+    # BIDIRECTIONAL (3-?, 3-1-?, X-1-?): Break determines direction
+    # UNIDIRECTIONAL (3-2D-?, 3-2U-?, X-2D-?, X-2U-?): Only reversal direction triggers
+    is_bidirectional: bool = True  # Default True for safety (check both directions)
 
     # Storage metadata
     status: str = SignalStatus.DETECTED.value
@@ -112,6 +121,11 @@ class StoredSignal:
         Higher priority signals should be executed first when multiple trigger.
         """
         return TIMEFRAME_PRIORITY.get(self.timeframe, 0)
+
+    @property
+    def priority_rank(self) -> int:
+        """Alias for priority for downstream queueing (Session EQUITY-40)."""
+        return self.priority
 
     @property
     def signal_id(self) -> str:
@@ -142,11 +156,17 @@ class StoredSignal:
             # Session EQUITY-33: TFC data
             tfc_score=signal.context.tfc_score if signal.context else 0,
             tfc_alignment=signal.context.tfc_alignment if signal.context else '',
+            # Session EQUITY-40: TFC integration for sizing/prioritization
+            continuity_strength=getattr(signal, 'continuity_strength', getattr(signal.context, 'continuity_strength', 0) if signal.context else 0),
+            passes_flexible=getattr(signal, 'passes_flexible', getattr(signal.context, 'passes_flexible', True) if signal.context else True),
+            risk_multiplier=getattr(signal, 'risk_multiplier', 1.0),
             # Session 83K-68: Setup-based detection fields
             signal_type=getattr(signal, 'signal_type', SignalType.COMPLETED.value),
             setup_bar_high=getattr(signal, 'setup_bar_high', 0.0),
             setup_bar_low=getattr(signal, 'setup_bar_low', 0.0),
             setup_bar_timestamp=getattr(signal, 'setup_bar_timestamp', None),
+            # Session EQUITY-41: Pattern bidirectionality
+            is_bidirectional=getattr(signal, 'is_bidirectional', True),
         )
 
     @staticmethod

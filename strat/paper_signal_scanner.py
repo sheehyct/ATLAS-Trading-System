@@ -44,6 +44,8 @@ from strat.paper_trading import (
 )
 # Session 83K-52: Import from single source of truth
 from strat.tier1_detector import PatternType, Timeframe
+# Session EQUITY-41: Import pattern registry for bidirectional flag
+from strat.pattern_registry import is_bidirectional_pattern
 from integrations.tiingo_data_fetcher import TiingoDataFetcher
 from strat.timeframe_continuity_adapter import TimeframeContinuityAdapter
 
@@ -85,6 +87,11 @@ class DetectedSignal:
     setup_bar_high: float = 0.0        # Level to monitor for bullish break
     setup_bar_low: float = 0.0         # Level to monitor for bearish break
     setup_bar_timestamp: Optional[datetime] = None  # When setup bar closed
+
+    # Session EQUITY-41: Pattern bidirectionality (from pattern_registry)
+    # BIDIRECTIONAL (3-?, 3-1-?, X-1-?): Break determines direction
+    # UNIDIRECTIONAL (3-2D-?, 3-2U-?, X-2D-?, X-2U-?): Only reversal direction triggers
+    is_bidirectional: bool = True  # Default True for safety (check both directions)
 
     def to_paper_trade(self) -> PaperTrade:
         """Convert signal to PaperTrade for tracking."""
@@ -1221,6 +1228,8 @@ class PaperSignalScanner:
                         setup_bar_high=p.get('setup_bar_high', 0.0),
                         setup_bar_low=p.get('setup_bar_low', 0.0),
                         setup_bar_timestamp=setup_ts,
+                        # Session EQUITY-41: Set bidirectionality from pattern registry
+                        is_bidirectional=is_bidirectional_pattern(pattern_name),
                     )
                     signals.append(signal)
 
@@ -1329,6 +1338,8 @@ class PaperSignalScanner:
                     setup_bar_high=p.get('setup_bar_high', 0.0),
                     setup_bar_low=p.get('setup_bar_low', 0.0),
                     setup_bar_timestamp=setup_ts,
+                    # Session EQUITY-41: Set bidirectionality from pattern registry
+                    is_bidirectional=is_bidirectional_pattern(p['bar_sequence']),
                 )
                 signals.append(signal)
 
@@ -1423,6 +1434,8 @@ class PaperSignalScanner:
                             setup_bar_high=p.get('setup_bar_high', 0.0),
                             setup_bar_low=p.get('setup_bar_low', 0.0),
                             setup_bar_timestamp=setup_ts,
+                            # Session EQUITY-41: Set bidirectionality from pattern registry
+                            is_bidirectional=is_bidirectional_pattern(pattern_name),
                         )
                         all_signals.append(signal)
 
@@ -1455,6 +1468,8 @@ class PaperSignalScanner:
                         setup_bar_high=p.get('setup_bar_high', 0.0),
                         setup_bar_low=p.get('setup_bar_low', 0.0),
                         setup_bar_timestamp=setup_ts,
+                        # Session EQUITY-41: Set bidirectionality from pattern registry
+                        is_bidirectional=is_bidirectional_pattern(p['bar_sequence']),
                     )
                     all_signals.append(signal)
 
@@ -1521,7 +1536,8 @@ class PaperSignalScanner:
                     for p in patterns:
                         # Only include signals from last max_age_bars
                         if p['index'] >= len(df) - max_age_bars:
-                            pattern_name = f"{pattern_type}{'U' if p['direction'] == 'CALL' else 'D'}"
+                            # Use bar_sequence if available, otherwise construct simple name
+                            pattern_name = p.get('bar_sequence', f"{pattern_type}{'U' if p['direction'] == 'CALL' else 'D'}")
 
                             signal = DetectedSignal(
                                 pattern_type=pattern_name,
@@ -1535,6 +1551,8 @@ class PaperSignalScanner:
                                 magnitude_pct=p['magnitude_pct'],
                                 risk_reward=p['risk_reward'],
                                 context=context,
+                                # Session EQUITY-41: Set bidirectionality from pattern registry
+                                is_bidirectional=is_bidirectional_pattern(pattern_name),
                             )
                             all_signals.append(signal)
 

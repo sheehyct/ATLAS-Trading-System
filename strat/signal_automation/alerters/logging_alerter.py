@@ -139,6 +139,9 @@ class LoggingAlerter(BaseAlerter):
             'vix': signal.vix,
             'regime': signal.market_regime,
             'detected_time': signal.detected_time.isoformat(),
+            # Session EQUITY-40: TFC integration
+            'continuity_strength': getattr(signal, 'continuity_strength', 0),
+            'priority': getattr(signal, 'priority', 0),
         }
 
         # Create log record with signal data
