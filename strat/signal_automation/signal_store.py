@@ -82,10 +82,12 @@ class StoredSignal:
     # Session EQUITY-33: TFC (Timeframe Continuity) data
     tfc_score: int = 0
     tfc_alignment: str = ''
-    # Session EQUITY-40: TFC integration for sizing/prioritization
+    # Session EQUITY-40/42: TFC integration for sizing/prioritization
     continuity_strength: int = 0
     passes_flexible: bool = True
     risk_multiplier: float = 1.0
+    # Session EQUITY-42: Store TFC-based priority separately from timeframe priority
+    tfc_priority_rank: int = 5  # TFC-based priority (1=lowest, 5=highest)
 
     # Setup-specific fields (Session 83K-68: Setup-based detection)
     signal_type: str = SignalType.SETUP.value  # SETUP or COMPLETED
@@ -124,8 +126,13 @@ class StoredSignal:
 
     @property
     def priority_rank(self) -> int:
-        """Alias for priority for downstream queueing (Session EQUITY-40)."""
-        return self.priority
+        """
+        Get TFC-based priority rank for execution queueing.
+
+        Session EQUITY-42: Now returns TFC-based priority instead of timeframe priority.
+        Higher TFC score = higher priority = execute first when multiple signals trigger.
+        """
+        return self.tfc_priority_rank
 
     @property
     def signal_id(self) -> str:
@@ -156,10 +163,13 @@ class StoredSignal:
             # Session EQUITY-33: TFC data
             tfc_score=signal.context.tfc_score if signal.context else 0,
             tfc_alignment=signal.context.tfc_alignment if signal.context else '',
-            # Session EQUITY-40: TFC integration for sizing/prioritization
+            # Session EQUITY-40/42: TFC integration for sizing/prioritization
             continuity_strength=getattr(signal, 'continuity_strength', getattr(signal.context, 'continuity_strength', 0) if signal.context else 0),
             passes_flexible=getattr(signal, 'passes_flexible', getattr(signal.context, 'passes_flexible', True) if signal.context else True),
-            risk_multiplier=getattr(signal, 'risk_multiplier', 1.0),
+            # Session EQUITY-42 Bug A Fix: Extract risk_multiplier from context, not just signal
+            risk_multiplier=getattr(signal, 'risk_multiplier', getattr(signal.context, 'risk_multiplier', 1.0) if signal.context else 1.0),
+            # Session EQUITY-42: Store TFC-based priority rank
+            tfc_priority_rank=getattr(signal, 'priority_rank', getattr(signal.context, 'priority_rank', 5) if signal.context else 5),
             # Session 83K-68: Setup-based detection fields
             signal_type=getattr(signal, 'signal_type', SignalType.COMPLETED.value),
             setup_bar_high=getattr(signal, 'setup_bar_high', 0.0),

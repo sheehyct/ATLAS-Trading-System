@@ -49,6 +49,11 @@ class MonitoringConfig:
     max_loss_pct: float = 0.50           # Max loss as % of premium (50%)
     max_profit_pct: float = 1.00         # Take profit at 100% gain
 
+    # Session EQUITY-42: Timeframe-specific max loss thresholds
+    # Monthly patterns need more room due to longer time horizon and theta decay
+    # Option premium can drop significantly while underlying pattern is still valid
+    max_loss_pct_by_timeframe: Optional[Dict[str, float]] = None  # Set in __post_init__
+
     # Monitoring intervals (seconds)
     check_interval: int = 60             # Check positions every N seconds
     underlying_fetch_interval: int = 30  # Fetch underlying prices every N seconds
@@ -77,10 +82,32 @@ class MonitoringConfig:
     trailing_stop_activation_rr: float = 0.5  # Activate trailing stop at 0.5x R:R profit
     trailing_stop_pct: float = 0.50      # Trail 50% below high water mark
 
+    # Session EQUITY-42: Trailing stop must be in profit to exit
+    # Prevents confusing exits where trailing stop triggers but option P/L is negative
+    trailing_stop_min_profit_pct: float = 0.0  # Minimum option profit % to allow trail exit (0 = breakeven)
+
     # Partial exits - for multi-contract positions
     partial_exit_enabled: bool = True    # Enable partial exits at 1.0x R:R
     partial_exit_rr: float = 1.0         # Take partial profit at 1.0x R:R
     partial_exit_pct: float = 0.50       # Exit 50% of contracts at partial target
+
+    def __post_init__(self):
+        """Initialize timeframe-specific settings."""
+        if self.max_loss_pct_by_timeframe is None:
+            # Session EQUITY-42: Wider stops for longer timeframes
+            # Monthly patterns shouldn't exit on 50% option loss if underlying is valid
+            self.max_loss_pct_by_timeframe = {
+                '1M': 0.75,  # 75% max loss for monthly (more time to recover)
+                '1W': 0.65,  # 65% for weekly
+                '1D': 0.50,  # 50% for daily (current default)
+                '1H': 0.40,  # 40% for hourly (tighter risk control)
+            }
+
+    def get_max_loss_pct(self, timeframe: str) -> float:
+        """Get timeframe-specific max loss percentage."""
+        if self.max_loss_pct_by_timeframe and timeframe in self.max_loss_pct_by_timeframe:
+            return self.max_loss_pct_by_timeframe[timeframe]
+        return self.max_loss_pct  # Default fallback
 
 
 @dataclass
@@ -490,10 +517,12 @@ class PositionMonitor:
         0. Minimum hold time check (Session 83K-77 - prevent rapid exit)
         0.5. EOD exit for 1H trades (Session EQUITY-35 - avoid overnight gap)
         1. DTE exit (mandatory - theta decay risk)
-        2. Stop hit (loss management)
-        3. Max loss exceeded (risk management)
-        4. Target hit (profit taking)
-        5. Max profit exceeded (take profits)
+        2. Stop hit (underlying price check)
+        3. Max loss exceeded (timeframe-specific % thresholds - Session EQUITY-42)
+        4. Target hit (MOVED BEFORE trailing stop - Session EQUITY-42)
+        5. Trailing stop (only if option P/L >= min threshold - Session EQUITY-42)
+        6. Partial exit (multi-contract positions)
+        7. Max profit exceeded (take profits)
         """
         # 0. Check minimum hold time before any exit condition (Session 83K-77)
         hold_duration = (datetime.now() - pos.entry_time).total_seconds()
@@ -559,7 +588,7 @@ class PositionMonitor:
             logger.debug(f"No underlying price for {pos.symbol}")
             return None
 
-        # 2. Check stop hit
+        # 2. Check stop hit (underlying price check)
         if self._check_stop_hit(pos):
             return ExitSignal(
                 osi_symbol=pos.osi_symbol,
@@ -572,8 +601,11 @@ class PositionMonitor:
                 details=f"Underlying ${pos.underlying_price:.2f} hit stop ${pos.stop_price:.2f}",
             )
 
-        # 3. Max loss check
-        if pos.unrealized_pct <= -self.config.max_loss_pct:
+        # 3. Max loss check (option premium loss)
+        # Session EQUITY-42: Use timeframe-specific max loss thresholds
+        # Monthly patterns need more room due to longer time horizon and theta decay
+        max_loss_threshold = self.config.get_max_loss_pct(pos.timeframe)
+        if pos.unrealized_pct <= -max_loss_threshold:
             return ExitSignal(
                 osi_symbol=pos.osi_symbol,
                 signal_key=pos.signal_key,
@@ -582,23 +614,13 @@ class PositionMonitor:
                 current_option_price=pos.current_price,
                 unrealized_pnl=pos.unrealized_pnl,
                 dte=pos.dte,
-                details=f"Loss {pos.unrealized_pct:.1%} >= max {self.config.max_loss_pct:.1%}",
+                details=f"Loss {pos.unrealized_pct:.1%} >= max {max_loss_threshold:.1%} ({pos.timeframe})",
             )
 
-        # Session EQUITY-36: Optimal exit strategy
-        # 3.5. Update trailing stop state and check conditions
-        if self.config.use_trailing_stop:
-            trailing_signal = self._check_trailing_stop(pos)
-            if trailing_signal:
-                return trailing_signal
-
-        # 3.6. Check partial exit for multi-contract positions
-        if self.config.partial_exit_enabled:
-            partial_signal = self._check_partial_exit(pos)
-            if partial_signal:
-                return partial_signal
-
-        # 4. Check target hit
+        # Session EQUITY-42: Check TARGET HIT BEFORE trailing stop
+        # Bug fix: If price hits target but trailing stop also triggered, target should win
+        # Target hit is a clear signal the trade achieved its goal
+        # 4. Check target hit (moved BEFORE trailing stop)
         if self._check_target_hit(pos):
             return ExitSignal(
                 osi_symbol=pos.osi_symbol,
@@ -611,7 +633,20 @@ class PositionMonitor:
                 details=f"Underlying ${pos.underlying_price:.2f} hit target ${pos.target_price:.2f}",
             )
 
-        # 5. Max profit check
+        # Session EQUITY-36: Optimal exit strategy
+        # 5. Update trailing stop state and check conditions (after target check)
+        if self.config.use_trailing_stop:
+            trailing_signal = self._check_trailing_stop(pos)
+            if trailing_signal:
+                return trailing_signal
+
+        # 6. Check partial exit for multi-contract positions
+        if self.config.partial_exit_enabled:
+            partial_signal = self._check_partial_exit(pos)
+            if partial_signal:
+                return partial_signal
+
+        # 7. Max profit check (option premium gain)
         if pos.unrealized_pct >= self.config.max_profit_pct:
             return ExitSignal(
                 osi_symbol=pos.osi_symbol,
@@ -700,6 +735,16 @@ class PositionMonitor:
 
                 # Check if trailing stop is hit
                 if pos.underlying_price <= pos.trailing_stop_price:
+                    # Session EQUITY-42: Don't exit at a loss with trailing stop
+                    # The trailing stop tracks underlying, but option P/L can be negative due to theta
+                    # This prevents confusing "TRAIL | P/L: -$X" alerts
+                    if pos.unrealized_pct < self.config.trailing_stop_min_profit_pct:
+                        logger.info(
+                            f"TRAILING STOP BLOCKED for {pos.osi_symbol}: "
+                            f"option P/L {pos.unrealized_pct:.1%} < min {self.config.trailing_stop_min_profit_pct:.1%}"
+                        )
+                        return None
+
                     logger.info(
                         f"TRAILING STOP HIT for {pos.osi_symbol}: "
                         f"${pos.underlying_price:.2f} <= trail ${pos.trailing_stop_price:.2f} "
@@ -722,6 +767,16 @@ class PositionMonitor:
 
                 # Check if trailing stop is hit
                 if pos.underlying_price >= pos.trailing_stop_price:
+                    # Session EQUITY-42: Don't exit at a loss with trailing stop
+                    # The trailing stop tracks underlying, but option P/L can be negative due to theta
+                    # This prevents confusing "TRAIL | P/L: -$X" alerts
+                    if pos.unrealized_pct < self.config.trailing_stop_min_profit_pct:
+                        logger.info(
+                            f"TRAILING STOP BLOCKED for {pos.osi_symbol}: "
+                            f"option P/L {pos.unrealized_pct:.1%} < min {self.config.trailing_stop_min_profit_pct:.1%}"
+                        )
+                        return None
+
                     logger.info(
                         f"TRAILING STOP HIT for {pos.osi_symbol}: "
                         f"${pos.underlying_price:.2f} >= trail ${pos.trailing_stop_price:.2f} "

@@ -1,9 +1,63 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** December 30, 2025 (Session EQUITY-39)
+**Last Updated:** January 2, 2026 (Session EQUITY-42)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Target Methodology Unified
-**Status:** Single source of truth for target calculation complete
+**Phase:** Paper Trading - TFC Integration + Web Branch Merge
+**Status:** TFC bugs fixed, Web branch improvements integrated
+
+---
+
+## Session EQUITY-42: TFC Integration + Web Branch Merge (COMPLETE)
+
+**Date:** January 2, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - TFC bugs fixed, Web branch merged
+
+### Overview
+
+Merged improvements from Claude Code for Web branch (`claude/integrate-timeframe-continuity-1hWcj`) and fixed TFC integration bugs identified in EQUITY-41.
+
+### From Web Branch (Cherry-picked)
+
+| Improvement | File | Description |
+|-------------|------|-------------|
+| Duplicate signal fix | daemon.py | COMPLETED signals skipped in _execute_signals() |
+| Timeframe-specific MAX_LOSS | position_monitor.py | 1M=75%, 1W=65%, 1D=50%, 1H=40% |
+| TARGET before TRAILING_STOP | position_monitor.py | Target hit priority in exit checks |
+| Trailing stop min profit | position_monitor.py | Don't trail exit if option P/L negative |
+| PIPELINE_REFERENCE.md | docs/ | 1100-line pipeline documentation |
+| TFC_INTEGRATION_PLAN.md | docs/ | 453-line implementation roadmap |
+| CLAUDE_TFC_HANDOFF.md | docs/ | 262-line architecture summary |
+
+### TFC Bug Fixes (From OpenMemory)
+
+| Bug | Location | Fix |
+|-----|----------|-----|
+| Bug A | signal_store.py:170 | risk_multiplier now extracted from context |
+| Bug B | signal_store.py:128-135 | priority_rank now uses tfc_priority_rank |
+| Bug C | executor.py:312-320 | Already implemented - passes_flexible gating |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/position_monitor.py` | Timeframe max loss, target priority, trailing stop min profit |
+| `strat/signal_automation/daemon.py` | Skip COMPLETED signals in _execute_signals() |
+| `strat/signal_automation/signal_store.py` | tfc_priority_rank field, risk_multiplier from context |
+| `docs/PIPELINE_REFERENCE.md` | NEW - Pipeline documentation from Web |
+| `docs/TFC_INTEGRATION_PLAN.md` | NEW - TFC implementation roadmap |
+| `docs/CLAUDE_TFC_HANDOFF.md` | NEW - TFC architecture summary |
+
+### Test Results
+
+- 341 STRAT tests passed (2 skipped)
+- 14 signal automation tests passed
+
+### Related Sessions
+
+- EQUITY-41 (Desktop): Bug fixes for signal automation
+- EQUITY-41 (Web): Position monitor + documentation
+- OpenMemory: TFC bug fix details
 
 ---
 

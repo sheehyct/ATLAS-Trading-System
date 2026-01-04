@@ -1102,6 +1102,17 @@ class SignalDaemon:
                 )
                 continue
 
+            # Session EQUITY-42: COMPLETED signals already executed by _execute_triggered_pattern()
+            # Skip them here to prevent duplicate execution and duplicate Discord alerts
+            # Bug: run_scan() and run_base_scan() call _execute_triggered_pattern() first,
+            # then call _execute_signals() with the same signals, causing double execution.
+            if getattr(signal, 'signal_type', 'COMPLETED') == 'COMPLETED':
+                logger.debug(
+                    f"COMPLETED signal {signal.signal_key} skipped - "
+                    f"already executed by _execute_triggered_pattern()"
+                )
+                continue
+
             # "Let the Market Breathe" - Skip intraday patterns if too early in session
             if not self._is_intraday_entry_allowed(signal):
                 results.append(ExecutionResult(
