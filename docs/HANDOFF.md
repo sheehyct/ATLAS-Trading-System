@@ -1,17 +1,74 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 2, 2026 (Session EQUITY-42)
+**Last Updated:** January 4, 2026 (Session EQUITY-42 continued)
 **Current Branch:** `main`
-**Phase:** Paper Trading - TFC Integration + Web Branch Merge
-**Status:** TFC bugs fixed, Web branch improvements integrated
+**Phase:** Paper Trading - TFC Integration Complete
+**Status:** TFC bugs fixed, Web branch merged, workflow improvements discussed
 
 ---
 
 ## Session EQUITY-42: TFC Integration + Web Branch Merge (COMPLETE)
 
-**Date:** January 2, 2026
+**Date:** January 2-4, 2026
 **Environment:** Claude Code Desktop (Opus 4.5)
 **Status:** COMPLETE - TFC bugs fixed, Web branch merged
+
+### Workflow Discussion (Jan 4 Continuation)
+
+After the TFC commit, discussed potential workflow improvements for EQUITY-43:
+
+**Skills vs Agents Distinction:**
+- **Skills** = Static reference documents (strat-methodology, thetadata-api) - consulted for rules/patterns
+- **Agents** = Active workflows with tool usage (code-reviewer, silent-failure-hunter) - perform tasks
+
+**Pipeline Stage Analysis (per PIPELINE_REFERENCE.md):**
+
+| Stage | Current Coverage | Potential Agent |
+|-------|------------------|-----------------|
+| Pattern Detection | strat-methodology skill | Already covered |
+| Signal Scanning | strat-methodology skill | Already covered |
+| Entry/Exit Mechanics | strat-methodology skill | Already covered |
+| Position Monitor | Code exists | pr-review-toolkit for validation |
+| Daemon Orchestration | Code exists | Covered by existing review agents |
+
+**Conclusion:** The existing strat-methodology skill already covers pattern analysis rules. A separate "pattern-analyzer" agent would be redundant. The real value would be in:
+1. Debugging/code-mapping additions to strat-methodology (mapping rules to line numbers)
+2. Workflow automation via existing pr-review-toolkit agents
+3. Edge case handling for parallel sessions (like the Web branch scenario)
+
+**HANDOFF.md Clarification:**
+- Works correctly for sequential sessions (updated at session end, accurate at next session start)
+- Edge case: Parallel sessions on different branches without shared handoff mechanism
+- Not a general pain point - specific to multi-Claude concurrent work
+
+### STRAT Skill Audit (Jan 4-5 Continuation)
+
+**Cross-Claude Analysis:** Claude Code and Claude Desktop independently audited strat-methodology skill files, identifying 11 fixes across 4 files.
+
+**Fixes Implemented This Session (3 surgical bug fixes):**
+
+| Fix | File | Change |
+|-----|------|--------|
+| Trigger index | EXECUTION.md:193,204 | `high[idx]` → `high[idx-1] + 0.01` |
+| Trigger index | PATTERNS.md:640 | `high[idx]` → `high[idx-1] + 0.01` |
+| Terminology | TIMEFRAMES.md:316,325 | "2-2 bull" → "2-2 reversal bull" |
+
+**Fixes Deferred to EQUITY-43 (8 documentation restructuring):**
+
+| Fix | File | Action |
+|-----|------|--------|
+| Fix 2 | PATTERNS.md:542-604 | DELETE Rev Strat section (wrong definition) |
+| Fix 3 | PATTERNS.md:461 | Rename "2-2 Patterns" → "2-2 Continuation (Future)" |
+| Fix 4 | PATTERNS.md | ADD new "2-2 Reversal Patterns" section |
+| Fix 5 | PATTERNS.md:666-672 | REWRITE "Invalid Pattern 2" (2U-2D IS valid) |
+| Fix 7 | PATTERNS.md:780 | Update summary to include reversal |
+| Fix 8 | SKILL.md | ADD pre-entry checklist at top |
+| Fix 9 | SKILL.md | ADD 3-2 entry timing clarification |
+| Fix 10 | SKILL.md | ADD 2-2 Continuation as future implementation |
+
+**Reference Document:** Full fix guide in this conversation - search "STRAT Skill Documentation Fix Guide"
+
+**Key Insight:** The core problem is enforcement, not documentation. Hook-based enforcement (UserPromptSubmit injection + PreToolUse blocking) recommended after skill fixes complete.
 
 ### Overview
 
