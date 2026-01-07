@@ -1,9 +1,81 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 6, 2026 (Session EQUITY-45 Planning)
+**Last Updated:** January 7, 2026 (Session EQUITY-45 Execution)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Observability & Pipeline Audit
-**Status:** EQUITY-45 plan approved, ready for execution
+**Phase:** Paper Trading - Bug Fixes & Stale Setup Investigation
+**Status:** EOD exit fixes deployed, CRITICAL stale setup bug documented for EQUITY-46
+
+---
+
+## Session EQUITY-45: Execution & Bug Investigation (COMPLETE)
+
+**Date:** January 7, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Critical bugs fixed, stale setup bug documented
+
+### Overview
+
+Executed EQUITY-45 plan but pivoted to investigate production bugs from January 7 trading:
+- EOD exit failures (positions not closing at 15:59)
+- Silent execute_exit failures causing infinite partial exit loops
+- MSTR pattern misdetection (detected 3-2U when actual was 2D-2U)
+
+### Bug Fixes Applied
+
+| Bug | Root Cause | Fix | Commit |
+|-----|------------|-----|--------|
+| EOD exit blocked | `_is_market_hours()` returning False at 16:00:01 | Allow EOD_EXIT to bypass market hours check | `2b6cc87` |
+| EOD time change | 15:55 too early (user preference) | Changed to 15:59 | `0b467cb` |
+| Silent exit failures | `close_option_position()` returning falsy with no logging | Added explicit error logging in else branch | `2b6cc87` |
+
+### CRITICAL: Stale Setup Bug (EQUITY-46)
+
+**Problem Discovered:** MSTR was entered as "3-2U" setup when actual bar sequence was 2D-2U reversal.
+
+**Bar Sequence Analysis:**
+```
+2026-01-02: Type 3   | H=160.79 L=149.75  (outside bar)
+2026-01-05: Type 2U  | H=167.70 L=160.96  (3-2U setup detected here)
+2026-01-06: Type 2D  | H=167.14 L=154.05  (pattern evolved to 3-2U-2D)
+2026-01-07: Type 2U  | H=170.16 L=158.45  (STALE setup triggered)
+```
+
+**Root Cause:**
+1. Scanner detected 3-2U setup on Jan 5 (valid at that time)
+2. On Jan 6, new bar closed as 2D, evolving pattern to 3-2U-2D
+3. **NO MECHANISM EXISTS** to invalidate pending setups when pattern structure changes
+4. Entry monitor triggered stale Jan 5 setup on Jan 7
+
+**What Exists:**
+- EQUITY-44 added Type 3 pattern invalidation EXIT (after entry) - lines 293-326 in entry_monitor.py
+- Price-based invalidation (opposite direction break) exists
+
+**What's Missing:**
+- Setup revalidation on bar close
+- Pattern structural evolution detection
+- Automatic invalidation when setup bar is no longer the most recent pattern
+
+**Files Affected:**
+- `strat/signal_automation/entry_monitor.py` - needs setup revalidation logic
+- `strat/paper_signal_scanner.py` - needs to track setup age/freshness
+
+**Implementation for EQUITY-46:**
+1. On each scan cycle, revalidate pending setups against current pattern structure
+2. If setup bar is no longer the most recent occurrence of that pattern, invalidate
+3. Add `setup_detected_at` timestamp to track freshness
+4. Log all invalidations with reason
+
+### Deployment
+
+- VPS updated to `2b6cc87`
+- Daemon restarted and running
+- Changes will be active for next trading session
+
+### Remaining EQUITY-45 Plan Items (Deferred)
+
+The original P1/P3 logging improvements were deprioritized in favor of bug fixes:
+- P1: TFC calculation logging - deferred to EQUITY-46
+- P3: Filter rejection logging - deferred to EQUITY-46
 
 ---
 
