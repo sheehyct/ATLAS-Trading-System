@@ -1,9 +1,99 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 4, 2026 (Session EQUITY-42 continued)
+**Last Updated:** January 6, 2026 (Session EQUITY-43)
 **Current Branch:** `main`
-**Phase:** Paper Trading - TFC Integration Complete
-**Status:** TFC bugs fixed, Web branch merged, workflow improvements discussed
+**Phase:** Paper Trading - STRAT Skill Documentation Complete
+**Status:** STRAT skill audit fixes implemented, enforcement hooks added
+
+---
+
+## Session EQUITY-43: STRAT Skill Documentation Restructuring (COMPLETE)
+
+**Date:** January 6, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - All 8 documentation fixes + 2 critical corrections + hooks
+
+### Overview
+
+Completed documentation restructuring deferred from EQUITY-42, plus CRITICAL corrections discovered mid-session for 4 C's framework and Type 3 pattern invalidation. Added enforcement hooks to prevent future methodology drift.
+
+### CRITICAL FIX: 4 C's Framework (Was Fabricated)
+
+**The Problem:** Previous documentation had WRONG 4 C's definition:
+- OLD (WRONG): Combo, Confirm, Continue, Consolidate with position sizing percentages
+- CORRECT: Control, Confirm, Conflict, Change - DIAGNOSTIC QUESTIONS for TFC analysis
+
+**Files Updated:**
+- `~/.claude/skills/strat-methodology/SKILL.md` - Replaced 4 C's section entirely
+- `~/.claude/skills/strat-methodology/TIMEFRAMES.md` - Replaced Section 1 with correct TFC fundamentals
+
+**New Content Added:**
+- 4 C's as diagnostic questions (not position sizing rules)
+- TFC Scoring: Type 1 doesn't count, Type 2 counts as directional, Type 3 direction by color
+- Green/Red candle contribution (conviction modifier for Type 2, direction for Type 3)
+- MOAF (Mother of All Frames - 13:30 EST) definition
+
+### Type 3 Pattern Invalidation (New Concept)
+
+**Added to EXECUTION.md Section 8:** When entry bar evolves from Type 2 to Type 3, EXIT IMMEDIATELY - pattern premise invalidated.
+
+**Exit Priority Order:**
+1. Target Hit
+2. Pattern Invalidated (Type 3 evolution)
+3. Traditional Stop
+
+### Documentation Fixes (From EQUITY-42 Audit)
+
+| Fix | File | Action |
+|-----|------|--------|
+| Fix 1 | PATTERNS.md | DELETED Rev Strat section (wrong 4-bar definition) |
+| Fix 2 | PATTERNS.md | Renamed "2-2 Patterns" → "2-2 Continuation (Future)" |
+| Fix 3 | PATTERNS.md | ADDED "2-2 Reversal Patterns" section |
+| Fix 4 | PATTERNS.md | REWROTE Invalid Pattern 2 (2U-2D IS valid as reversal) |
+| Fix 5 | PATTERNS.md | Updated Summary pattern priority |
+| Fix 6 | SKILL.md | ADDED Pre-Entry Checklist at top |
+| Fix 7 | SKILL.md | ADDED 3-2 entry timing clarification (2-bar, not 3-bar) |
+| Fix 8 | SKILL.md | ADDED 2-2 Continuation note with explanation |
+
+### Enforcement Hooks (Project-Level)
+
+**Location:** `.claude/hooks/` (committed to repo)
+
+| Hook | Event | Behavior |
+|------|-------|----------|
+| `strat_prompt_validator.py` | UserPromptSubmit | Advisory - suggests skill usage for STRAT queries |
+| `strat_code_guardian.py` | PreToolUse | STRICT BLOCK (exit 2) - prevents STRAT file edits without skill consultation |
+
+**Configuration:** Added to `.claude/settings.local.json` (not tracked)
+
+### Files Modified
+
+**User-Level (not in repo):**
+- `~/.claude/skills/strat-methodology/SKILL.md` - Version 2.2, Pre-Entry Checklist, 4 C's fix, 3-2 timing, 2-2 note
+- `~/.claude/skills/strat-methodology/PATTERNS.md` - Rev Strat deleted, 2-2 sections restructured
+- `~/.claude/skills/strat-methodology/TIMEFRAMES.md` - Section 1 replaced with correct TFC
+- `~/.claude/skills/strat-methodology/EXECUTION.md` - Section 8 Type 3 invalidation added
+
+**Project-Level (committed):**
+- `.claude/hooks/strat_prompt_validator.py` - NEW
+- `.claude/hooks/strat_code_guardian.py` - NEW
+
+### Commit
+
+`d1767aa` - feat(hooks): add STRAT methodology enforcement hooks (EQUITY-43)
+
+### Key Learnings
+
+1. **4 C's were completely fabricated** - Previous sessions invented position sizing rules that don't exist in STRAT
+2. **Type 3 invalidation was missing** - Critical exit logic for when entry bar evolves
+3. **Green/Red candle matters** - For TFC scoring, determines Type 3 direction
+4. **Hooks can enforce workflow** - PreToolUse with exit code 2 provides strict blocking
+
+### Next Session Priorities
+
+1. **Test hooks** - Verify UserPromptSubmit and PreToolUse hooks work as expected
+2. **Consider backtesting Type 3 invalidation** - May improve results by exiting early
+3. **Update TFC calculation in code** - Current implementation may not include green/red contribution
 
 ---
 
