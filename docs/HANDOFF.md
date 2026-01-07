@@ -1,9 +1,94 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 6, 2026 (Session EQUITY-44)
+**Last Updated:** January 6, 2026 (Session EQUITY-45 Planning)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Technical Debt Resolution
-**Status:** TFC Type 3 scoring + Pattern invalidation exit implemented
+**Phase:** Paper Trading - Observability & Pipeline Audit
+**Status:** EQUITY-45 plan approved, ready for execution
+
+---
+
+## Session EQUITY-45: Pipeline Consolidation & Observability (PLANNING COMPLETE)
+
+**Date:** January 6, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** PLANNING COMPLETE - Execution in next session
+
+### Overview
+
+Comprehensive audit of ATLAS trading pipeline following STRAT methodology fixes (EQUITY-42/43/44). Pattern detection is well-aligned, but logging/observability and trade analytics have significant gaps.
+
+**Plan File:** `C:\Users\sheeh\.claude\plans\twinkling-sauteeing-treehouse.md`
+
+### Audit Findings
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Pattern Detection | ALIGNED | Strict inequality, 5 patterns, chronological sorting, correct targets |
+| TFC Logging | CRITICAL GAP | No logging of TFC evaluations in scanner |
+| Trade Analytics | MISSING | No stats by pattern type, TFC score, or timeframe |
+| Signal Tracing | PARTIAL | Inconsistent signal_key logging |
+
+### Pattern Detection Alignment (Verified)
+
+| Check | Result | Evidence |
+|-------|--------|----------|
+| Strict inequality (> for high, < for low) | PASS | bar_classifier.py:76-77 |
+| All 5 pattern types detected | PASS | unified_pattern_detector.py:93 |
+| Chronological sorting | PASS | unified_pattern_detector.py:494-496 |
+| Target methodology (1H=1.0x, 3-2=1.5%) | PASS | apply_timeframe_adjustment() |
+| 2-2 reversal-only (no continuation) | PASS | pattern_detector.py:546-587 |
+| Forming bar exclusion | PASS | paper_signal_scanner.py (5 locations) |
+
+### Approved Plan - Priority Items
+
+| Priority | Task | Effort | Files |
+|----------|------|--------|-------|
+| P0 | Verify paper_signal_scanner uses unified_pattern_detector | 30 min | paper_signal_scanner.py |
+| P1 | Add TFC calculation logging (CRITICAL) | 2 hrs | paper_signal_scanner.py |
+| P2 | Trade analytics by pattern type | 3 hrs | executor.py, options_loader.py, options_panel.py |
+| P3 | Pipeline health dashboard enhancements | 2 hrs | daemon.py |
+| P4 | Signal lifecycle tracing | 1 hr | executor.py, position_monitor.py |
+
+### Session 1 Execution (EQUITY-45)
+
+1. **P0: Verify Pattern Detector Usage**
+   - Check paper_signal_scanner.py imports unified_pattern_detector
+   - Verify `_detect_patterns()` uses `detect_all_patterns()` from unified module
+   - Confirm target calculations use `apply_timeframe_adjustment()`
+
+2. **P1: TFC Logging (Critical)**
+   - Add logging after TFC evaluation (lines ~1197-1211, ~1322)
+   - Log: score, alignment, passes_flexible, risk_multiplier, priority_rank
+   - Add TFC breakdown to scan summary
+
+3. **P3 (partial): Filter Rejection Logging**
+   - Add counters and logging in `_passes_filters()`
+   - Log rejection reason with actual vs threshold values
+
+### Session 2 (EQUITY-46)
+
+- P2: Trade Analytics by Pattern Type (new feature)
+- P3: Complete Health Dashboard Metrics
+- P4: Signal Lifecycle Tracing
+
+### Success Criteria
+
+| Item | Metric |
+|------|--------|
+| TFC Logging | Every TFC evaluation logged with score/alignment/passes |
+| Filter Rejections | Every rejection logged with reason |
+| Pattern Analytics | Dashboard shows win rate by pattern type |
+| Signal Tracing | Can grep signal_key to see full lifecycle |
+
+### Key Files for Next Session
+
+```
+strat/paper_signal_scanner.py     - TFC logging (P1)
+strat/unified_pattern_detector.py - Verify usage (P0)
+strat/signal_automation/daemon.py - Filter rejection logging (P3)
+strat/signal_automation/executor.py - Pattern metadata (P2)
+dashboard/data_loaders/options_loader.py - Pattern stats (P2)
+```
 
 ---
 
