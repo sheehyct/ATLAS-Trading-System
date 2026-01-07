@@ -31,6 +31,9 @@ COLORS = {
     'ERROR': 0xFF0000,   # Red for errors
 }
 
+# User ID for notification mentions (test enhancement)
+NOTIFY_USER_ID = "1458483340310085727"
+
 
 class DiscordAlerter(BaseAlerter):
     """
@@ -624,6 +627,7 @@ class DiscordAlerter(BaseAlerter):
         tfc_display = f"{signal.tfc_score}/4" if hasattr(signal, 'tfc_score') and signal.tfc_score is not None else "N/A"
         entry_display = self._get_entry_trigger_display(signal)
         message = (
+            f"<@{NOTIFY_USER_ID}> "
             f"**Entry: {signal.symbol} {signal.pattern_type} {signal.timeframe} {option_type}**\n"
             f"@ {entry_display} | "
             f"Target: ${signal.target_price:.2f} | "
@@ -676,6 +680,7 @@ class DiscordAlerter(BaseAlerter):
 
         # Clean, mobile-friendly message
         message = (
+            f"<@{NOTIFY_USER_ID}> "
             f"**Exit: {symbol} {pattern_type} {timeframe} {option_type}**\n"
             f"{exit_reason} | P/L: {pnl_str}"
         )

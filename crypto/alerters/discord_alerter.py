@@ -42,6 +42,9 @@ COLORS = {
     'LOSS': 0xFF0000,    # Red for loss
 }
 
+# User ID for notification mentions (test enhancement)
+NOTIFY_USER_ID = "1458483340310085727"
+
 
 class CryptoDiscordAlerter:
     """
@@ -318,6 +321,7 @@ class CryptoDiscordAlerter:
 
         # Clean, mobile-friendly message
         message = (
+            f"<@{NOTIFY_USER_ID}> "
             f"**TRIGGERED: {signal.symbol} {signal.pattern_type} {signal.timeframe} {direction_str}**\n"
             f"Break @ ${event.trigger_price:,.2f} | "
             f"Current: ${event.current_price:,.2f} | "
@@ -387,6 +391,7 @@ class CryptoDiscordAlerter:
         tfc_display = f"{tfc_score}/4" if tfc_score else "N/A"
 
         message = (
+            f"<@{NOTIFY_USER_ID}> "
             f"**ENTRY: {signal.symbol} {direction_str}**\n"
             f"Pattern: {pattern} ({signal.timeframe}) | TFC: {tfc_display}\n"
             f"@ ${entry_price:,.2f}\n"
@@ -462,6 +467,7 @@ class CryptoDiscordAlerter:
         # Build message with context
         if context_str:
             message = (
+                f"<@{NOTIFY_USER_ID}> "
                 f"**EXIT [{exit_reason}]: {symbol} {direction}**\n"
                 f"Pattern: {context_str}{duration_str}\n"
                 f"Entry: ${entry_price:,.2f} -> Exit: ${exit_price:,.2f}\n"
@@ -470,6 +476,7 @@ class CryptoDiscordAlerter:
         else:
             # Fallback if no pattern info
             message = (
+                f"<@{NOTIFY_USER_ID}> "
                 f"**EXIT [{exit_reason}]: {symbol} {direction}**\n"
                 f"Entry: ${entry_price:,.2f} -> Exit: ${exit_price:,.2f}\n"
                 f"P/L: {pnl_str} ({pnl_pct_str})"
