@@ -72,8 +72,9 @@ class MonitoringConfig:
 
     # Session EQUITY-35: EOD exit for hourly trades
     # All 1H timeframe trades must exit before market close to avoid overnight gap risk
+    # Session EQUITY-45: Changed from 15:55 to 15:59 to capture late momentum moves
     eod_exit_hour: int = 15              # Hour in ET for EOD exit
-    eod_exit_minute: int = 55            # Minute in ET for EOD exit (15:55 = 5 min buffer)
+    eod_exit_minute: int = 59            # Minute in ET for EOD exit (15:59 = 1 min buffer)
 
     # Session EQUITY-36: Optimal exit strategy
     # 1H patterns get reduced target (1.0x R:R instead of 1.5x)
