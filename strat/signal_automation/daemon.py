@@ -22,7 +22,7 @@ import signal
 import sys
 import time
 import logging
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timedelta
 from typing import Optional, Dict, Any, List
 from threading import Event
 
@@ -317,6 +317,18 @@ class SignalDaemon:
                 f"DIRECTION CHANGED: {signal.symbol} {signal.pattern_type} "
                 f"{original_direction} -> {actual_direction} (opposite break detected)"
             )
+
+        # Session EQUITY-46: Check if setup is stale before executing
+        # A setup becomes stale when a new bar closes, potentially changing the pattern structure
+        is_stale, stale_reason = self._is_setup_stale(signal)
+        if is_stale:
+            logger.warning(
+                f"STALE SETUP REJECTED: {signal.symbol} {signal.pattern_type} {signal.direction} "
+                f"@ ${event.current_price:.2f} - {stale_reason}"
+            )
+            # Mark as expired instead of triggered
+            self.signal_store.mark_expired(signal.signal_key)
+            return
 
         logger.info(
             f"ENTRY TRIGGERED: {signal.symbol} {signal.pattern_type} {signal.direction} "
@@ -782,6 +794,99 @@ class SignalDaemon:
             return False
 
         return True
+
+    def _is_setup_stale(self, signal: StoredSignal) -> tuple[bool, str]:
+        """
+        Check if a SETUP signal is stale (new bar has closed since detection).
+
+        Session EQUITY-46: Fix for stale setup bug where setups from N days ago
+        triggered when they should have been invalidated by intervening bars.
+
+        A setup is only valid during the "forming bar" period. Once that bar closes:
+        - If trigger was hit -> pattern COMPLETED (entry happened)
+        - If trigger NOT hit -> pattern EVOLVED (new bar inserted, setup stale)
+
+        Args:
+            signal: The stored signal to check
+
+        Returns:
+            Tuple of (is_stale: bool, reason: str)
+        """
+        import pytz
+
+        # Only check SETUP signals (COMPLETED are already validated)
+        if signal.signal_type != SignalType.SETUP.value:
+            return False, ""
+
+        # Need setup_bar_timestamp to check staleness
+        setup_ts = signal.setup_bar_timestamp
+        if setup_ts is None:
+            logger.warning(
+                f"STALE CHECK SKIPPED: {signal.signal_key} has no setup_bar_timestamp"
+            )
+            return False, ""
+
+        # Ensure timezone-aware comparison
+        et = pytz.timezone('America/New_York')
+        now = datetime.now(et)
+
+        # Make setup_ts timezone-aware if it isn't
+        if setup_ts.tzinfo is None:
+            setup_ts = et.localize(setup_ts)
+
+        # Calculate staleness based on timeframe
+        timeframe = signal.timeframe
+
+        if timeframe == '1H':
+            # For hourly: setup is valid for 1 hour after setup_bar_timestamp
+            # (the forming bar period)
+            valid_until = setup_ts + timedelta(hours=1)
+            if now > valid_until:
+                return True, f"Hourly setup expired: detected {setup_ts.strftime('%H:%M')}, now {now.strftime('%H:%M')}"
+
+        elif timeframe == '1D':
+            # For daily: setup is valid until end of NEXT trading day
+            # If setup from Jan 5, valid during Jan 6, stale on Jan 7+
+            import pandas_market_calendars as mcal
+            nyse = mcal.get_calendar('NYSE')
+
+            # Get trading days from setup date to now
+            schedule = nyse.schedule(
+                start_date=setup_ts.date(),
+                end_date=now.date()
+            )
+
+            if len(schedule) > 2:
+                # More than 2 trading days (setup day + forming day + today)
+                return True, f"Daily setup expired: {len(schedule)} trading days since setup ({setup_ts.date()} to {now.date()})"
+
+        elif timeframe == '1W':
+            # For weekly: setup is valid until end of NEXT week
+            # Calculate weeks difference
+            setup_week = setup_ts.isocalendar()[1]
+            setup_year = setup_ts.isocalendar()[0]
+            now_week = now.isocalendar()[1]
+            now_year = now.isocalendar()[0]
+
+            # Simple week difference (handles year boundary)
+            weeks_diff = (now_year - setup_year) * 52 + (now_week - setup_week)
+
+            if weeks_diff > 1:
+                return True, f"Weekly setup expired: {weeks_diff} weeks since setup"
+
+        elif timeframe == '1M':
+            # For monthly: setup is valid until end of NEXT month
+            setup_month = setup_ts.month
+            setup_year = setup_ts.year
+            now_month = now.month
+            now_year = now.year
+
+            months_diff = (now_year - setup_year) * 12 + (now_month - setup_month)
+
+            if months_diff > 1:
+                return True, f"Monthly setup expired: {months_diff} months since setup"
+
+        return False, ""
 
     def _send_alerts(self, signals: List[StoredSignal]) -> None:
         """
