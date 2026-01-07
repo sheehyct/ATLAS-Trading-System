@@ -1,9 +1,76 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 7, 2026 (Session EQUITY-45 Execution)
+**Last Updated:** January 7, 2026 (Session EQUITY-46)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Bug Fixes & Stale Setup Investigation
-**Status:** EOD exit fixes deployed, CRITICAL stale setup bug documented for EQUITY-46
+**Phase:** Paper Trading - Stale Setup Fix + Pipeline Improvements
+**Status:** Stale setup bug FIXED and deployed to VPS
+
+---
+
+## Session EQUITY-46: Stale Setup Fix (COMPLETE)
+
+**Date:** January 7, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Stale setup validation implemented and deployed
+
+### Overview
+
+Fixed the critical stale setup bug discovered in EQUITY-45 where MSTR was entered as "3-2U" when the pattern had evolved to "3-2U-2D".
+
+### Root Cause Analysis
+
+The existing CRYPTO-MONITOR-2 fix (December 21) only validated setups at **detection time**. Once a signal was stored, it was never revalidated. The entry_monitor would trigger stale setups even when new bars had closed and changed the pattern structure.
+
+### Fix Implemented
+
+| Component | Change | Location |
+|-----------|--------|----------|
+| `_is_setup_stale()` | New method to check if setup expired based on timeframe | daemon.py:786-877 |
+| `_on_entry_triggered()` | Added stale check before execution | daemon.py:321-331 |
+| Test suite | 8 new tests for stale setup validation | test_stale_setup.py |
+
+**Staleness Logic by Timeframe:**
+- 1H: Setup valid for 1 hour after setup_bar_timestamp
+- 1D: Setup valid for 2 trading days (setup day + forming day)
+- 1W: Setup valid for 2 weeks
+- 1M: Setup valid for 2 months
+
+### Commit
+
+`79ff0d3` - fix(daemon): add stale setup validation before entry trigger (EQUITY-46)
+
+### Deployment
+
+- VPS updated to `79ff0d3`
+- Daemon restarted successfully
+- Fix active for next trading session
+
+### Remaining Technical Debt (Consolidated)
+
+| Priority | Task | Category | Effort |
+|----------|------|----------|--------|
+| P1 | TFC Logging | Observability | 2 hrs |
+| P2 | Filter Rejection Logging | Observability | 1 hr |
+| P3 | Type 3 Evolution Detection | Execution Quality | 3 hrs |
+| P4 | Signal Lifecycle Tracing | Observability | 1 hr |
+| P5 | TFC Re-evaluation at Entry | Execution Quality | 4 hrs |
+| P6 | Trade Analytics Dashboard | Dashboard | 3 hrs |
+
+**Plan File:** `C:\Users\sheeh\.claude\plans\twinkling-sauteeing-treehouse.md` (updated priorities)
+
+### Next Session (EQUITY-47)
+
+1. P1: TFC Logging - Add logging to paper_signal_scanner.py TFC evaluations
+2. P2: Filter Rejection Logging - Log why signals are rejected with actual vs threshold
+
+### Discussion Notes
+
+Session included analysis of architectural gaps in entry_monitor:
+- Currently only gets current price (no bar data)
+- Cannot detect Type 3 evolution at entry time
+- Cannot re-evaluate TFC at entry time
+
+These are documented for future sessions (P3, P5).
 
 ---
 
