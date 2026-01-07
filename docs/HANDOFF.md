@@ -1,9 +1,129 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 6, 2026 (Session EQUITY-43)
+**Last Updated:** January 6, 2026 (Session EQUITY-44)
 **Current Branch:** `main`
-**Phase:** Paper Trading - STRAT Skill Documentation Complete
-**Status:** STRAT skill audit fixes implemented, enforcement hooks added
+**Phase:** Paper Trading - Technical Debt Resolution
+**Status:** TFC Type 3 scoring + Pattern invalidation exit implemented
+
+---
+
+## Session EQUITY-44: Technical Debt Resolution (COMPLETE)
+
+**Date:** January 6, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - All 3 technical debt items resolved
+
+### Overview
+
+Resolved technical debt items from STRAT methodology audit (EQUITY-43):
+1. Verified enforcement hooks work in practice
+2. Implemented TFC Green/Red Candle Fix for Type 3 bars
+3. Implemented Type 3 Pattern Invalidation exit logic
+
+### Item 1: Enforcement Hooks Verification (COMPLETE)
+
+Verified both hooks work correctly:
+- `strat_prompt_validator.py` (UserPromptSubmit) - Advisory message appears for STRAT queries
+- `strat_code_guardian.py` (PreToolUse) - Blocks STRAT file edits without skill consultation
+
+### Item 2: TFC Green/Red Candle Fix (COMPLETE)
+
+**Problem:** Type 3 bars were completely ignored in TFC scoring. Per STRAT methodology:
+- Type 1: Does NOT count toward TFC
+- Type 2U/2D: Counts as directional
+- Type 3: Counts, direction by GREEN (Close>Open) or RED (Close<Open)
+
+**Implementation:**
+- Updated `check_directional_bar()` to accept open_price/close_price parameters
+- Added Type 3 handling logic: checks candle color for direction
+- Updated all TFC methods to propagate Open/Close data
+- Updated `TimeframeContinuityAdapter.evaluate()` to extract and pass Open/Close
+
+**Files Modified:**
+- `strat/timeframe_continuity.py` - 7 methods updated
+- `strat/timeframe_continuity_adapter.py` - evaluate() updated
+
+**Tests Added:**
+- `tests/test_strat/test_timeframe_continuity.py::TestType3CandleColor` - 8 new tests
+
+### Item 3: Type 3 Pattern Invalidation (COMPLETE)
+
+**Problem:** EXECUTION.md Section 8 documents exit when entry bar evolves to Type 3, but code didn't implement it.
+
+**Implementation:**
+- Added `ExitReason.PATTERN_INVALIDATED` enum
+- Extended `TrackedPosition` with entry bar tracking fields
+- Extended `ExecutionResult` with entry bar capture
+- Added `get_latest_bars()` to `AlpacaTradingClient`
+- Added bar cache and `_update_bar_data()` to `PositionMonitor`
+- Added `_check_pattern_invalidation()` method
+- Integrated into exit priority (after target hit, before trailing stop)
+
+**Files Modified:**
+- `strat/signal_automation/position_monitor.py` - ExitReason, TrackedPosition, check methods
+- `strat/signal_automation/executor.py` - ExecutionResult fields
+- `integrations/alpaca_trading_client.py` - get_latest_bars() method
+
+**Tests Added:**
+- `tests/test_signal_automation/test_pattern_invalidation.py` - 15 new tests
+
+### Exit Priority Order (Updated)
+
+Per STRAT methodology EXECUTION.md Section 8:
+1. Hold time check (safety)
+2. EOD exit (safety)
+3. DTE exit (safety)
+4. Stop hit
+5. Max loss
+6. **Target hit**
+7. **Pattern invalidation** (NEW - Type 3 evolution)
+8. Trailing stop
+9. Partial exit
+10. Max profit
+
+### Test Results
+
+```
+tests/test_strat/                          - 349 passed
+tests/test_signal_automation/              - 29 passed
+Total: 377 passed, 2 skipped, 0 failures
+```
+
+### Key Implementation Details
+
+**TFC Type 3 Scoring:**
+```python
+# Type 3 direction by candle color
+if classification == 3.0:
+    if open_price is not None and close_price is not None:
+        is_green = close_price > open_price
+        if direction == 'bullish' and is_green:
+            return True
+        elif direction == 'bearish' and not is_green:
+            return True
+```
+
+**Pattern Invalidation Check:**
+```python
+# Type 3 evolution = broke BOTH high AND low
+broke_high = current_high > pos.entry_bar_high
+broke_low = current_low < pos.entry_bar_low
+
+if broke_high and broke_low:
+    return ExitSignal(reason=ExitReason.PATTERN_INVALIDATED, ...)
+```
+
+### Backward Compatibility
+
+- All new parameters are optional with None defaults
+- Existing code calling TFC methods without Open/Close continues to work
+- Type 3 bars are excluded if no candle data provided (preserves old behavior)
+
+### Next Session Priorities
+
+1. Deploy to VPS and verify pattern invalidation in live paper trading
+2. Monitor TFC scoring with Type 3 bars in production
+3. Consider backtesting impact of pattern invalidation exit
 
 ---
 

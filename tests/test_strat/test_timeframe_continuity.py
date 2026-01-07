@@ -408,3 +408,216 @@ class TestConvenienceFunctions:
         low_dict2 = {'1D': daily_low2}
 
         assert get_continuity_strength(high_dict2, low_dict2, 'bullish') == 1
+
+
+class TestType3CandleColor:
+    """Test Type 3 (outside bar) TFC scoring with candle color (EQUITY-44).
+
+    Per STRAT methodology:
+    - Type 1: Does NOT count toward TFC
+    - Type 2U/2D: Counts as directional
+    - Type 3: Counts, direction by GREEN (Close>Open) or RED (Close<Open)
+    """
+
+    def test_type3_green_counts_as_bullish(self):
+        """Type 3 bar with green candle (Close>Open) should count as bullish."""
+        checker = TimeframeContinuityChecker(timeframes=['1D'])
+
+        # Create Type 3 bar (breaks both high and low)
+        # Bar 0: Reference, Bar 1: Type 3 (outside bar)
+        daily_high = pd.Series([100, 110])   # Breaks previous high
+        daily_low = pd.Series([95, 85])      # Breaks previous low
+        daily_open = pd.Series([97, 90])     # Open at 90
+        daily_close = pd.Series([98, 105])   # Close at 105 (GREEN: Close > Open)
+
+        high_dict = {'1D': daily_high}
+        low_dict = {'1D': daily_low}
+        open_dict = {'1D': daily_open}
+        close_dict = {'1D': daily_close}
+
+        # Check bullish - should count because green candle
+        result = checker.check_continuity(
+            high_dict, low_dict, 'bullish', bar_index=-1,
+            open_dict=open_dict, close_dict=close_dict
+        )
+
+        assert result['strength'] == 1, "Type 3 green candle should count as bullish"
+        assert '1D' in result['aligned_timeframes']
+
+        # Check bearish - should NOT count because green candle
+        result_bear = checker.check_continuity(
+            high_dict, low_dict, 'bearish', bar_index=-1,
+            open_dict=open_dict, close_dict=close_dict
+        )
+
+        assert result_bear['strength'] == 0, "Type 3 green candle should NOT count as bearish"
+
+    def test_type3_red_counts_as_bearish(self):
+        """Type 3 bar with red candle (Close<Open) should count as bearish."""
+        checker = TimeframeContinuityChecker(timeframes=['1D'])
+
+        # Create Type 3 bar (breaks both high and low)
+        # Bar 0: Reference, Bar 1: Type 3 (outside bar) with red candle
+        daily_high = pd.Series([100, 110])   # Breaks previous high
+        daily_low = pd.Series([95, 85])      # Breaks previous low
+        daily_open = pd.Series([97, 105])    # Open at 105
+        daily_close = pd.Series([98, 90])    # Close at 90 (RED: Close < Open)
+
+        high_dict = {'1D': daily_high}
+        low_dict = {'1D': daily_low}
+        open_dict = {'1D': daily_open}
+        close_dict = {'1D': daily_close}
+
+        # Check bearish - should count because red candle
+        result = checker.check_continuity(
+            high_dict, low_dict, 'bearish', bar_index=-1,
+            open_dict=open_dict, close_dict=close_dict
+        )
+
+        assert result['strength'] == 1, "Type 3 red candle should count as bearish"
+        assert '1D' in result['aligned_timeframes']
+
+        # Check bullish - should NOT count because red candle
+        result_bull = checker.check_continuity(
+            high_dict, low_dict, 'bullish', bar_index=-1,
+            open_dict=open_dict, close_dict=close_dict
+        )
+
+        assert result_bull['strength'] == 0, "Type 3 red candle should NOT count as bullish"
+
+    def test_type3_no_color_data_excluded(self):
+        """Type 3 bar without Open/Close data should NOT count (backward compat)."""
+        checker = TimeframeContinuityChecker(timeframes=['1D'])
+
+        # Create Type 3 bar without color data
+        daily_high = pd.Series([100, 110])   # Breaks previous high
+        daily_low = pd.Series([95, 85])      # Breaks previous low
+
+        high_dict = {'1D': daily_high}
+        low_dict = {'1D': daily_low}
+
+        # Without open_dict/close_dict, Type 3 should NOT count (old behavior)
+        result = checker.check_continuity(
+            high_dict, low_dict, 'bullish', bar_index=-1
+        )
+
+        assert result['strength'] == 0, "Type 3 without candle data should NOT count"
+
+        result_bear = checker.check_continuity(
+            high_dict, low_dict, 'bearish', bar_index=-1
+        )
+
+        assert result_bear['strength'] == 0, "Type 3 without candle data should NOT count"
+
+    def test_type1_still_excluded_with_color_data(self):
+        """Type 1 (inside bar) should still NOT count even with Open/Close data."""
+        checker = TimeframeContinuityChecker(timeframes=['1D'])
+
+        # Create Type 1 bar (inside bar - doesn't break either)
+        daily_high = pd.Series([100, 98])    # Does NOT break previous high
+        daily_low = pd.Series([95, 96])      # Does NOT break previous low
+        daily_open = pd.Series([97, 97])     # Open/Close doesn't matter
+        daily_close = pd.Series([98, 97.5])  # for inside bars
+
+        high_dict = {'1D': daily_high}
+        low_dict = {'1D': daily_low}
+        open_dict = {'1D': daily_open}
+        close_dict = {'1D': daily_close}
+
+        result = checker.check_continuity(
+            high_dict, low_dict, 'bullish', bar_index=-1,
+            open_dict=open_dict, close_dict=close_dict
+        )
+
+        assert result['strength'] == 0, "Type 1 should NOT count even with color data"
+
+    def test_type2_unchanged_with_color_data(self):
+        """Type 2 bars should work the same with or without color data."""
+        checker = TimeframeContinuityChecker(timeframes=['1D'])
+
+        # Create Type 2U bar
+        daily_high = pd.Series([100, 105])   # Breaks previous high
+        daily_low = pd.Series([95, 100])     # Does NOT break previous low
+        daily_open = pd.Series([97, 101])
+        daily_close = pd.Series([98, 104])
+
+        high_dict = {'1D': daily_high}
+        low_dict = {'1D': daily_low}
+        open_dict = {'1D': daily_open}
+        close_dict = {'1D': daily_close}
+
+        # Without color data
+        result_no_color = checker.check_continuity(
+            high_dict, low_dict, 'bullish', bar_index=-1
+        )
+
+        # With color data
+        result_with_color = checker.check_continuity(
+            high_dict, low_dict, 'bullish', bar_index=-1,
+            open_dict=open_dict, close_dict=close_dict
+        )
+
+        assert result_no_color['strength'] == result_with_color['strength']
+        assert result_no_color['strength'] == 1, "Type 2U should count as bullish"
+
+    def test_multi_timeframe_with_type3(self):
+        """Test multi-timeframe continuity includes Type 3 with candle color."""
+        checker = TimeframeContinuityChecker(timeframes=['1D', '4H', '1H'])
+
+        # 1D: Type 2U (bullish)
+        daily_high = pd.Series([100, 105])
+        daily_low = pd.Series([95, 100])
+        daily_open = pd.Series([97, 101])
+        daily_close = pd.Series([98, 104])
+
+        # 4H: Type 3 Green (bullish)
+        four_h_high = pd.Series([100, 110])   # Breaks high
+        four_h_low = pd.Series([95, 85])      # Breaks low
+        four_h_open = pd.Series([97, 90])
+        four_h_close = pd.Series([98, 105])   # Green candle
+
+        # 1H: Type 2U (bullish)
+        one_h_high = pd.Series([100, 102])
+        one_h_low = pd.Series([95, 100])
+        one_h_open = pd.Series([97, 100])
+        one_h_close = pd.Series([98, 101])
+
+        high_dict = {'1D': daily_high, '4H': four_h_high, '1H': one_h_high}
+        low_dict = {'1D': daily_low, '4H': four_h_low, '1H': one_h_low}
+        open_dict = {'1D': daily_open, '4H': four_h_open, '1H': one_h_open}
+        close_dict = {'1D': daily_close, '4H': four_h_close, '1H': one_h_close}
+
+        # Use check_continuity (not flexible) to test all provided timeframes
+        result = checker.check_continuity(
+            high_dict=high_dict,
+            low_dict=low_dict,
+            direction='bullish',
+            bar_index=-1,
+            open_dict=open_dict,
+            close_dict=close_dict
+        )
+
+        # All 3 should be aligned (1D 2U, 4H Type3 Green, 1H 2U)
+        assert result['strength'] == 3, f"Expected 3 aligned, got {result['strength']}"
+        assert '4H' in result['aligned_timeframes'], "Type 3 Green 4H should be aligned"
+        assert result['full_continuity'] == True, "All 3 timeframes should give full continuity"
+
+    def test_convenience_function_with_type3(self):
+        """Test get_continuity_strength with Type 3 candle color."""
+        # Type 3 Green bar
+        daily_high = pd.Series([100, 110])
+        daily_low = pd.Series([95, 85])
+        daily_open = pd.Series([97, 90])
+        daily_close = pd.Series([98, 105])  # Green
+
+        high_dict = {'1D': daily_high}
+        low_dict = {'1D': daily_low}
+        open_dict = {'1D': daily_open}
+        close_dict = {'1D': daily_close}
+
+        strength = get_continuity_strength(
+            high_dict, low_dict, 'bullish',
+            open_dict=open_dict, close_dict=close_dict
+        )
+
+        assert strength == 1, "Type 3 Green should count as bullish in convenience function"

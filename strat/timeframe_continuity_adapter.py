@@ -97,6 +97,7 @@ class TimeframeContinuityAdapter:
 
         Args:
             fetcher: Callable returning a DataFrame with High/Low columns.
+                     Optionally includes Open/Close for Type 3 candle color.
             detection_timeframe: Timeframe where the pattern was detected.
             direction: "bullish" or "bearish".
             timeframe_aliases: Optional mapping from canonical timeframe (e.g.,
@@ -108,6 +109,8 @@ class TimeframeContinuityAdapter:
 
         high_dict: Dict[str, pd.Series] = {}
         low_dict: Dict[str, pd.Series] = {}
+        open_dict: Dict[str, pd.Series] = {}
+        close_dict: Dict[str, pd.Series] = {}
 
         for tf in self.timeframes:
             fetch_tf = timeframe_aliases.get(tf, tf) if timeframe_aliases else tf
@@ -116,6 +119,11 @@ class TimeframeContinuityAdapter:
                 continue
             high_dict[tf] = df["High"]
             low_dict[tf] = df["Low"]
+            # Extract Open/Close for Type 3 candle color (EQUITY-44)
+            if "Open" in df.columns:
+                open_dict[tf] = df["Open"]
+            if "Close" in df.columns:
+                close_dict[tf] = df["Close"]
 
         if not high_dict or not low_dict:
             return ContinuityAssessment(
@@ -135,6 +143,8 @@ class TimeframeContinuityAdapter:
             direction=direction,
             min_strength=self.min_strength,
             detection_timeframe=detection_tf,
+            open_dict=open_dict if open_dict else None,
+            close_dict=close_dict if close_dict else None,
         )
 
         strength = continuity.get("strength", 0)

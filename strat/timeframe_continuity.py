@@ -118,18 +118,29 @@ class TimeframeContinuityChecker:
     def check_directional_bar(
         self,
         classification: float,
-        direction: str
+        direction: str,
+        open_price: Optional[float] = None,
+        close_price: Optional[float] = None
     ) -> bool:
         """
         Check if bar is directional in specified direction.
+
+        Per STRAT methodology (EQUITY-44):
+        - Type 1 (inside): Does NOT count toward TFC
+        - Type 2U/2D: Counts as directional (bullish/bearish)
+        - Type 3 (outside): Counts, direction by candle color (green=bullish, red=bearish)
 
         Parameters:
         -----------
         classification : float
             Bar classification from classify_bars_nb()
-            2.0 = 2U (bullish), -2.0 = 2D (bearish)
+            2.0 = 2U (bullish), -2.0 = 2D (bearish), 3.0 = Type 3 (outside)
         direction : str
             'bullish' or 'bearish'
+        open_price : float, optional
+            Bar open price (needed for Type 3 candle color determination)
+        close_price : float, optional
+            Bar close price (needed for Type 3 candle color determination)
 
         Returns:
         --------
@@ -139,19 +150,35 @@ class TimeframeContinuityChecker:
         if np.isnan(classification) or classification == -999:
             return False
 
+        # Type 2 bars - direct direction match
         if direction == 'bullish':
-            return classification == 2.0  # 2U bar
+            if classification == 2.0:  # 2U bar
+                return True
         elif direction == 'bearish':
-            return classification == -2.0  # 2D bar
-        else:
-            return False
+            if classification == -2.0:  # 2D bar
+                return True
+
+        # Type 3 (outside bar) - direction by candle color (EQUITY-44)
+        # Per STRAT methodology: Green = bullish, Red = bearish
+        if classification == 3.0:
+            if open_price is not None and close_price is not None:
+                is_green = close_price > open_price
+                if direction == 'bullish' and is_green:
+                    return True
+                elif direction == 'bearish' and not is_green:
+                    return True
+            # If no price data, Type 3 doesn't count (conservative approach)
+
+        return False
 
     def check_continuity(
         self,
         high_dict: Dict[str, pd.Series],
         low_dict: Dict[str, pd.Series],
         direction: str = 'bullish',
-        bar_index: int = -1
+        bar_index: int = -1,
+        open_dict: Optional[Dict[str, pd.Series]] = None,
+        close_dict: Optional[Dict[str, pd.Series]] = None
     ) -> Dict[str, any]:
         """
         Check timeframe continuity at specific bar index.
@@ -168,6 +195,12 @@ class TimeframeContinuityChecker:
             Direction to check: 'bullish' or 'bearish'
         bar_index : int, default -1
             Bar index to check (-1 = most recent bar)
+        open_dict : dict, optional (EQUITY-44)
+            Dictionary mapping timeframes to open price Series
+            Required for Type 3 candle color determination
+        close_dict : dict, optional (EQUITY-44)
+            Dictionary mapping timeframes to close price Series
+            Required for Type 3 candle color determination
 
         Returns:
         --------
@@ -215,8 +248,20 @@ class TimeframeContinuityChecker:
                 # Positive index
                 bar_classification = classifications.iloc[bar_index]
 
+            # Get Open/Close for Type 3 candle color (EQUITY-44)
+            open_price = None
+            close_price = None
+            if open_dict and close_dict and tf in open_dict and tf in close_dict:
+                try:
+                    open_price = open_dict[tf].iloc[bar_index]
+                    close_price = close_dict[tf].iloc[bar_index]
+                except (IndexError, KeyError):
+                    pass  # Fall back to no color data
+
             # Check if directional in specified direction
-            is_aligned = self.check_directional_bar(bar_classification, direction)
+            is_aligned = self.check_directional_bar(
+                bar_classification, direction, open_price, close_price
+            )
 
             if is_aligned:
                 aligned_timeframes.append(tf)
@@ -238,7 +283,9 @@ class TimeframeContinuityChecker:
         target_datetime: pd.Timestamp,
         direction: str = 'bullish',
         min_strength: int = 3,
-        detection_timeframe: str = '1D'
+        detection_timeframe: str = '1D',
+        open_dict: Optional[Dict[str, pd.Series]] = None,
+        close_dict: Optional[Dict[str, pd.Series]] = None
     ) -> Dict[str, any]:
         """
         Check flexible timeframe continuity at specific datetime.
@@ -260,6 +307,12 @@ class TimeframeContinuityChecker:
             Minimum number of aligned timeframes required (will be adjusted for timeframe)
         detection_timeframe : str, default '1D'
             Timeframe where pattern was detected (determines which TFs to check)
+        open_dict : dict, optional (EQUITY-44)
+            Dictionary mapping timeframes to open price Series
+            Required for Type 3 candle color determination
+        close_dict : dict, optional (EQUITY-44)
+            Dictionary mapping timeframes to close price Series
+            Required for Type 3 candle color determination
 
         Returns:
         --------
@@ -313,9 +366,23 @@ class TimeframeContinuityChecker:
 
             classifications = classify_bars(high_subset, low_subset)
 
+            # Get Open/Close for Type 3 candle color (EQUITY-44)
+            open_price = None
+            close_price = None
+            if open_dict and close_dict and tf in open_dict and tf in close_dict:
+                try:
+                    open_subset = open_dict[tf].loc[:nearest_datetime]
+                    close_subset = close_dict[tf].loc[:nearest_datetime]
+                    open_price = open_subset.iloc[-1]
+                    close_price = close_subset.iloc[-1]
+                except (IndexError, KeyError):
+                    pass  # Fall back to no color data
+
             # Check most recent bar
             bar_classification = classifications.iloc[-1]
-            is_aligned = self.check_directional_bar(bar_classification, direction)
+            is_aligned = self.check_directional_bar(
+                bar_classification, direction, open_price, close_price
+            )
 
             if is_aligned:
                 aligned_timeframes.append(tf)
@@ -338,7 +405,9 @@ class TimeframeContinuityChecker:
         direction: str = 'bullish',
         bar_index: int = -1,
         min_strength: int = 3,
-        detection_timeframe: str = '1D'
+        detection_timeframe: str = '1D',
+        open_dict: Optional[Dict[str, pd.Series]] = None,
+        close_dict: Optional[Dict[str, pd.Series]] = None
     ) -> Dict[str, any]:
         """
         Check timeframe continuity with flexible alignment requirements.
@@ -370,6 +439,12 @@ class TimeframeContinuityChecker:
             Minimum number of aligned timeframes required (3/5, 4/5, or 5/5)
         detection_timeframe : str, default '1D'
             Timeframe where pattern was detected (determines which TFs to check)
+        open_dict : dict, optional (EQUITY-44)
+            Dictionary mapping timeframes to open price Series
+            Required for Type 3 candle color determination
+        close_dict : dict, optional (EQUITY-44)
+            Dictionary mapping timeframes to close price Series
+            Required for Type 3 candle color determination
 
         Returns:
         --------
@@ -438,8 +513,20 @@ class TimeframeContinuityChecker:
             else:
                 bar_classification = classifications.iloc[bar_index]
 
+            # Get Open/Close for Type 3 candle color (EQUITY-44)
+            open_price = None
+            close_price = None
+            if open_dict and close_dict and tf in open_dict and tf in close_dict:
+                try:
+                    open_price = open_dict[tf].iloc[bar_index]
+                    close_price = close_dict[tf].iloc[bar_index]
+                except (IndexError, KeyError):
+                    pass  # Fall back to no color data
+
             # Check if directional in specified direction
-            is_aligned = self.check_directional_bar(bar_classification, direction)
+            is_aligned = self.check_directional_bar(
+                bar_classification, direction, open_price, close_price
+            )
 
             if is_aligned:
                 aligned_timeframes.append(tf)
@@ -460,7 +547,9 @@ class TimeframeContinuityChecker:
         high_dict: Dict[str, pd.Series],
         low_dict: Dict[str, pd.Series],
         target_datetime: pd.Timestamp,
-        direction: str = 'bullish'
+        direction: str = 'bullish',
+        open_dict: Optional[Dict[str, pd.Series]] = None,
+        close_dict: Optional[Dict[str, pd.Series]] = None
     ) -> Dict[str, any]:
         """
         Check timeframe continuity at specific datetime.
@@ -475,6 +564,12 @@ class TimeframeContinuityChecker:
             Datetime to check continuity at
         direction : str, default 'bullish'
             Direction to check: 'bullish' or 'bearish'
+        open_dict : dict, optional (EQUITY-44)
+            Dictionary mapping timeframes to open price Series
+            Required for Type 3 candle color determination
+        close_dict : dict, optional (EQUITY-44)
+            Dictionary mapping timeframes to close price Series
+            Required for Type 3 candle color determination
 
         Returns:
         --------
@@ -511,9 +606,23 @@ class TimeframeContinuityChecker:
 
             classifications = classify_bars(high_subset, low_subset)
 
+            # Get Open/Close for Type 3 candle color (EQUITY-44)
+            open_price = None
+            close_price = None
+            if open_dict and close_dict and tf in open_dict and tf in close_dict:
+                try:
+                    open_subset = open_dict[tf].loc[:nearest_datetime]
+                    close_subset = close_dict[tf].loc[:nearest_datetime]
+                    open_price = open_subset.iloc[-1]
+                    close_price = close_subset.iloc[-1]
+                except (IndexError, KeyError):
+                    pass  # Fall back to no color data
+
             # Check most recent bar
             bar_classification = classifications.iloc[-1]
-            is_aligned = self.check_directional_bar(bar_classification, direction)
+            is_aligned = self.check_directional_bar(
+                bar_classification, direction, open_price, close_price
+            )
 
             if is_aligned:
                 aligned_timeframes.append(tf)
@@ -535,7 +644,9 @@ def check_full_continuity(
     high_dict: Dict[str, pd.Series],
     low_dict: Dict[str, pd.Series],
     direction: str = 'bullish',
-    bar_index: int = -1
+    bar_index: int = -1,
+    open_dict: Optional[Dict[str, pd.Series]] = None,
+    close_dict: Optional[Dict[str, pd.Series]] = None
 ) -> bool:
     """
     Quick check for full timeframe continuity (all 5 timeframes aligned).
@@ -550,6 +661,12 @@ def check_full_continuity(
         Direction to check: 'bullish' or 'bearish'
     bar_index : int, default -1
         Bar index to check (-1 = most recent bar)
+    open_dict : dict, optional (EQUITY-44)
+        Dictionary mapping timeframes to open price Series
+        Required for Type 3 candle color determination
+    close_dict : dict, optional (EQUITY-44)
+        Dictionary mapping timeframes to close price Series
+        Required for Type 3 candle color determination
 
     Returns:
     --------
@@ -565,7 +682,9 @@ def check_full_continuity(
     ...     print("HIGHEST CONVICTION SIGNAL - All timeframes aligned")
     """
     checker = TimeframeContinuityChecker()
-    result = checker.check_continuity(high_dict, low_dict, direction, bar_index)
+    result = checker.check_continuity(
+        high_dict, low_dict, direction, bar_index, open_dict, close_dict
+    )
     return result['full_continuity']
 
 
@@ -573,7 +692,9 @@ def get_continuity_strength(
     high_dict: Dict[str, pd.Series],
     low_dict: Dict[str, pd.Series],
     direction: str = 'bullish',
-    bar_index: int = -1
+    bar_index: int = -1,
+    open_dict: Optional[Dict[str, pd.Series]] = None,
+    close_dict: Optional[Dict[str, pd.Series]] = None
 ) -> int:
     """
     Get continuity strength score (0-5).
@@ -588,6 +709,10 @@ def get_continuity_strength(
         Direction to check: 'bullish' or 'bearish'
     bar_index : int, default -1
         Bar index to check (-1 = most recent bar)
+    open_dict : dict, optional
+        Dictionary mapping timeframes to open price Series (for Type 3 candle color)
+    close_dict : dict, optional
+        Dictionary mapping timeframes to close price Series (for Type 3 candle color)
 
     Returns:
     --------
@@ -608,5 +733,7 @@ def get_continuity_strength(
     ...     signal_quality = 'LOW'
     """
     checker = TimeframeContinuityChecker()
-    result = checker.check_continuity(high_dict, low_dict, direction, bar_index)
+    result = checker.check_continuity(
+        high_dict, low_dict, direction, bar_index, open_dict, close_dict
+    )
     return result['strength']

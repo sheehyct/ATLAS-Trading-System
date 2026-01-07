@@ -39,6 +39,8 @@ class ExitReason(str, Enum):
     # Session EQUITY-36: Optimal exit strategy
     PARTIAL_EXIT = "PARTIAL"    # Partial exit at 1.0x R:R (multi-contract)
     TRAILING_STOP = "TRAIL"     # Trailing stop hit after profit
+    # Session EQUITY-44: Type 3 pattern invalidation
+    PATTERN_INVALIDATED = "PATTERN"  # Entry bar evolved to Type 3 (exit immediately)
 
 
 @dataclass
@@ -165,6 +167,12 @@ class TrackedPosition:
     partial_exit_done: bool = False      # Whether partial exit has been executed
     contracts_remaining: int = 0         # Contracts remaining after partial exit
 
+    # Session EQUITY-44: Pattern invalidation tracking
+    # Per STRAT methodology: exit immediately if entry bar evolves to Type 3
+    entry_bar_type: str = ""             # Entry bar type: "2U", "2D", or "3"
+    entry_bar_high: float = 0.0          # Entry bar high (for Type 3 detection)
+    entry_bar_low: float = 0.0           # Entry bar low (for Type 3 detection)
+
     # Tracking timestamps
     last_updated: datetime = field(default_factory=datetime.now)
 
@@ -203,6 +211,10 @@ class TrackedPosition:
             'high_water_mark': self.high_water_mark,
             'partial_exit_done': self.partial_exit_done,
             'contracts_remaining': self.contracts_remaining,
+            # Session EQUITY-44: Pattern invalidation tracking
+            'entry_bar_type': self.entry_bar_type,
+            'entry_bar_high': self.entry_bar_high,
+            'entry_bar_low': self.entry_bar_low,
             'last_updated': self.last_updated.isoformat(),
         }
 
@@ -273,6 +285,10 @@ class PositionMonitor:
         # Cache for underlying prices
         self._underlying_cache: Dict[str, Dict[str, Any]] = {}
         self._cache_updated: Optional[datetime] = None
+
+        # Session EQUITY-44: Bar cache for pattern invalidation detection
+        self._bar_cache: Dict[str, Dict[str, Any]] = {}
+        self._bar_cache_updated: Optional[datetime] = None
 
         # Statistics
         self._check_count = 0
@@ -430,6 +446,15 @@ class PositionMonitor:
                 f"(1.5x) to ${target_1x:.2f} (1.0x R:R)"
             )
 
+        # Session EQUITY-44: Get entry bar data from execution for pattern invalidation
+        entry_bar_type = ""
+        entry_bar_high = 0.0
+        entry_bar_low = 0.0
+        if execution:
+            entry_bar_type = getattr(execution, 'entry_bar_type', '')
+            entry_bar_high = getattr(execution, 'entry_bar_high', 0.0)
+            entry_bar_low = getattr(execution, 'entry_bar_low', 0.0)
+
         return TrackedPosition(
             osi_symbol=osi_symbol,
             signal_key=execution.signal_key if execution else "",
@@ -452,6 +477,10 @@ class PositionMonitor:
             original_target=original_target,
             actual_entry_underlying=actual_entry_underlying,  # Gap-through fix
             contracts_remaining=contracts,
+            # Session EQUITY-44: Pattern invalidation tracking
+            entry_bar_type=entry_bar_type,
+            entry_bar_high=entry_bar_high,
+            entry_bar_low=entry_bar_low,
         )
 
     def _parse_expiration(self, osi_symbol: str) -> str:
@@ -498,6 +527,9 @@ class PositionMonitor:
 
         # Update underlying prices
         self._update_underlying_prices()
+
+        # Session EQUITY-44: Update bar data for pattern invalidation detection
+        self._update_bar_data()
 
         for osi_symbol, pos in self._positions.items():
             if not pos.is_active:
@@ -632,6 +664,15 @@ class PositionMonitor:
                 dte=pos.dte,
                 details=f"Underlying ${pos.underlying_price:.2f} hit target ${pos.target_price:.2f}",
             )
+
+        # Session EQUITY-44: Pattern invalidation (Type 3 evolution)
+        # Per STRAT methodology EXECUTION.md Section 8:
+        # If entry bar evolves to Type 3 (breaks both high and low), exit immediately
+        # Priority: Target > Pattern Invalidated > Traditional Stop
+        # 4.5. Check pattern invalidation
+        invalidation_signal = self._check_pattern_invalidation(pos)
+        if invalidation_signal:
+            return invalidation_signal
 
         # Session EQUITY-36: Optimal exit strategy
         # 5. Update trailing stop state and check conditions (after target check)
@@ -890,6 +931,104 @@ class PositionMonitor:
         cached = self._underlying_cache.get(symbol)
         if cached:
             return cached.get('price')
+        return None
+
+    def _update_bar_data(self) -> None:
+        """
+        Update bar data cache from Alpaca market data.
+
+        Session EQUITY-44: Used for pattern invalidation detection.
+        Fetches latest bar OHLCV to check if entry bar evolved to Type 3.
+        """
+        if not self.trading_client:
+            return
+
+        # Get unique underlying symbols from positions with entry bar data
+        symbols = list({
+            pos.symbol for pos in self._positions.values()
+            if pos.is_active and pos.entry_bar_high > 0 and pos.entry_bar_low > 0
+        })
+
+        if not symbols:
+            return
+
+        try:
+            bars = self.trading_client.get_latest_bars(symbols)
+
+            for symbol in symbols:
+                bar = bars.get(symbol.upper())
+                if bar:
+                    self._bar_cache[symbol] = bar
+                    logger.debug(
+                        f"Updated {symbol} bar: H=${bar['high']:.2f} L=${bar['low']:.2f}"
+                    )
+
+            self._bar_cache_updated = datetime.now()
+
+        except Exception as e:
+            logger.warning(f"Error fetching bar data: {e}")
+
+    def _check_pattern_invalidation(self, pos: TrackedPosition) -> Optional[ExitSignal]:
+        """
+        Check if entry bar evolved to Type 3 (pattern invalidation).
+
+        Session EQUITY-44: Per STRAT methodology EXECUTION.md Section 8,
+        if the entry bar breaks BOTH high and low (Type 3 evolution),
+        exit immediately - the pattern premise is invalidated.
+
+        Exit Priority:
+        1. Target Hit
+        2. Pattern Invalidated (Type 3 evolution) <- This check
+        3. Traditional Stop
+
+        Args:
+            pos: TrackedPosition to check
+
+        Returns:
+            ExitSignal if pattern invalidated, None otherwise
+        """
+        # Skip if not a Type 2 entry or missing entry bar data
+        if pos.entry_bar_type not in ['2U', '2D']:
+            return None
+
+        if pos.entry_bar_high <= 0 or pos.entry_bar_low <= 0:
+            return None
+
+        # Get current bar data from cache
+        bar_data = self._bar_cache.get(pos.symbol)
+        if not bar_data:
+            return None
+
+        # Check for Type 3 evolution: broke BOTH the entry bar high AND low
+        current_high = bar_data.get('high', 0)
+        current_low = bar_data.get('low', float('inf'))
+
+        broke_high = current_high > pos.entry_bar_high
+        broke_low = current_low < pos.entry_bar_low
+
+        if broke_high and broke_low:
+            # Pattern invalidated! Entry bar evolved to Type 3
+            details = (
+                f"Entry bar evolved to Type 3: "
+                f"Entry H=${pos.entry_bar_high:.2f} L=${pos.entry_bar_low:.2f}, "
+                f"Current H=${current_high:.2f} L=${current_low:.2f}"
+            )
+
+            logger.warning(
+                f"PATTERN INVALIDATED for {pos.osi_symbol}: {details}"
+            )
+
+            return ExitSignal(
+                osi_symbol=pos.osi_symbol,
+                signal_key=pos.signal_key,
+                reason=ExitReason.PATTERN_INVALIDATED,
+                underlying_price=self._get_underlying_price(pos.symbol) or 0.0,
+                current_option_price=pos.current_price,
+                unrealized_pnl=pos.unrealized_pnl,
+                dte=pos.dte,
+                details=details,
+            )
+
         return None
 
     def _is_market_hours(self) -> bool:

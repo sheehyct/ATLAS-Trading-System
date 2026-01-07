@@ -63,6 +63,11 @@ class ExecutionResult:
     # Session EQUITY-36: Track actual underlying price at execution
     # For gap-through scenarios, this differs from signal.entry_trigger
     underlying_entry_price: Optional[float] = None
+    # Session EQUITY-44: Pattern invalidation tracking
+    # Entry bar data for Type 3 detection during monitoring
+    entry_bar_type: str = ""             # Entry bar type: "2U", "2D", or "3"
+    entry_bar_high: float = 0.0          # Entry bar high
+    entry_bar_low: float = 0.0           # Entry bar low
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -79,6 +84,10 @@ class ExecutionResult:
             'timestamp': self.timestamp.isoformat(),
             'error': self.error,
             'underlying_entry_price': self.underlying_entry_price,  # Session EQUITY-36
+            # Session EQUITY-44: Pattern invalidation tracking
+            'entry_bar_type': self.entry_bar_type,
+            'entry_bar_high': self.entry_bar_high,
+            'entry_bar_low': self.entry_bar_low,
         }
 
     @classmethod
@@ -107,6 +116,10 @@ class ExecutionResult:
             timestamp=timestamp,
             error=data.get('error'),
             underlying_entry_price=data.get('underlying_entry_price'),  # Session EQUITY-36
+            # Session EQUITY-44: Pattern invalidation tracking
+            entry_bar_type=data.get('entry_bar_type', ''),
+            entry_bar_high=data.get('entry_bar_high', 0.0),
+            entry_bar_low=data.get('entry_bar_low', 0.0),
         )
 
 
@@ -388,6 +401,11 @@ class SignalExecutor:
 
             # Create result
             # Session EQUITY-36: Store underlying_entry_price for gap-through tracking
+            # Session EQUITY-44: Capture entry bar data for pattern invalidation
+            entry_bar_type = "2U" if signal.direction == "CALL" else "2D"
+            entry_bar_high = getattr(signal, 'setup_bar_high', 0.0) or 0.0
+            entry_bar_low = getattr(signal, 'setup_bar_low', 0.0) or 0.0
+
             result = ExecutionResult(
                 signal_key=signal_key,
                 state=ExecutionState.ORDER_SUBMITTED,
@@ -399,6 +417,10 @@ class SignalExecutor:
                 premium=option_price or 0.0,
                 side=side,
                 underlying_entry_price=underlying_price,  # Actual underlying at execution
+                # Pattern invalidation tracking (EQUITY-44)
+                entry_bar_type=entry_bar_type,
+                entry_bar_high=entry_bar_high,
+                entry_bar_low=entry_bar_low,
             )
 
             self._executions[signal_key] = result

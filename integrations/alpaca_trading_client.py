@@ -1180,3 +1180,45 @@ class AlpacaTradingClient:
         if quote:
             return quote.get('mid')
         return None
+
+    def get_latest_bars(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Get latest bar (OHLCV) data for multiple stock symbols.
+
+        Session EQUITY-44: Used for pattern invalidation detection.
+        Checks if entry bar evolved from Type 2 to Type 3 (broke both high and low).
+
+        Args:
+            symbols: List of stock symbols
+
+        Returns:
+            Dict mapping symbol to bar data with keys:
+            - open, high, low, close, volume, timestamp
+        """
+        self._ensure_connected()
+
+        if self.data_client is None:
+            self.logger.warning("Market data client not initialized")
+            return {}
+
+        result = {}
+        try:
+            upper_symbols = [s.upper() for s in symbols]
+            request = StockLatestBarRequest(symbol_or_symbols=upper_symbols)
+            bars = self.data_client.get_stock_latest_bar(request)
+
+            for symbol, bar in bars.items():
+                result[symbol] = {
+                    'symbol': symbol,
+                    'open': float(bar.open),
+                    'high': float(bar.high),
+                    'low': float(bar.low),
+                    'close': float(bar.close),
+                    'volume': int(bar.volume),
+                    'timestamp': bar.timestamp.isoformat() if bar.timestamp else None,
+                }
+
+        except Exception as e:
+            self.logger.warning(f"Error fetching latest bars: {e}")
+
+        return result
