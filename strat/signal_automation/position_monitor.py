@@ -1087,7 +1087,10 @@ class PositionMonitor:
             Order result or None if failed
         """
         # Session 83K-77: Skip exits outside market hours
-        if not self._is_market_hours():
+        # Session EQUITY-45: Allow EOD exits to bypass market hours check
+        # EOD exits at 15:59 can race with market close at 16:00; we must
+        # allow them through since Alpaca will reject if market truly closed
+        if exit_signal.reason != ExitReason.EOD_EXIT and not self._is_market_hours():
             logger.debug(
                 f"Skipping exit for {exit_signal.osi_symbol}: "
                 f"outside market hours ({exit_signal.reason.value})"
@@ -1164,6 +1167,14 @@ class PositionMonitor:
                         logger.error(f"Exit callback error: {e}")
 
                 return result
+            else:
+                # Session EQUITY-45: Log when close_option_position returns falsy
+                # This was causing silent failures and infinite partial exit loops
+                logger.error(
+                    f"Exit failed - close_option_position returned falsy: "
+                    f"{exit_signal.osi_symbol} ({exit_signal.reason.value})"
+                )
+                self._error_count += 1
 
         except Exception as e:
             logger.error(f"Exit execution error for {exit_signal.osi_symbol}: {e}")
