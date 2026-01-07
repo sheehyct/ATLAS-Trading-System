@@ -14,6 +14,7 @@
 5. [Trailing Stops](#5-trailing-stops)
 6. [Rolling Profits](#6-rolling-profits)
 7. [Risk Management](#7-risk-management)
+8. [Pattern Invalidation by Type 3](#8-pattern-invalidation-by-type-3)
 
 ---
 
@@ -190,18 +191,18 @@ def check_mechanical_entry(bars, high, low, current_price, idx):
     # Check for 2-1-2 bull
     if idx >= 2:
         if bars[idx-2] == 2 and bars[idx-1] == 1 and bars[idx] == 2:
-            trigger = high[idx]
+            trigger = high[idx-1] + 0.01  # Inside bar high + buffer
             stop = low[idx-2]
             risk = trigger - stop
             target = trigger + (risk * 2)  # 2R target
-            
+
             if current_price > trigger:
                 return True, '212_bull', trigger, stop, target, 'bull'
-    
+
     # Check for 2-1-2 bear
     if idx >= 2:
         if bars[idx-2] == -2 and bars[idx-1] == 1 and bars[idx] == -2:
-            trigger = low[idx]
+            trigger = low[idx-1] - 0.01  # Inside bar low - buffer
             stop = high[idx-2]
             risk = stop - trigger
             target = trigger - (risk * 2)  # 2R target
@@ -680,6 +681,269 @@ def calculate_position_size(account_size, risk_pct, entry, stop, quality_score):
 - Max 5 positions at once (quality >7)
 - Max 3 positions if quality 5-7
 - Max 1 position if quality 3-5
+
+---
+
+## 8. Pattern Invalidation by Type 3
+
+### The Problem
+
+**Pattern invalidation occurs when the entry bar evolves from Type 2 to Type 3.**
+
+**Setup:** 2D-1-2D pattern
+- Bar 1: 2D
+- Bar 2: 1 (inside)
+- Bar 3: Breaks low of Bar 2 → becomes 2D → ENTRY (short)
+- Stop: High of Bar 1 (traditional)
+
+**What if Bar 3 then breaks HIGH of Bar 2?**
+- Bar 3 evolves: 2D → 3
+- Pattern becomes: 2D-1-3
+- The original pattern premise is **INVALIDATED**
+
+**Why This Matters:**
+1. Our trade was based on directional continuation (2D-1-2D)
+2. Type 3 signals broadening/reversal potential
+3. The premise of our trade no longer exists
+4. Waiting for original stop may result in larger loss
+
+---
+
+### Exit Priority Order
+
+**When managing an open position, check exits in this order:**
+
+| Priority | Exit Type | Trigger | Action |
+|----------|-----------|---------|--------|
+| **1** | Target Hit | Price reaches target | Exit at target |
+| **2** | Pattern Invalidated | Entry bar becomes Type 3 | **EXIT IMMEDIATELY** |
+| **3** | Traditional Stop | Price hits stop level | Exit at stop |
+
+**Critical:** Pattern invalidation takes priority over traditional stop. Exit at current price when detected - do not wait for original stop.
+
+---
+
+### Detection Logic
+
+```python
+def check_pattern_invalidation(
+    pattern_type,
+    entry_bar_idx,
+    current_bar_type,
+    entry_bar_original_type
+):
+    """
+    Check if pattern has been invalidated by bar evolution.
+
+    Args:
+        pattern_type: Original pattern (e.g., '2D-1-2D', '2U-1-2U')
+        entry_bar_idx: Index of the entry bar (Bar 3 in X-1-X patterns)
+        current_bar_type: Current classification of entry bar
+        entry_bar_original_type: What bar was when we entered
+
+    Returns:
+        dict with invalidation status and action
+    """
+    # If entry bar was Type 2 and is now Type 3, pattern is invalidated
+    if entry_bar_original_type in [2, -2] and current_bar_type == 3:
+        return {
+            'invalidated': True,
+            'reason': f'Entry bar evolved from {entry_bar_original_type} to Type 3',
+            'action': 'EXIT_IMMEDIATELY',
+            'note': 'Pattern premise no longer valid - broadening formation'
+        }
+
+    return {
+        'invalidated': False,
+        'reason': None,
+        'action': 'HOLD',
+        'note': None
+    }
+```
+
+---
+
+### Real-Time Monitoring (Numba)
+
+```python
+@njit
+def monitor_bar_evolution_nb(
+    high, low, prev_high, prev_low,
+    entry_price, entry_type, position_open
+):
+    """
+    Monitor for pattern invalidation during live bar.
+
+    Called on each price update while position is open.
+
+    Args:
+        high: Current bar high (updating)
+        low: Current bar low (updating)
+        prev_high: Previous bar high (Bar 2 / inside bar)
+        prev_low: Previous bar low (Bar 2 / inside bar)
+        entry_price: Our entry price
+        entry_type: 2 (long) or -2 (short)
+        position_open: Boolean
+
+    Returns:
+        action: 0 = hold, 1 = exit (invalidated)
+    """
+    if not position_open:
+        return 0
+
+    # Check if bar has become Type 3
+    broke_high = high > prev_high
+    broke_low = low < prev_low
+
+    if broke_high and broke_low:
+        # Bar is now Type 3 - pattern invalidated
+        return 1  # EXIT signal
+
+    return 0  # HOLD
+```
+
+---
+
+### Position Manager with Invalidation
+
+```python
+class StratPositionManager:
+    """
+    Manages STRAT positions with pattern invalidation handling.
+    """
+
+    def __init__(self):
+        self.position = None
+
+    def enter_position(self, direction, entry_price, pattern_info):
+        """Record entry with pattern context."""
+        self.position = {
+            'direction': direction,
+            'entry_price': entry_price,
+            'entry_bar_type': pattern_info['entry_bar_type'],
+            'stop': pattern_info['stop'],
+            'target': pattern_info['target'],
+            'inside_bar_high': pattern_info['inside_bar_high'],
+            'inside_bar_low': pattern_info['inside_bar_low'],
+            'pattern': pattern_info['pattern']
+        }
+
+    def check_exit_conditions(self, current_price, current_high, current_low):
+        """
+        Check all exit conditions including pattern invalidation.
+
+        Returns:
+            dict with exit signal and reason
+        """
+        if self.position is None:
+            return {'exit': False}
+
+        # Priority 1: Check target hit
+        if self.position['direction'] == 'long':
+            if current_price >= self.position['target']:
+                return {
+                    'exit': True,
+                    'reason': 'TARGET_HIT',
+                    'price': self.position['target']
+                }
+        else:  # short
+            if current_price <= self.position['target']:
+                return {
+                    'exit': True,
+                    'reason': 'TARGET_HIT',
+                    'price': self.position['target']
+                }
+
+        # Priority 2: Check pattern invalidation (Type 3 evolution)
+        broke_high = current_high > self.position['inside_bar_high']
+        broke_low = current_low < self.position['inside_bar_low']
+
+        if broke_high and broke_low:
+            # Entry bar became Type 3 - IMMEDIATE EXIT
+            return {
+                'exit': True,
+                'reason': 'PATTERN_INVALIDATED',
+                'note': 'Entry bar evolved to Type 3',
+                'price': current_price  # Exit at current price
+            }
+
+        # Priority 3: Check traditional stop (only if not invalidated)
+        if self.position['direction'] == 'long':
+            if current_price <= self.position['stop']:
+                return {
+                    'exit': True,
+                    'reason': 'STOP_HIT',
+                    'price': self.position['stop']
+                }
+        else:  # short
+            if current_price >= self.position['stop']:
+                return {
+                    'exit': True,
+                    'reason': 'STOP_HIT',
+                    'price': self.position['stop']
+                }
+
+        return {'exit': False}
+```
+
+---
+
+### Patterns Affected
+
+This invalidation logic applies to any pattern where entry is on a Type 2 bar:
+
+| Pattern | Entry Bar | Invalidation Trigger |
+|---------|-----------|---------------------|
+| 2D-1-2D | 2D (Bar 3) | Bar 3 breaks inside bar high → becomes 3 |
+| 2U-1-2U | 2U (Bar 3) | Bar 3 breaks inside bar low → becomes 3 |
+| 2D-1-2U | 2U (Bar 3) | Bar 3 breaks inside bar low → becomes 3 |
+| 2U-1-2D | 2D (Bar 3) | Bar 3 breaks inside bar high → becomes 3 |
+| 3-1-2D | 2D (Bar 3) | Bar 3 breaks inside bar high → becomes 3 |
+| 3-1-2U | 2U (Bar 3) | Bar 3 breaks inside bar low → becomes 3 |
+
+---
+
+### VectorBT Pro Integration
+
+For backtesting, pattern invalidation must be checked BEFORE traditional stop:
+
+```python
+# Pseudocode for VectorBT signal generation
+def generate_exit_signals(entries, highs, lows, inside_highs, inside_lows, stops, targets):
+    """
+    Generate exit signals with pattern invalidation priority.
+    """
+    exits = np.zeros(len(entries), dtype=np.int8)
+    exit_prices = np.zeros(len(entries), dtype=np.float64)
+    exit_reasons = np.empty(len(entries), dtype='U20')
+
+    in_position = False
+    position_idx = -1
+
+    for i in range(len(entries)):
+        if entries[i] != 0 and not in_position:
+            in_position = True
+            position_idx = i
+
+        if in_position:
+            # Priority 1: Check target
+            # ... target logic ...
+
+            # Priority 2: Check pattern invalidation
+            if (highs[i] > inside_highs[position_idx] and
+                lows[i] < inside_lows[position_idx]):
+                exits[i] = 1
+                exit_reasons[i] = 'INVALIDATED'
+                # Exit price approximation: midpoint or close
+                exit_prices[i] = (highs[i] + lows[i]) / 2
+                in_position = False
+                continue
+
+            # Priority 3: Check traditional stop
+            # ... stop logic ...
+
+    return exits, exit_prices, exit_reasons
+```
 
 ---
 

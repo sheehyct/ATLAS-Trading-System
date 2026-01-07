@@ -5,16 +5,119 @@ description: Implements STRAT trading methodology with bar classification (Type 
 
 # STRAT Methodology Implementation
 
-**Version:** 2.1
+**Version:** 2.3 (Per STRAT methodology best practices update)
 **Purpose:** Navigation hub for STRAT trading system implementation
+
+---
+
+## Contents
+
+- [Pre-Entry Checklist](#pre-entry-checklist)
+- [The Three Universal Truths](#the-three-universal-truths)
+- [Intrabar Classification](#intrabar-classification)
+- [Timeframe Gap Handling](#timeframe-gap-handling)
+- [Intraday Timing Rules](#let-the-market-breathe---intraday-timing-rules)
+- [Quick Reference](#quick-reference)
+- [File Navigation](#file-navigation)
+- [Implementation Workflow](#implementation-workflow)
+- [Common Mistakes](#common-mistakes)
+- [Requirements](#requirements)
+
+---
+
+## Pre-Entry Checklist
+
+Before entering ANY STRAT trade, verify:
+
+| Check | Question | Fail Action |
+|-------|----------|-------------|
+| 1. Pattern Valid | Is bar sequence correct (e.g., 2D-1-2U not 1-2D-2U)? | No trade |
+| 2. Setup Bar Closed | Is the setup bar (defines trigger) fully closed? | Wait |
+| 3. Trigger Correct | Entry trigger = setup bar high/low + 0.01? | Recalculate |
+| 4. Stop Defined | Stop = opposite extreme of pattern? | Define before entry |
+| 5. Target Valid | Target exists (not blocked by S/R)? | Skip or reduce size |
+| 6. Timeframe Timing | 1H: After 10:30 (2-bar) or 11:30 (3-bar)? | Wait |
+| 7. TFC Alignment | Higher timeframes supportive or neutral? | Reduce size if against |
+
+**Critical:** Enter ON THE BREAK, not at bar close. The moment price breaks
+the trigger level, enter immediately.
+
+---
+
+## The Three Universal Truths
+
+Price can ONLY move in one of three ways relative to the previous bar - no other possibility exists:
+
+| Scenario | Condition | Bar Type | Can Change To |
+|----------|-----------|----------|---------------|
+| **1** | Price stays within previous bar range | Inside (1) | 2U, 2D, or 3 |
+| **2** | Price takes out ONE side (high OR low) | Directional (2U or 2D) | 3 only |
+| **3** | Price takes out BOTH sides (high AND low) | Outside (3) | Nothing - final |
+
+**Critical Insight:** Once a boundary is broken, it cannot be "unbroken."
+- A bar that breaks the high is AT MINIMUM a 2U (could become 3 if it later breaks low)
+- A bar that breaks the low is AT MINIMUM a 2D (could become 3 if it later breaks high)
+- A bar that breaks both is definitively a 3 - no further evolution possible
+
+---
+
+## Intrabar Classification
+
+**You CAN classify a forming bar before it closes** based on what it has done:
+
+```
+Bar opens -> Type 1 (no boundary broken yet)
+Price breaks previous high -> Now AT LEAST 2U
+Price breaks previous low -> Now AT LEAST 2D
+Price breaks BOTH -> Type 3 (final classification)
+```
+
+**Why this matters for entry:**
+- SETUP bars must be CLOSED (their high/low define trigger levels)
+- ENTRY bars can be classified intrabar (enter the moment trigger breaks)
+- Once the entry bar breaks the trigger, you know it's at least 2U/2D - enter immediately
+
+---
+
+## Timeframe Gap Handling
+
+| Timeframe | Open vs Previous Close | Implication |
+|-----------|------------------------|-------------|
+| **Intraday** (15m, 30m, 1H) | Same price (no gap) | Bar always starts as Type 1 |
+| **Daily+** (1D, 1W, 1M) | Gap possible (pre/post market) | Bar can OPEN as 2U, 2D, or even 3 |
+
+**Daily+ Example:** Yesterday closes at $500, overnight trading moves price, today opens at $520.
+- If $520 > yesterday's high -> Bar OPENS as 2U (already broke high)
+- Pattern may be COMPLETE at market open - entry is IMMEDIATE
+
+---
+
+## "Let the Market Breathe" - Intraday Timing Rules
+
+For intraday patterns, overnight gaps break bar continuity. You cannot use yesterday's last bar with today's first bar as a pattern.
+
+### Hourly (1H) Patterns
+
+| Pattern Type | Bars Needed | First Tradeable Time |
+|--------------|-------------|----------------------|
+| 2-bar (2-2, 3-2) | 1 closed + forming | **10:30 AM EST** |
+| 3-bar (3-2-2, 2-1-2, 3-1-2) | 2 closed + forming | **11:30 AM EST** |
+
+### 15:30 Bar Rule
+
+The last hourly bar (15:30-16:00) is truncated to 30 minutes. Trades entered on this bar **MUST exit before 16:00** - holding overnight exposes you to:
+1. Gap risk against your position
+2. Extra theta decay (options)
+3. Pattern logic breaking across the overnight gap
 
 ---
 
 ## Critical Entry Rule
 
-**ENTER THE INSTANT PRICE BREAKS TRIGGER - DO NOT WAIT FOR BAR CLOSE**
+**ENTER THE INSTANT PRICE BREAKS TRIGGER - DO NOT WAIT FOR ENTRY BAR TO CLOSE**
 
-Pattern detection happens at bar close. Entry happens intrabar when trigger breaks. This is fundamental to STRAT and the most common implementation error.
+- SETUP bar: Must be CLOSED (defines trigger/stop/target levels)
+- ENTRY bar: Classified intrabar - enter when trigger breaks
 
 ---
 
@@ -49,12 +152,66 @@ Pattern detection happens at bar close. Entry happens intrabar when trigger brea
 
 **Critical:** 3-2 uses 1.5% measured move. 3-2-2 (reversal) uses traditional magnitude.
 
+**Note on 2-2 Patterns:**
+
+| Pattern Type | Bars | Status | Use |
+|--------------|------|--------|-----|
+| 2D-2U (Reversal) | Bearish then Bullish | ACTIVE | Entry signal |
+| 2U-2D (Reversal) | Bullish then Bearish | ACTIVE | Entry signal |
+| 2U-2U (Continuation) | Bullish continuation | FUTURE | Position management |
+| 2D-2D (Continuation) | Bearish continuation | FUTURE | Position management |
+
+**Why Continuation is Deferred:**
+Continuation patterns (2U-2U, 2D-2D) indicate trend strength but are NOT
+new entry signals. They are used for:
+- Confirming existing position is working
+- Deciding whether to hold through minor pullbacks
+- Trailing stop management
+
+They do not provide new entry opportunities because you are already in the trade
+if you entered on the original pattern.
+
+### 3-2 Entry Timing Clarification
+
+**Common Confusion:** 3-2 is a 2-bar pattern, not a 3-bar pattern.
+
+```
+Bar 1: Type 3 (outside bar) - defines stop at opposite extreme
+Bar 2: Type 2U or 2D - direction of the move
+
+Entry: ON THE BREAK when Bar 2 forms
+- 3-2U: Enter when price breaks ABOVE Bar 1 (3) high
+- 3-2D: Enter when price breaks BELOW Bar 1 (3) low
+```
+
+**Do NOT wait for a third bar.** Entry happens as Bar 2 is forming,
+the instant price breaks the trigger level.
+
 ### Timeframe Continuity (4 C's)
 
-1. **Combo** - Multiple timeframes show same setup
-2. **Confirm** - Lower TF confirms higher TF trigger
-3. **Continue** - Multiple setups in same direction
-4. **Consolidate** - Controlled pullback before continuation
+The 4 C's are **diagnostic questions** to evaluate timeframe alignment:
+
+| C | Question | What It Reveals |
+|---|----------|-----------------|
+| **Control** | Which participation group(s) control current price direction? | Identifies dominant force |
+| **Confirm** | Are all participation groups confirming each other's direction? | Checks alignment |
+| **Conflict** | Are any participation groups in conflict? | Identifies divergence |
+| **Change** | Are any groups changing the continuity or direction of others? | Spots transitions |
+
+**IMPORTANT:** The 4 C's are analytical questions, NOT position sizing rules or pattern categories.
+
+### TFC Scoring
+
+| Bar Type | Counts? | Direction Determined By |
+|----------|---------|------------------------|
+| Type 1 (Inside) | NO - indecision | N/A |
+| Type 2U | YES | Bullish (broke high) |
+| Type 2D | YES | Bearish (broke low) |
+| Type 3 (Outside) | YES | Green = Bullish, Red = Bearish |
+
+**Green/Red Candle Effect:**
+- For Type 2: Conviction modifier (2U+Green = strong, 2U+Red = weak/conflicted)
+- For Type 3: Direction determination (Green = bullish, Red = bearish)
 
 ---
 
@@ -66,7 +223,7 @@ Pattern detection happens at bar close. Entry happens intrabar when trigger brea
 
 **Contains:**
 - Bar classification logic with exact operators
-- 2-1-2, 3-1-2, 2-2, Rev Strat pattern definitions
+- 2-1-2, 3-1-2, 2-2 Reversal, 3-2 pattern definitions
 - Edge cases (equal highs/lows)
 - VectorBT Pro classifier implementation
 
@@ -102,6 +259,7 @@ Pattern detection happens at bar close. Entry happens intrabar when trigger brea
 - Break-even management
 - Target management (50% at T1, 30% at T2, 20% runner)
 - Trailing stops and profit rolling
+- Pattern invalidation by Type 3 (exit priority)
 
 ### Options Integration -> [OPTIONS.md](OPTIONS.md)
 
@@ -112,6 +270,16 @@ Pattern detection happens at bar close. Entry happens intrabar when trigger brea
 - Delta requirements (0.50-0.80)
 - Expiration selection
 - Position sizing for options
+
+### Implementation Bugs -> [IMPLEMENTATION-BUGS.md](IMPLEMENTATION-BUGS.md)
+
+**When to read:** Debugging live/closed bar issues, pattern detection bugs (Per STRAT methodology)
+
+**Contains:**
+- Live bar vs closed bar detection critical fixes
+- 3-bar vs 2-bar pattern distinction
+- Stop placement rules and common errors
+- Entry trigger mechanics bugs discovered in production
 
 ---
 

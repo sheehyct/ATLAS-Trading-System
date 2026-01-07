@@ -7,7 +7,14 @@
 
 ## Table of Contents
 
-1. [The 4 C's Framework](#1-the-4-cs-framework)
+1. [Timeframe Continuity Fundamentals](#1-timeframe-continuity-fundamentals)
+   - 1.1 The 4 C's Framework (Control/Confirm/Conflict/Change)
+   - 1.2 Participation Groups
+   - 1.3 Control Analysis
+   - 1.4 TFC Scoring
+   - 1.5 Green/Red Candle Contribution
+   - 1.6 TFC and Position Sizing
+   - 1.7 MOAF (Mother of All Frames - 13:30 EST)
 2. [MOAF - Mother of All Flips](#2-moaf-mother-of-all-flips)
 3. [Timeframe Relationships](#3-timeframe-relationships)
 4. [Continuity Scoring](#4-continuity-scoring)
@@ -15,283 +22,146 @@
 
 ---
 
-## 1. The 4 C's Framework
+## 1. Timeframe Continuity Fundamentals
 
-### Overview
+### 1.1 The 4 C's Framework
 
-The 4 C's determine trade quality and position sizing based on multi-timeframe alignment.
+The 4 C's are diagnostic questions to evaluate timeframe alignment:
 
-| C | Name | Description | Position Size |
-|---|------|-------------|---------------|
-| **Combo** | Multiple TF same setup | 2+ timeframes show identical pattern | 100% |
-| **Confirm** | Lower confirms higher | LTF triggers before HTF | 75% |
-| **Continue** | Multiple setups same direction | Sequential setups in same trend | 50% |
-| **Consolidate** | Controlled pullback | Pullback respects structure | 25% |
+| C | Question | What It Reveals |
+|---|----------|-----------------|
+| **Control** | Which participation group(s) control current price direction? | Identifies dominant force |
+| **Confirm** | Are all participation groups confirming each other's direction? | Checks alignment |
+| **Conflict** | Are any participation groups in conflict? | Identifies divergence |
+| **Change** | Are any groups changing the continuity or direction of others? | Spots transitions |
 
----
+**IMPORTANT:** The 4 C's are analytical questions, NOT position sizing rules or pattern categories.
 
-### 1.1 Combo (Multiple Timeframes Same Setup)
+### 1.2 Participation Groups
 
-**Definition:** Same STRAT pattern appears on 2+ timeframes simultaneously.
+| Group | Timeframe | Represents | Control Duration |
+|-------|-----------|------------|------------------|
+| Monthly | 1 bar/month | Institutional players | Weeks to months |
+| Weekly | 1 bar/week | Swing traders, funds | Days to weeks |
+| Daily | 1 bar/day | Day-to-day participants | Hours to days |
+| 60-min | 1 bar/hour | Intraday participants | Minutes to hours |
 
-**Example:**
+**Standard Timeframes:** Monthly, Weekly, Daily, 60-minute
+
+**High VIX Environment (25-30+):** Time compression shifts analysis:
+- Monthly analysis -> 60-minute
+- Weekly analysis -> 30-minute
+- Daily analysis -> 15-minute
+- Hourly analysis -> 5-minute (or 1-minute)
+
+### 1.3 Control Analysis
+
+**Who controls RIGHT NOW:**
+- When 60-min and Daily confirm each other, they show IMMEDIATE control
+- This may override Weekly/Monthly direction temporarily
+- Shorter timeframes = shorter duration of control
+- Watch for flips - control can shift quickly
+
+**Who controls LONGER TERM:**
+- Monthly and Weekly represent larger, more persistent positioning
+- When these flip, it signals significant institutional change
+- Trades aligned with Monthly/Weekly have more staying power
+
+### 1.4 TFC Scoring
+
+TFC Score counts how many timeframes show DIRECTIONAL alignment:
+
+| Bar Type | Counts Toward TFC? | Direction Determined By |
+|----------|-------------------|------------------------|
+| Type 1 (Inside) | NO - indecision | N/A |
+| Type 2U | YES | Bullish (broke high) |
+| Type 2D | YES | Bearish (broke low) |
+| Type 3 (Outside) | YES | Green = Bullish, Red = Bearish |
+
+**Scoring Examples:**
+
 ```
-Daily: 2-1-2 bull at $100 (trigger)
-60min: 2-1-2 bull at $99.80 (trigger)
-15min: 2-1-2 bull at $99.90 (trigger)
-
-All three show bullish 2-1-2 = COMBO
-```
-
-**Detection Logic:**
-```python
-def detect_combo(patterns_by_tf, current_idx):
-    """
-    Detect Combo: Same pattern on multiple timeframes.
-    
-    Args:
-        patterns_by_tf: Dict of {timeframe: pattern_array}
-        current_idx: Current bar index
-    
-    Returns:
-        (is_combo, matching_timeframes, bias)
-    """
-    pattern_counts = {'212_bull': 0, '212_bear': 0, '312_bull': 0, '312_bear': 0}
-    matching_tfs = []
-    
-    for tf, patterns in patterns_by_tf.items():
-        if current_idx >= len(patterns):
-            continue
-        
-        pattern = patterns[current_idx]
-        if pattern in pattern_counts:
-            pattern_counts[pattern] += 1
-            matching_tfs.append(tf)
-    
-    # Combo requires 2+ timeframes with same pattern
-    max_count = max(pattern_counts.values())
-    if max_count >= 2:
-        dominant_pattern = max(pattern_counts, key=pattern_counts.get)
-        bias = 'bull' if 'bull' in dominant_pattern else 'bear'
-        return True, matching_tfs, bias
-    
-    return False, [], None
-```
-
-**Trading Combo:**
-- **Position size:** 100% (full size)
-- **Entry:** First timeframe to trigger
-- **Stop:** Widest stop across all timeframes
-- **Target:** Highest target across all timeframes
-- **Win rate:** 70-80% (highest probability)
-
-**Example Trade:**
-```
-Daily 2-1-2 bull: Entry $100, Stop $98, Target $104
-60min 2-1-2 bull: Entry $99.80, Stop $98.50, Target $103
-Combo entry: $99.80 (first trigger)
-Combo stop: $98 (wider daily stop)
-Combo target: $104 (higher daily target)
-Position size: 100%
+4/4 TFC (FTFC): All four timeframes directional and aligned
+3/4 TFC: Three timeframes aligned, one in conflict or indecision
+2/4 TFC: Two timeframes aligned - mixed/conflicted
+1/4 TFC: One timeframe aligned - counter-trend territory
 ```
 
----
+**Example Calculation:**
 
-### 1.2 Confirm (Lower Confirms Higher)
+| TF | Bar Type | Color | TFC Contribution |
+|----|----------|-------|------------------|
+| M | 2U | Green | Bullish (counts) |
+| W | 1 | - | Indecision (does NOT count) |
+| D | 2U | Green | Bullish (counts) |
+| H | 2U | Green | Bullish (counts) |
 
-**Definition:** Lower timeframe triggers before higher timeframe, confirming HTF direction.
+**Result:** 3/4 TFC Bullish (Weekly indecision means institutions have not committed)
 
-**Example:**
-```
-Daily: 2-1-2 bull forming (trigger = $100)
-60min: 2-1-2 bull TRIGGERED at $99.50
-15min: Already bullish
+### 1.5 Green/Red Candle Contribution
 
-Lower TF confirms higher TF bias before HTF trigger
-```
+Green/Red (close vs open) serves two purposes:
 
-**Detection Logic:**
-```python
-def detect_confirm(htf_pattern, htf_trigger, ltf_pattern, ltf_triggered, ltf_bias):
-    """
-    Detect Confirm: LTF triggers before HTF in same direction.
-    
-    Args:
-        htf_pattern: Higher TF pattern type
-        htf_trigger: Higher TF trigger price
-        ltf_pattern: Lower TF pattern type
-        ltf_triggered: Whether LTF already triggered
-        ltf_bias: Lower TF bias ('bull' or 'bear')
-    
-    Returns:
-        (is_confirm, expected_bias)
-    """
-    # Check if HTF has valid pattern forming
-    if htf_pattern is None:
-        return False, None
-    
-    # Determine HTF bias
-    htf_bias = 'bull' if 'bull' in htf_pattern else 'bear'
-    
-    # LTF must be triggered and match HTF bias
-    if ltf_triggered and ltf_bias == htf_bias:
-        return True, htf_bias
-    
-    return False, None
-```
+**For Type 2 Bars - Conviction Modifier:**
+- 2U + Green = Broke high AND buyers held = strong bullish
+- 2U + Red = Broke high BUT sellers took over = weaker/conflicted
+- 2D + Red = Broke low AND sellers held = strong bearish
+- 2D + Green = Broke low BUT buyers stepped in = weaker/conflicted
 
-**Trading Confirm:**
-- **Position size:** 75% (high confidence)
-- **Entry:** LTF trigger (early entry)
-- **Stop:** HTF stop (wider but safer)
-- **Target:** HTF target
-- **Win rate:** 65-75%
+**For Type 3 Bars - Direction Determination:**
+- Type 3 + Green = Counts as bullish TFC
+- Type 3 + Red = Counts as bearish TFC
 
-**Example Trade:**
-```
-Daily 2-1-2 bull: Trigger $100 (not hit yet)
-60min 2-1-2 bull: Triggered at $99.50
-Entry: $99.50 (60min trigger)
-Stop: $98 (daily stop)
-Target: $104 (daily target)
-Position size: 75%
-```
+### 1.6 TFC and Position Sizing
 
-**Advantages:**
-- Earlier entry than HTF
-- Better risk/reward
-- HTF provides larger target
+TFC score CAN inform position sizing decisions:
 
-**Risks:**
-- HTF may not trigger
-- Early entry = more heat
-- Requires discipline to use HTF stop
+| TFC Score | Conviction Level | Position Size Consideration |
+|-----------|------------------|----------------------------|
+| 4/4 (FTFC) | Highest | Full position acceptable |
+| 3/4 | High | Near-full position |
+| 2/4 | Moderate/Conflicted | Reduced position |
+| 1/4 | Low (counter-trend) | Minimal position or avoid |
 
----
+**Additional Factors:**
+- Higher timeframes green while directional = more significance
+- Higher timeframes red despite being directional = caution warranted
+- Balance TFC score against WHO is in control right now
 
-### 1.3 Continue (Multiple Setups Same Direction)
+**Example - Caution Scenario:**
 
-**Definition:** Sequential STRAT patterns in same direction showing trend continuation.
+| TF | Bar Type | Color | Notes |
+|----|----------|-------|-------|
+| M | 2U | Red | Directional but selling pressure |
+| W | 2U | Red | Directional but selling pressure |
+| D | 2U | Green | Directional, buyers holding |
+| H | 2U | Green | Directional, buyers holding |
 
-**Example:**
-```
-Bar 1-3: 2-1-2 bull (completed)
-Bar 4-6: 2-2 bull (forming)
-Bar 7-9: 2-1-2 bull (new setup)
+TFC = 4/4 Bullish, BUT Monthly and Weekly showing red suggests caution. Consider smaller position than if all were green.
 
-Multiple sequential bullish patterns = CONTINUE
-```
+### 1.7 MOAF (Mother of All Frames)
 
-**Detection Logic:**
-```python
-def detect_continue(pattern_history, lookback=20):
-    """
-    Detect Continue: Multiple setups in same direction.
-    
-    Args:
-        pattern_history: List of (bar_idx, pattern, bias) tuples
-        lookback: Bars to look back
-    
-    Returns:
-        (is_continue, dominant_bias, pattern_count)
-    """
-    recent_patterns = [p for p in pattern_history if p[0] >= len(pattern_history) - lookback]
-    
-    bull_count = sum(1 for p in recent_patterns if p[2] == 'bull')
-    bear_count = sum(1 for p in recent_patterns if p[2] == 'bear')
-    
-    # Require 2+ patterns in same direction
-    if bull_count >= 2 and bull_count > bear_count:
-        return True, 'bull', bull_count
-    elif bear_count >= 2 and bear_count > bull_count:
-        return True, 'bear', bear_count
-    
-    return False, None, 0
-```
+**What:** 13:30 EST - when the 2nd 4-hour candle of the trading session opens.
 
-**Trading Continue:**
-- **Position size:** 50% (trend following)
-- **Entry:** Latest setup trigger
-- **Stop:** Latest setup stop
-- **Target:** Extended (3R+)
-- **Win rate:** 55-65%
+**Structure:**
+- Market hours: 09:30-16:00 EST
+- First 4H candle: 09:30-13:30 EST
+- Second 4H candle: 13:30-16:00 EST
 
-**Management:**
-- Trail stops on each new setup
-- Scale out at each setup target
-- Roll profits into new setups
+**At 13:30 EST, multiple timeframes get new candles simultaneously:**
+- New 4H candle (2nd of the day)
+- New 1H candle (4th hour from market open)
+- New 30m, 15m, 5m candles all align
 
-**Example Trade:**
-```
-Setup 1: 2-1-2 bull, Entry $100, Exit $104 (1R profit)
-Setup 2: 2-2 bull, Entry $104, Exit $108 (1R profit)  
-Setup 3: 2-1-2 bull, Entry $108, target $112+
-Position size: 50% per setup
-```
+**Why It Matters:**
+- When 2nd 4H candle breaks above/below first 4H range, this CAN indicate increased institutional participation
+- Institutions use larger timeframes and multi-timeframe analysis
+- A directional break on 4H aligns with how they analyze markets
 
----
-
-### 1.4 Consolidate (Controlled Pullback)
-
-**Definition:** Pullback that respects prior support/resistance and key STRAT levels.
-
-**Example:**
-```
-Uptrend: $90 → $95 → $100
-Pullback: $100 → $97 (holds $95 support)
-Structure: Consolidation with inside bars
-Pattern: Forms 2-1-2 bull at support
-
-Controlled pullback = CONSOLIDATE
-```
-
-**Detection Logic:**
-```python
-def detect_consolidate(prices, supports, current_idx, lookback=10):
-    """
-    Detect Consolidate: Pullback respecting structure.
-    
-    Args:
-        prices: Price array
-        supports: Array of support levels
-        current_idx: Current bar
-        lookback: Bars for pullback analysis
-    
-    Returns:
-        (is_consolidate, pullback_depth, structure_held)
-    """
-    # Identify recent high
-    recent_high = np.max(prices[current_idx-lookback:current_idx])
-    current_price = prices[current_idx]
-    
-    # Calculate pullback depth
-    pullback_pct = (recent_high - current_price) / recent_high * 100
-    
-    # Check if any support level held
-    structure_held = False
-    for support in supports:
-        if current_price >= support and current_price <= recent_high:
-            structure_held = True
-            break
-    
-    # Consolidate = pullback 30-50% that holds structure
-    if 30 <= pullback_pct <= 50 and structure_held:
-        return True, pullback_pct, structure_held
-    
-    return False, pullback_pct, structure_held
-```
-
-**Trading Consolidate:**
-- **Position size:** 25% (cautious)
-- **Entry:** Pattern trigger at support
-- **Stop:** Below support level
-- **Target:** Conservative (1-2R)
-- **Win rate:** 45-55%
-
-**Risk factors:**
-- Lowest probability setup
-- Could be trend reversal
-- Requires strong R/R to justify
+**Important Nuance:**
+- MOAF does NOT mean institutions specifically watch 13:30
+- It DOES mean a 4H range break aligns with institutional analysis methods
+- Increased participation is potential, not guaranteed
 
 ---
 
@@ -313,7 +183,7 @@ def detect_consolidate(prices, supports, current_idx, lookback=10):
 
 **Bullish MOAF:**
 ```
-Daily: Flips bullish (2-1-2 bull or 2-2 bull)
+Daily: Flips bullish (2-1-2 bull or 2-2 reversal bull)
 60min: Still bearish or neutral
 15min: Still bearish
 
@@ -322,7 +192,7 @@ Daily leads, lower TFs will follow
 
 **Bearish MOAF:**
 ```
-Daily: Flips bearish (2-1-2 bear or 2-2 bear)
+Daily: Flips bearish (2-1-2 bear or 2-2 reversal bear)
 60min: Still bullish or neutral
 15min: Still bullish
 

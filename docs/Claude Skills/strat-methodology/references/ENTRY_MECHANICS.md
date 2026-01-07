@@ -7,17 +7,33 @@
 
 ## Critical Rule: Entry Timing
 
-**ENTER THE INSTANT PRICE BREAKS TRIGGER - DO NOT WAIT FOR BAR CLOSE**
+**ENTER THE INSTANT PRICE BREAKS TRIGGER - DO NOT WAIT FOR ENTRY BAR TO CLOSE**
 
-Every intraday bar starts as Type 1 (inside) and evolves:
+### Intrabar Classification (Three Universal Truths)
+
+A bar can be classified BEFORE it closes based on what it has done:
 ```
-Bar opens -> Type 1 (no boundary broken)
-Price breaks previous high -> Type 2U
-Price breaks previous low -> Type 2D
-Price breaks BOTH -> Type 3
+Bar opens -> Type 1 (no boundary broken yet)
+Price breaks previous high -> Now AT LEAST 2U (could become 3)
+Price breaks previous low -> Now AT LEAST 2D (could become 3)
+Price breaks BOTH -> Type 3 (final - cannot change)
 ```
 
-Pattern detection happens at bar close. Entry happens intrabar when trigger breaks.
+**Once a boundary is broken, it cannot be "unbroken."**
+
+### Setup vs Entry Bar
+
+| Bar Role | When Classified | Why |
+|----------|-----------------|-----|
+| **SETUP bar** | Must be CLOSED | Defines trigger/stop/target price levels |
+| **ENTRY bar** | Classified intrabar | Enter the moment it breaks trigger |
+
+### Timeframe Differences
+
+| Timeframe | Bar Open Behavior |
+|-----------|-------------------|
+| **Intraday** (15m, 30m, 1H) | Open = Previous Close (no gap) - bar starts as Type 1 |
+| **Daily+** (1D, 1W, 1M) | Gap possible - bar can OPEN as 2U, 2D, or 3 |
 
 ---
 
@@ -111,6 +127,36 @@ def handle_gap_entry(trigger, bar_open, direction):
     else:  # short
         return bar_open if bar_open < trigger else trigger
 ```
+
+---
+
+## "Let the Market Breathe" - Intraday Timing Rules
+
+For intraday patterns, overnight gaps break bar continuity. Yesterday's last bar and today's first bar are NOT a valid pattern sequence.
+
+### Hourly (1H) Patterns
+
+| Pattern Type | Bars Needed | First Tradeable Time | Reasoning |
+|--------------|-------------|----------------------|-----------|
+| 2-bar (2-2, 3-2) | 1 closed + forming | **10:30 AM EST** | First bar (09:30-10:30) must close |
+| 3-bar (3-2-2, 2-1-2, 3-1-2) | 2 closed + forming | **11:30 AM EST** | First two bars must close |
+
+### Other Intraday Timeframes
+
+| Timeframe | 2-bar Earliest | 3-bar Earliest |
+|-----------|----------------|----------------|
+| 15m | 09:45 AM | 10:00 AM |
+| 30m | 10:00 AM | 10:30 AM |
+| 1H | 10:30 AM | 11:30 AM |
+
+### 15:30 Bar Rule (1H Timeframe)
+
+The last hourly bar (15:30-16:00) is truncated to 30 minutes.
+
+**Trades on 15:30 bar MUST exit before 16:00** - holding overnight exposes you to:
+1. Gap risk against your position
+2. Extra theta decay (options)
+3. Pattern logic breaking across the overnight gap
 
 ---
 

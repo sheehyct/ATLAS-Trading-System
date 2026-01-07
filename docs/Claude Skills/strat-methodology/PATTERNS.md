@@ -10,8 +10,8 @@
 1. [Bar Classification Logic](#1-bar-classification-logic)
 2. [2-1-2 Patterns](#2-2-1-2-patterns)
 3. [3-1-2 Patterns](#3-3-1-2-patterns)
-4. [2-2 Patterns](#4-2-2-patterns)
-5. [Rev Strat Patterns](#5-rev-strat-patterns)
+4. [2-2 Continuation Patterns (Future)](#4-2-2-continuation-patterns-future-implementation)
+5. [2-2 Reversal Patterns](#5-2-2-reversal-patterns)
 6. [Pattern Variations](#6-pattern-variations)
 7. [Invalid Patterns](#7-invalid-patterns)
 8. [Mother Bar Identification](#8-mother-bar-identification)
@@ -458,7 +458,16 @@ def detect_312_bear(bars, low, high, idx):
 
 ---
 
-## 4. 2-2 Patterns
+## 4. 2-2 Continuation Patterns (Future Implementation)
+
+> **Note:** 2-2 Continuation patterns (2U-2U bullish, 2D-2D bearish) are NOT
+> new entry signals - they are position management indicators. When you see
+> continuation after entry, it confirms trend strength but does not warrant
+> adding a new position. This pattern type is documented for completeness
+> but is not currently implemented as a trading signal.
+>
+> For reversals (2D-2U bullish, 2U-2D bearish), see the 2-2 entry triggers
+> in [SKILL.md](SKILL.md) Quick Reference section.
 
 ### Pattern Structure
 
@@ -539,68 +548,75 @@ def detect_22_bear(bars, low, high, idx):
 
 ---
 
-## 5. Rev Strat Patterns
+## 5. 2-2 Reversal Patterns
 
 ### Pattern Structure
 
-**Rev Strat** = Extreme reversal after extended move
+**Bullish 2-2 Reversal (2D-2U):**
+```
+Bar 1: 2D (bearish move)
+Bar 2: 2U (reversal)
+Trigger: High of Bar 1 (2D) + 0.01
+Stop: Low of Bar 1 (2D)
+Target: High of reference bar
+```
 
-**Bullish Rev Strat:**
+**Bearish 2-2 Reversal (2U-2D):**
 ```
-Context: Extended downtrend (5+ 2D bars)
-Pattern: 2D → 3 → 2U → 2U
-Signal: Rapid reversal with expansion
+Bar 1: 2U (bullish move)
+Bar 2: 2D (reversal)
+Trigger: Low of Bar 1 (2U) - 0.01
+Stop: High of Bar 1 (2U)
+Target: Low of reference bar
 ```
 
-**Bearish Rev Strat:**
-```
-Context: Extended uptrend (5+ 2U bars)
-Pattern: 2U → 3 → 2D → 2D
-Signal: Rapid reversal with expansion
-```
+### Reference Bar Requirement
+
+The reference bar (bar before the 2-2 pattern) MUST be directional:
+- For 2D-2U: Reference should be 2U or 3 (provides upside target)
+- For 2U-2D: Reference should be 2D or 3 (provides downside target)
+
+Invalid reference bars: Type 1 (inside bar) - no clear target
 
 ### Detection Logic
 
 ```python
 @njit
-def detect_rev_strat_bull(bars, high, low, idx):
+def detect_22_reversal(bars, high, low, idx):
     """
-    Detect bullish Rev Strat exhaustion pattern.
+    Detect 2-2 reversal patterns.
+    Returns: (is_valid, direction, trigger, stop, target)
     """
-    if idx < 5:
-        return False, 0.0, 0.0
-    
-    # Check for extended downtrend
-    downtrend_bars = 0
-    for i in range(idx-5, idx):
-        if bars[i] == -2:
-            downtrend_bars += 1
-    
-    if downtrend_bars < 3:
-        return False, 0.0, 0.0
-    
-    # Check reversal: 2D → 3 → 2U
-    if bars[idx-2] == -2 and bars[idx-1] == 3 and bars[idx] == 2:
-        trigger = high[idx]
-        stop = low[idx-2]
-        return True, trigger, stop
-    
-    return False, 0.0, 0.0
+    if idx < 2:
+        return False, 0, 0.0, 0.0, 0.0
+
+    # Bullish reversal: 2D -> 2U
+    if bars[idx-1] == -2 and bars[idx] == 2:
+        # Check reference bar is valid (2U or 3)
+        if idx >= 3 and bars[idx-2] in [2, 3]:
+            trigger = high[idx-1] + 0.01
+            stop = low[idx-1]
+            target = high[idx-2]
+            return True, 1, trigger, stop, target
+
+    # Bearish reversal: 2U -> 2D
+    if bars[idx-1] == 2 and bars[idx] == -2:
+        # Check reference bar is valid (2D or 3)
+        if idx >= 3 and bars[idx-2] in [-2, 3]:
+            trigger = low[idx-1] - 0.01
+            stop = high[idx-1]
+            target = low[idx-2]
+            return True, -1, trigger, stop, target
+
+    return False, 0, 0.0, 0.0, 0.0
 ```
 
-### Rev Strat Characteristics
+### Key Distinction from Continuation
 
-**Key features:**
-- Occurs after exhaustion (5+ bars in one direction)
-- Often includes outside bar (Type 3)
-- Large range bars
-- High volume
-- Emotional extremes (panic/euphoria)
-
-**Target expectations:**
-- T1: Retest of prior support/resistance
-- T2: 50% retracement of trend
-- T3: Full reversal to trend start
+| Pattern | Bars | Signal | Example |
+|---------|------|--------|---------|
+| **Continuation** | 2U-2U or 2D-2D | Trend strength (position management) | Already long, see 2U-2U = hold |
+| **Reversal** | 2D-2U or 2U-2D | Direction change (new entry) | See 2D-2U = enter long |
 
 ---
 
@@ -637,7 +653,7 @@ def detect_multi_inside_212(bars, high, low, idx):
             return False, 0.0, 0.0
     
     if inside_count > 0 and inside_count <= 3 and setup_bar_idx != -1:
-        trigger = high[idx]
+        trigger = high[idx-1] + 0.01  # Inside bar high + buffer
         stop = low[setup_bar_idx]
         return True, trigger, stop
     
@@ -663,13 +679,16 @@ Bar 3: 2U
 Problem: No setup bar (missing initial 2U or 3)
 ```
 
-**Invalid Pattern 2: 2U-2D-2U**
+**Valid Pattern Clarification: 2U-2D (Reversal)**
 ```
-Bar 1: 2U
-Bar 2: 2D (invalidation)
-Bar 3: 2U
-Problem: Direction change invalidates setup
+Bar 1: 2U (bullish move)
+Bar 2: 2D (reversal)
+Status: VALID reversal pattern
+Entry: Low of Bar 1 - 0.01 (on break below 2U low)
 ```
+Note: This was previously listed as invalid. The direction change
+IS the pattern - it signals a reversal, not an invalidation.
+See Section 5: 2-2 Reversal Patterns for full details.
 
 **Invalid Pattern 3: Pattern at limit**
 ```
@@ -777,8 +796,8 @@ Target: $103 (5R based on daily range)
 **Pattern Priority:**
 1. **2-1-2** - Most reliable reversal setup
 2. **3-1-2** - Higher R:R reversal with wider stop
-3. **2-2** - Continuation in strong trends
-4. **Rev Strat** - Exhaustion/climax reversals
+3. **2-2 Reversal** - Direction change signals (2D-2U, 2U-2D)
+4. **3-2** - Outside bar continuation/reversal
 5. **Multiple inside** - Weaker setup, reduce size
 
 **Key Takeaways:**
