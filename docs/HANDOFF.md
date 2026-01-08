@@ -1,9 +1,108 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 8, 2026 (Session EQUITY-48)
+**Last Updated:** January 8, 2026 (Session EQUITY-49)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Real-Time Exit Quality
-**Status:** P3 (Type 3 Evolution Detection) + P4 (Signal Lifecycle Tracing) COMPLETE
+**Phase:** Paper Trading - Entry Quality
+**Status:** P5 (TFC Re-evaluation at Entry) COMPLETE
+
+---
+
+## Session EQUITY-49: TFC Re-evaluation at Entry (COMPLETE)
+
+**Date:** January 8, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - P5 from EQUITY-48 priority list implemented
+
+### Overview
+
+Implemented P5 (TFC Re-evaluation at Entry) from the EQUITY-48 priority list. TFC is now re-evaluated at entry trigger time, not just at pattern detection time. This ensures entries only proceed when TFC alignment still supports the trade direction.
+
+### P5: TFC Re-evaluation at Entry
+
+**Problem:** TFC was evaluated once at pattern detection (in paper_signal_scanner.py). By the time entry triggers (hours/days later), TFC alignment may have changed. Trades could enter when TFC no longer supports the direction.
+
+**Solution:** Added `_reevaluate_tfc_at_entry()` method to daemon.py that:
+1. Re-evaluates TFC using current market data at entry trigger time
+2. Compares original TFC (at detection) vs current TFC
+3. Logs the comparison for audit trail
+4. Optionally blocks entry if TFC degraded significantly or flipped direction
+
+| Component | Change | Location |
+|-----------|--------|----------|
+| ExecutionConfig | Added 4 TFC re-eval config options | config.py:271-277 |
+| `_reevaluate_tfc_at_entry()` | New method for TFC re-evaluation | daemon.py:933-1056 |
+| `_on_entry_triggered()` | Integrated TFC re-eval after stale check | daemon.py:333-344 |
+
+### Configuration Options (ExecutionConfig)
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `tfc_reeval_enabled` | True | Enable TFC re-evaluation at entry |
+| `tfc_reeval_min_strength` | 2 | Block entry if TFC strength drops below this |
+| `tfc_reeval_block_on_flip` | True | Block entry if TFC direction flipped |
+| `tfc_reeval_log_always` | True | Log TFC comparison even when not blocking |
+
+### Log Format Examples
+
+**TFC re-evaluation comparison:**
+```
+TFC REEVAL: SPY_1D_3-2U_CALL_202501081430 (SPY 3-2U CALL) | Original: 3/4 BULLISH (score=3, passes=True) | Current: 2/4 BULLISH (score=2, passes=True) | Delta: -1 | Flipped: False
+```
+
+**TFC rejected (direction flip):**
+```
+TFC REEVAL REJECTED: SPY 3-2U CALL @ $590.50 - TFC direction flipped from bullish to bearish
+```
+
+**TFC rejected (strength below threshold):**
+```
+TFC REEVAL REJECTED: AAPL 2D-2U PUT @ $182.30 - TFC strength 1 < min threshold 2
+```
+
+### Code Review Fixes Applied
+
+Addressed HIGH severity issues from pr-review-toolkit:silent-failure-hunter:
+- Issue #2: Added defensive validation for None values in original TFC data
+- Issue #3: Split exception handling (recoverable vs unexpected errors)
+- Issue #4: Added logging when direction flip detection is skipped
+- Issue #5: Added validation of returned ContinuityAssessment
+
+### Test Results
+
+```
+tests/test_signal_automation/ - 58 passed (14 new TFC re-eval tests)
+tests/test_strat/             - 348 passed, 2 skipped
+Total:                        - 406 passed
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/config.py` | +4 TFC re-eval config options in ExecutionConfig |
+| `strat/signal_automation/daemon.py` | +_reevaluate_tfc_at_entry() method, +integration in _on_entry_triggered() |
+| `tests/test_signal_automation/test_tfc_reeval.py` | NEW - 14 tests for TFC re-evaluation |
+
+### Remaining Technical Debt
+
+| Priority | Task | Category | Effort | Status |
+|----------|------|----------|--------|--------|
+| P1 | TFC Logging | Observability | 2 hrs | DONE (EQUITY-47) |
+| P2 | Filter Rejection Logging | Observability | 1 hr | DONE (EQUITY-47) |
+| P3 | Type 3 Evolution Detection | Execution Quality | 3 hrs | DONE (EQUITY-48) |
+| P4 | Signal Lifecycle Tracing | Observability | 1 hr | DONE (EQUITY-48) |
+| P5 | TFC Re-evaluation at Entry | Execution Quality | 4 hrs | DONE (EQUITY-49) |
+| P6 | Trade Analytics Dashboard | Dashboard | 3 hrs | Pending |
+
+### Next Session (EQUITY-50) Priorities
+
+1. P6: Trade Analytics Dashboard - Stats by pattern type, TFC score, timeframe
+2. VPS deployment of EQUITY-49 changes
+3. Monitor TFC re-evaluation in production
+
+### Plan File
+
+`C:\Users\sheeh\.claude\plans\twinkling-sauteeing-treehouse.md`
 
 ---
 

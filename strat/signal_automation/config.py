@@ -268,6 +268,14 @@ class ExecutionConfig:
     use_limit_orders: bool = True       # Use limit vs market orders
     limit_price_buffer: float = 0.02    # Buffer above ask for limits
 
+    # Session EQUITY-49: TFC Re-evaluation at Entry
+    # TFC can change between pattern detection and entry trigger (hours/days later).
+    # Re-evaluate TFC at entry time and optionally block if alignment degraded.
+    tfc_reeval_enabled: bool = True           # Enable TFC re-evaluation at entry
+    tfc_reeval_min_strength: int = 2          # Block entry if TFC strength drops below this
+    tfc_reeval_block_on_flip: bool = True     # Block entry if TFC direction flipped
+    tfc_reeval_log_always: bool = True        # Log TFC comparison even when not blocking
+
 
 @dataclass
 class MonitoringConfig:

@@ -330,6 +330,19 @@ class SignalDaemon:
             self.signal_store.mark_expired(signal.signal_key)
             return
 
+        # Session EQUITY-49: TFC Re-evaluation at Entry
+        # TFC can change between pattern detection and entry trigger (hours/days later).
+        # Re-evaluate TFC and optionally block entry if alignment degraded significantly.
+        tfc_blocked, tfc_reason = self._reevaluate_tfc_at_entry(signal)
+        if tfc_blocked:
+            logger.warning(
+                f"TFC REEVAL REJECTED: {signal.symbol} {signal.pattern_type} {signal.direction} "
+                f"@ ${event.current_price:.2f} - {tfc_reason}"
+            )
+            # Mark as expired instead of triggered
+            self.signal_store.mark_expired(signal.signal_key)
+            return
+
         logger.info(
             f"ENTRY TRIGGERED: {signal.symbol} {signal.pattern_type} {signal.direction} "
             f"@ ${event.current_price:.2f} (trigger: ${event.trigger_price:.2f}, "
@@ -916,6 +929,131 @@ class SignalDaemon:
                 return True, f"Monthly setup expired: {months_diff} months since setup"
 
         return False, ""
+
+    def _reevaluate_tfc_at_entry(self, signal: StoredSignal) -> tuple[bool, str]:
+        """
+        Re-evaluate TFC alignment at entry time and check if entry should be blocked.
+
+        Session EQUITY-49: TFC Re-evaluation at Entry.
+
+        TFC can change between pattern detection and entry trigger (hours/days later).
+        This method:
+        1. Re-evaluates TFC using current market data
+        2. Compares with original TFC at detection time
+        3. Logs the comparison for audit trail
+        4. Optionally blocks entry if TFC degraded significantly or flipped direction
+
+        Args:
+            signal: The stored signal about to be executed
+
+        Returns:
+            Tuple of (should_block: bool, reason: str)
+        """
+        # Check if TFC re-evaluation is enabled
+        if not self.config.execution.tfc_reeval_enabled:
+            return False, ""
+
+        # Get original TFC data from signal with defensive validation (Issue #2 fix)
+        original_strength = signal.tfc_score if signal.tfc_score is not None else 0
+        original_alignment = signal.tfc_alignment or ""  # Handle None
+        original_passes = signal.passes_flexible if signal.passes_flexible is not None else True
+
+        # Determine original direction from alignment string
+        original_tfc_direction = ""
+        if original_alignment and "BULLISH" in original_alignment.upper():
+            original_tfc_direction = "bullish"
+        elif original_alignment and "BEARISH" in original_alignment.upper():
+            original_tfc_direction = "bearish"
+        elif not original_alignment:
+            logger.debug(
+                f"TFC REEVAL: {signal.signal_key} has no original TFC alignment - "
+                f"direction flip detection will be skipped"
+            )
+
+        # Re-evaluate TFC using current market data
+        # Direction: CALL = bullish (1), PUT = bearish (-1)
+        direction_int = 1 if signal.direction == 'CALL' else -1
+
+        try:
+            current_tfc = self.scanner.evaluate_tfc(
+                symbol=signal.symbol,
+                detection_timeframe=signal.timeframe,
+                direction=direction_int
+            )
+        except (ConnectionError, TimeoutError, ValueError) as e:
+            # Expected errors: network issues, data issues - log and proceed
+            logger.warning(
+                f"TFC REEVAL ERROR (recoverable): {signal.symbol} {signal.pattern_type} - "
+                f"{type(e).__name__}: {e} (proceeding with entry)"
+            )
+            self._error_count += 1
+            return False, ""
+        except Exception as e:
+            # Unexpected error - log as error, increment counter, but still proceed
+            # (fail-open to avoid blocking all entries on system errors)
+            logger.error(
+                f"TFC REEVAL UNEXPECTED ERROR: {signal.symbol} {signal.pattern_type} - "
+                f"{type(e).__name__}: {e} (proceeding with entry)"
+            )
+            self._error_count += 1
+            return False, ""
+
+        # Validate returned assessment (Issue #5 fix)
+        if current_tfc is None or not hasattr(current_tfc, 'strength'):
+            logger.error(f"TFC REEVAL: Invalid assessment returned for {signal.symbol} - proceeding with entry")
+            self._error_count += 1
+            return False, ""
+
+        current_strength = current_tfc.strength if current_tfc.strength is not None else 0
+        current_alignment = current_tfc.alignment_label() if hasattr(current_tfc, 'alignment_label') else f"{current_strength}/?"
+        current_passes = getattr(current_tfc, 'passes_flexible', True)
+        current_direction = getattr(current_tfc, 'direction', '') or ""
+
+        # Calculate strength change
+        strength_delta = current_strength - original_strength
+
+        # Detect direction flip (e.g., bullish -> bearish) (Issue #4 fix)
+        direction_flipped = False
+        if original_tfc_direction and current_direction:
+            direction_flipped = original_tfc_direction != current_direction
+        elif not original_tfc_direction and current_direction:
+            # Can't detect flip without original direction - log at debug level
+            logger.debug(
+                f"TFC REEVAL: {signal.signal_key} - direction flip detection skipped "
+                f"(no original TFC direction in signal)"
+            )
+
+        # Build comparison log message
+        comparison = (
+            f"TFC REEVAL: {signal.signal_key} ({signal.symbol} {signal.pattern_type} {signal.direction}) | "
+            f"Original: {original_alignment or 'N/A'} (score={original_strength}, passes={original_passes}) | "
+            f"Current: {current_alignment} (score={current_strength}, passes={current_passes}) | "
+            f"Delta: {strength_delta:+d} | "
+            f"Flipped: {direction_flipped}"
+        )
+
+        # Always log if configured
+        if self.config.execution.tfc_reeval_log_always:
+            if strength_delta < 0 or direction_flipped:
+                logger.warning(comparison)
+            else:
+                logger.info(comparison)
+
+        # Determine if entry should be blocked
+        should_block = False
+        block_reason = ""
+
+        # Block if direction flipped (most severe)
+        if direction_flipped and self.config.execution.tfc_reeval_block_on_flip:
+            should_block = True
+            block_reason = f"TFC direction flipped from {original_tfc_direction} to {current_direction}"
+
+        # Block if strength dropped below minimum threshold
+        elif current_strength < self.config.execution.tfc_reeval_min_strength:
+            should_block = True
+            block_reason = f"TFC strength {current_strength} < min threshold {self.config.execution.tfc_reeval_min_strength}"
+
+        return should_block, block_reason
 
     def _send_alerts(self, signals: List[StoredSignal]) -> None:
         """
