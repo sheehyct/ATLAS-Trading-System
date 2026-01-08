@@ -15,6 +15,7 @@ Usage:
     scanner.print_signals(signals)
 """
 
+import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -22,6 +23,8 @@ from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
 import warnings
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from strat.bar_classifier import classify_bars_nb
 from strat.pattern_detector import (
@@ -1172,6 +1175,10 @@ class PaperSignalScanner:
         base_context = self._get_market_context(df)
         signals = []
 
+        # Session EQUITY-47: Track TFC pass/fail for scan summary
+        tfc_passed = 0
+        tfc_failed = 0
+
         # =================================================================
         # COMPLETED patterns (entry already happened, historical)
         # Session CRYPTO-MONITOR-3: Only include patterns from the LAST bar
@@ -1197,6 +1204,23 @@ class PaperSignalScanner:
                     direction_int = 1 if p['direction'] == 'CALL' else -1
                     tfc_assessment = self.evaluate_tfc(symbol, timeframe, direction_int)
                     tfc_alignment = tfc_assessment.alignment_label()
+
+                    # Session EQUITY-47: TFC logging for observability
+                    # Use pattern_name for consistency with other logging
+                    logger.info(
+                        f"TFC Eval: {symbol} {timeframe} {pattern_name} - "
+                        f"score={tfc_assessment.strength}/10, "
+                        f"alignment={tfc_alignment}, "
+                        f"passes_flexible={tfc_assessment.passes_flexible}, "
+                        f"risk_multiplier={tfc_assessment.risk_multiplier:.2f}, "
+                        f"priority_rank={tfc_assessment.priority_rank}"
+                    )
+
+                    # Session EQUITY-47: Track TFC pass/fail counts
+                    if tfc_assessment.passes_flexible:
+                        tfc_passed += 1
+                    else:
+                        tfc_failed += 1
 
                     # Create context with TFC for this signal
                     context = SignalContext(
@@ -1308,6 +1332,23 @@ class PaperSignalScanner:
                 tfc_assessment = self.evaluate_tfc(symbol, timeframe, direction_int)
                 tfc_alignment = tfc_assessment.alignment_label()
 
+                # Session EQUITY-47: TFC logging for observability (SETUP patterns)
+                # Use bar_sequence for consistency with other logging
+                logger.info(
+                    f"TFC Eval: {symbol} {timeframe} {p['bar_sequence']} (SETUP) - "
+                    f"score={tfc_assessment.strength}/10, "
+                    f"alignment={tfc_alignment}, "
+                    f"passes_flexible={tfc_assessment.passes_flexible}, "
+                    f"risk_multiplier={tfc_assessment.risk_multiplier:.2f}, "
+                    f"priority_rank={tfc_assessment.priority_rank}"
+                )
+
+                # Session EQUITY-47: Track TFC pass/fail counts
+                if tfc_assessment.passes_flexible:
+                    tfc_passed += 1
+                else:
+                    tfc_failed += 1
+
                 # Create context with TFC for this signal
                 context = SignalContext(
                     vix=base_context.vix,
@@ -1342,6 +1383,13 @@ class PaperSignalScanner:
                     is_bidirectional=is_bidirectional_pattern(p['bar_sequence']),
                 )
                 signals.append(signal)
+
+        # Session EQUITY-47: Log TFC breakdown summary
+        if tfc_passed > 0 or tfc_failed > 0:
+            logger.info(
+                f"TFC Summary: {symbol} {timeframe} - "
+                f"signals={len(signals)}, TFC_passed={tfc_passed}, TFC_failed={tfc_failed}"
+            )
 
         return signals
 

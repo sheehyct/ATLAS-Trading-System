@@ -702,6 +702,8 @@ class SignalDaemon:
         """
         Check if signal passes quality filters.
 
+        Session EQUITY-47: Added logging for filter rejections with actual vs threshold values.
+
         Args:
             signal: Signal to check
 
@@ -719,6 +721,8 @@ class SignalDaemon:
         # in environment, or change the defaults below to match config values.
         # =================================================================
         is_setup = getattr(signal, 'signal_type', 'COMPLETED') == 'SETUP'
+        # Human-readable key for filter logging (not the database signal_key which uses timestamp)
+        signal_key = f"{signal.symbol}_{signal.timeframe}_{signal.pattern_type}_{signal.direction}"
 
         if is_setup:
             # Relaxed thresholds for SETUP signals (paper trading/monitoring)
@@ -729,14 +733,34 @@ class SignalDaemon:
             setup_min_rr = float(os.environ.get('SIGNAL_SETUP_MIN_RR', '0.3'))
 
             if signal.magnitude_pct < setup_min_magnitude:
+                # Session EQUITY-47: Log filter rejection with actual vs threshold
+                logger.info(
+                    f"FILTER REJECTED: {signal_key} - "
+                    f"magnitude {signal.magnitude_pct:.3f}% < min {setup_min_magnitude}% (SETUP)"
+                )
                 return False
             if signal.risk_reward < setup_min_rr:
+                # Session EQUITY-47: Log filter rejection with actual vs threshold
+                logger.info(
+                    f"FILTER REJECTED: {signal_key} - "
+                    f"R:R {signal.risk_reward:.2f} < min {setup_min_rr} (SETUP)"
+                )
                 return False
         else:
             # Standard thresholds for COMPLETED signals (historical)
             if signal.magnitude_pct < self.config.scan.min_magnitude_pct:
+                # Session EQUITY-47: Log filter rejection with actual vs threshold
+                logger.info(
+                    f"FILTER REJECTED: {signal_key} - "
+                    f"magnitude {signal.magnitude_pct:.3f}% < min {self.config.scan.min_magnitude_pct}%"
+                )
                 return False
             if signal.risk_reward < self.config.scan.min_risk_reward:
+                # Session EQUITY-47: Log filter rejection with actual vs threshold
+                logger.info(
+                    f"FILTER REJECTED: {signal_key} - "
+                    f"R:R {signal.risk_reward:.2f} < min {self.config.scan.min_risk_reward}"
+                )
                 return False
 
         # Pattern filter (if specific patterns configured)
@@ -746,6 +770,11 @@ class SignalDaemon:
             # Also handle SETUP patterns like '3-1-?' and '2D-1-?'
             base_pattern = signal.pattern_type.replace('2U', '2').replace('2D', '2').replace('-?', '-2')
             if base_pattern not in self.config.scan.patterns:
+                # Session EQUITY-47: Log filter rejection for pattern type
+                logger.info(
+                    f"FILTER REJECTED: {signal_key} - "
+                    f"pattern '{base_pattern}' not in allowed patterns {self.config.scan.patterns}"
+                )
                 return False
 
         return True

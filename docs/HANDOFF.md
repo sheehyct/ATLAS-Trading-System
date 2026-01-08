@@ -1,9 +1,93 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 7, 2026 (Session EQUITY-46)
+**Last Updated:** January 7, 2026 (Session EQUITY-47)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Stale Setup Fix + Pipeline Improvements
-**Status:** Stale setup bug FIXED and deployed to VPS
+**Phase:** Paper Trading - Observability Improvements
+**Status:** TFC and Filter Rejection Logging COMPLETE
+
+---
+
+## Session EQUITY-47: TFC Logging + Filter Rejection Logging (COMPLETE)
+
+**Date:** January 7, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - P1 and P2 observability items implemented
+
+### Overview
+
+Implemented P1 (TFC Logging) and P2 (Filter Rejection Logging) from the EQUITY-46 priority list. These additions provide critical observability into the signal scanning and filtering pipeline.
+
+### Changes Implemented
+
+| Component | Change | Location |
+|-----------|--------|----------|
+| Logging infrastructure | Added `import logging` and `logger` | paper_signal_scanner.py:18-27 |
+| TFC logging (COMPLETED) | Log TFC eval after pattern detection | paper_signal_scanner.py:1208-1217 |
+| TFC logging (SETUP) | Log TFC eval after setup detection | paper_signal_scanner.py:1335-1344 |
+| TFC pass/fail tracking | Counters for TFC results | paper_signal_scanner.py:1178-1180 |
+| TFC summary | Log pass/fail counts per scan | paper_signal_scanner.py:1387-1392 |
+| Filter rejection logging | Log rejection with actual vs threshold | daemon.py:735-777 |
+
+### Log Format Examples
+
+**TFC Evaluation (COMPLETED pattern):**
+```
+TFC Eval: SPY 1D 2D-2U - score=8/10, alignment=Strong, passes_flexible=True, risk_multiplier=1.20, priority_rank=2
+```
+
+**TFC Evaluation (SETUP pattern):**
+```
+TFC Eval: AAPL 1H 3-1-? (SETUP) - score=6/10, alignment=Moderate, passes_flexible=True, risk_multiplier=1.00, priority_rank=3
+```
+
+**TFC Summary:**
+```
+TFC Summary: SPY 1D - signals=3, TFC_passed=2, TFC_failed=1
+```
+
+**Filter Rejection (magnitude):**
+```
+FILTER REJECTED: TSLA_1H_3-2D_PUT - magnitude 0.150% < min 0.5%
+```
+
+**Filter Rejection (R:R):**
+```
+FILTER REJECTED: AAPL_1D_2D-2U_CALL - R:R 0.85 < min 1.0
+```
+
+### Test Results
+
+```
+tests/test_signal_automation/ - 37 passed
+tests/test_strat/             - 348 passed, 2 skipped
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/paper_signal_scanner.py` | Added logging infrastructure, TFC logging, TFC summary |
+| `strat/signal_automation/daemon.py` | Added filter rejection logging with actual vs threshold |
+
+### Remaining Technical Debt
+
+| Priority | Task | Category | Effort | Status |
+|----------|------|----------|--------|--------|
+| P1 | TFC Logging | Observability | 2 hrs | DONE |
+| P2 | Filter Rejection Logging | Observability | 1 hr | DONE |
+| P3 | Type 3 Evolution Detection | Execution Quality | 3 hrs | Pending |
+| P4 | Signal Lifecycle Tracing | Observability | 1 hr | Pending |
+| P5 | TFC Re-evaluation at Entry | Execution Quality | 4 hrs | Pending |
+| P6 | Trade Analytics Dashboard | Dashboard | 3 hrs | Pending |
+
+### Next Session (EQUITY-48) Priorities
+
+1. P3: Type 3 Evolution Detection - Exit when entry bar evolves to Type 3
+2. P4: Signal Lifecycle Tracing - Consistent signal_key logging through pipeline
+
+### Plan File
+
+`C:\Users\sheeh\.claude\plans\twinkling-sauteeing-treehouse.md` (updated priorities)
 
 ---
 
