@@ -1,9 +1,93 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 7, 2026 (Session EQUITY-47)
+**Last Updated:** January 8, 2026 (Session EQUITY-48)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Observability Improvements
-**Status:** TFC and Filter Rejection Logging COMPLETE
+**Phase:** Paper Trading - Real-Time Exit Quality
+**Status:** P3 (Type 3 Evolution Detection) + P4 (Signal Lifecycle Tracing) COMPLETE
+
+---
+
+## Session EQUITY-48: Type 3 Evolution Detection + Signal Lifecycle Tracing (COMPLETE)
+
+**Date:** January 8, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - P3 and P4 from EQUITY-47 priority list implemented
+
+### Overview
+
+Implemented P3 (Type 3 Evolution Detection) and P4 (Signal Lifecycle Tracing) from the EQUITY-47 priority list. P3 enables real-time detection of Type 3 pattern invalidation (entry bar evolving to break both setup bar bounds). P4 adds consistent signal_key logging throughout the execution pipeline for full lifecycle tracing.
+
+### P3: Type 3 Evolution Detection
+
+**Problem:** Previous implementation only detected Type 3 pattern invalidation at bar close via bar_cache. For intraday trading, we need real-time detection as the entry bar is forming.
+
+**Solution:** Added `intrabar_high` and `intrabar_low` fields to TrackedPosition that track price extremes since entry. The `_check_pattern_invalidation()` method now uses these for real-time detection instead of waiting for bar close.
+
+**Per STRAT EXECUTION.md Section 8:**
+- When entry bar breaks BOTH setup bar's high AND low, it becomes Type 3
+- Pattern premise is invalidated - exit immediately
+- Priority: Target > Pattern Invalidated > Traditional Stop
+
+| Component | Change | Location |
+|-----------|--------|----------|
+| TrackedPosition | Added `intrabar_high`, `intrabar_low` fields | position_monitor.py:177-181 |
+| Position creation | Initialize intrabar with current price | position_monitor.py:469-473 |
+| Position check | Update intrabar extremes on price fetch | position_monitor.py:625-630 |
+| Pattern invalidation | Use intrabar data for real-time detection | position_monitor.py:1030-1056 |
+| Fallback validation | Log when bar cache has incomplete data | position_monitor.py:1043-1056 |
+
+### P4: Signal Lifecycle Tracing
+
+**Problem:** Exit logs and trigger logs didn't include signal_key, making it impossible to trace a signal from detection through execution to exit.
+
+**Solution:** Added signal_key to all critical logs in position_monitor.py and entry_monitor.py.
+
+| Component | Log Format |
+|-----------|------------|
+| Pattern Invalidated | `PATTERN INVALIDATED: {signal_key} ({osi_symbol}) - {details}` |
+| Executing exit | `Executing exit: {signal_key} ({osi_symbol}) - {reason}` |
+| Partial exit | `Partial exit executed: {signal_key} ({osi_symbol}) - Closed {qty}` |
+| Position closed | `Position closed: {signal_key} ({osi_symbol}) - P&L: ${pnl}` |
+| Exit failed | `Exit failed: {signal_key} ({osi_symbol}) - {reason}` |
+| Trigger | `TRIGGER: {signal_key} ({symbol}) {pattern} {direction} @ ${price}` |
+| Invalidated | `INVALIDATED: {signal_key} - {direction} broke {opposite}` |
+
+### Test Results
+
+```
+tests/test_signal_automation/ - 44 passed (7 new intrabar tests)
+tests/test_strat/             - 348 passed, 2 skipped
+Total:                        - 392 passed
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/position_monitor.py` | +intrabar fields, +real-time Type 3 detection, +signal_key in exit logs |
+| `strat/signal_automation/executor.py` | Clarified entry_bar_high/low are setup bar bounds |
+| `strat/signal_automation/entry_monitor.py` | +signal_key in TRIGGER and INVALIDATED logs |
+| `tests/test_signal_automation/test_pattern_invalidation.py` | +TestIntrabarType3Detection class (7 tests) |
+
+### Remaining Technical Debt
+
+| Priority | Task | Category | Effort | Status |
+|----------|------|----------|--------|--------|
+| P1 | TFC Logging | Observability | 2 hrs | DONE (EQUITY-47) |
+| P2 | Filter Rejection Logging | Observability | 1 hr | DONE (EQUITY-47) |
+| P3 | Type 3 Evolution Detection | Execution Quality | 3 hrs | DONE (EQUITY-48) |
+| P4 | Signal Lifecycle Tracing | Observability | 1 hr | DONE (EQUITY-48) |
+| P5 | TFC Re-evaluation at Entry | Execution Quality | 4 hrs | Pending |
+| P6 | Trade Analytics Dashboard | Dashboard | 3 hrs | Pending |
+
+### Next Session (EQUITY-49) Priorities
+
+1. P5: TFC Re-evaluation at Entry - Re-check TFC alignment at trigger time
+2. P6: Trade Analytics Dashboard - Stats by pattern type, TFC score, timeframe
+
+### Plan File
+
+`C:\Users\sheeh\.claude\plans\twinkling-sauteeing-treehouse.md`
 
 ---
 

@@ -1,10 +1,13 @@
 """
-Tests for Type 3 Pattern Invalidation Exit (EQUITY-44).
+Tests for Type 3 Pattern Invalidation Exit (EQUITY-44, EQUITY-48).
 
 Per STRAT methodology EXECUTION.md Section 8:
 - If entry bar evolves from Type 2 to Type 3, exit immediately
-- Type 3 = bar breaks BOTH the entry bar high AND low
+- Type 3 = bar breaks BOTH the setup bar high AND low
 - Exit Priority: Target > Pattern Invalidated > Traditional Stop
+
+Session EQUITY-48: Added real-time Type 3 detection using intrabar
+high/low tracking (not just closed bar detection).
 """
 
 import pytest
@@ -269,22 +272,20 @@ class TestPatternInvalidationExitPriority:
 
     def test_pattern_invalidation_before_trailing_stop(self):
         """Pattern invalidation should take priority over trailing stop."""
+        # Session EQUITY-48: Include intrabar high/low that show Type 3 evolution
+        # These values represent the accumulated extremes since entry
         pos = self._create_position(
             target_price=460.0,
             underlying_price=453.0,  # Not at target
             trailing_stop_active=True,
             trailing_stop_price=451.0,
+            intrabar_high=455.0,     # > entry bar high (451) - broke high
+            intrabar_low=448.0,      # < entry bar low (449) - broke low -> Type 3!
         )
         self.monitor._positions[pos.osi_symbol] = pos
 
-        # Set up cache
+        # Set up cache (for underlying price updates)
         self.monitor._underlying_cache["SPY"] = {"price": 453.0}
-
-        # Set up bar cache showing Type 3 evolution
-        self.monitor._bar_cache["SPY"] = {
-            "high": 455.0,  # > entry bar high (451)
-            "low": 448.0,   # < entry bar low (449)
-        }
 
         # Enable trailing stop
         self.monitor.config.use_trailing_stop = True
@@ -406,3 +407,180 @@ class TestTrackedPositionEntryBarData:
         assert data["entry_bar_type"] == "2D"
         assert data["entry_bar_high"] == 100.0
         assert data["entry_bar_low"] == 95.0
+
+
+class TestIntrabarType3Detection:
+    """
+    Test EQUITY-48: Real-time Type 3 detection using intrabar high/low tracking.
+
+    Per STRAT methodology: Type 3 invalidation should be detected as soon as
+    price breaks both setup bar bounds (not just at bar close).
+    """
+
+    def setup_method(self):
+        """Create test monitor with mocked dependencies."""
+        self.config = MonitoringConfig(minimum_hold_seconds=0)
+        self.monitor = PositionMonitor(config=self.config)
+
+    def _create_position_with_intrabar(
+        self,
+        entry_bar_type: str = "2U",
+        entry_bar_high: float = 100.0,
+        entry_bar_low: float = 90.0,
+        intrabar_high: float = 95.0,
+        intrabar_low: float = 92.0,
+    ) -> TrackedPosition:
+        """Create a test position with intrabar tracking data."""
+        return TrackedPosition(
+            osi_symbol="SPY240101C00450000",
+            signal_key="test_signal",
+            symbol="SPY",
+            direction="CALL",
+            entry_trigger=95.0,
+            target_price=105.0,
+            stop_price=88.0,
+            pattern_type="2-1-2U",
+            timeframe="1H",
+            entry_price=5.0,
+            contracts=1,
+            entry_time=datetime.now() - timedelta(hours=1),
+            expiration="2024-01-01",
+            current_price=5.50,
+            underlying_price=96.0,
+            dte=14,
+            entry_bar_type=entry_bar_type,
+            entry_bar_high=entry_bar_high,
+            entry_bar_low=entry_bar_low,
+            intrabar_high=intrabar_high,
+            intrabar_low=intrabar_low,
+        )
+
+    def test_intrabar_type3_detection_triggers_exit(self):
+        """Type 3 detected via intrabar extremes should trigger exit."""
+        pos = self._create_position_with_intrabar(
+            entry_bar_type="2U",
+            entry_bar_high=100.0,  # Setup bar bounds
+            entry_bar_low=90.0,
+            intrabar_high=101.0,   # Broke high
+            intrabar_low=89.0,     # Broke low -> Type 3!
+        )
+
+        # No bar cache needed - should use intrabar data
+        self.monitor._bar_cache = {}
+
+        exit_signal = self.monitor._check_pattern_invalidation(pos)
+
+        assert exit_signal is not None
+        assert exit_signal.reason == ExitReason.PATTERN_INVALIDATED
+        assert "Intrabar H=$101.00" in exit_signal.details
+
+    def test_intrabar_only_high_broken_no_exit(self):
+        """Intrabar only broke high should NOT trigger exit."""
+        pos = self._create_position_with_intrabar(
+            entry_bar_type="2U",
+            entry_bar_high=100.0,
+            entry_bar_low=90.0,
+            intrabar_high=101.0,   # Broke high
+            intrabar_low=91.0,     # Did NOT break low
+        )
+
+        self.monitor._bar_cache = {}
+
+        exit_signal = self.monitor._check_pattern_invalidation(pos)
+
+        assert exit_signal is None
+
+    def test_intrabar_only_low_broken_no_exit(self):
+        """Intrabar only broke low should NOT trigger exit."""
+        pos = self._create_position_with_intrabar(
+            entry_bar_type="2D",
+            entry_bar_high=100.0,
+            entry_bar_low=90.0,
+            intrabar_high=99.0,    # Did NOT break high
+            intrabar_low=89.0,     # Broke low
+        )
+
+        self.monitor._bar_cache = {}
+
+        exit_signal = self.monitor._check_pattern_invalidation(pos)
+
+        assert exit_signal is None
+
+    def test_intrabar_tracking_updated_on_price_check(self):
+        """Intrabar high/low should update when underlying price is checked."""
+        pos = self._create_position_with_intrabar(
+            entry_bar_type="2U",
+            entry_bar_high=100.0,
+            entry_bar_low=90.0,
+            intrabar_high=95.0,    # Initial tracking
+            intrabar_low=93.0,
+        )
+
+        # Simulate price update to new high
+        pos.underlying_price = 102.0
+        if pos.underlying_price > pos.intrabar_high:
+            pos.intrabar_high = pos.underlying_price
+
+        assert pos.intrabar_high == 102.0
+
+        # Simulate price update to new low
+        pos.underlying_price = 88.0
+        if pos.underlying_price < pos.intrabar_low:
+            pos.intrabar_low = pos.underlying_price
+
+        assert pos.intrabar_low == 88.0
+
+        # Now check - should detect Type 3
+        exit_signal = self.monitor._check_pattern_invalidation(pos)
+        assert exit_signal is not None
+        assert exit_signal.reason == ExitReason.PATTERN_INVALIDATED
+
+    def test_fallback_to_bar_cache_if_intrabar_not_initialized(self):
+        """Should fallback to bar cache if intrabar not properly initialized."""
+        pos = self._create_position_with_intrabar(
+            entry_bar_type="2U",
+            entry_bar_high=100.0,
+            entry_bar_low=90.0,
+            intrabar_high=0.0,             # Not initialized
+            intrabar_low=float('inf'),     # Not initialized
+        )
+
+        # Bar cache shows Type 3
+        self.monitor._bar_cache["SPY"] = {
+            "high": 101.0,
+            "low": 89.0,
+        }
+
+        exit_signal = self.monitor._check_pattern_invalidation(pos)
+
+        assert exit_signal is not None
+        assert exit_signal.reason == ExitReason.PATTERN_INVALIDATED
+
+    def test_tracked_position_to_dict_includes_intrabar(self):
+        """TrackedPosition.to_dict() should include intrabar fields."""
+        pos = self._create_position_with_intrabar(
+            intrabar_high=105.0,
+            intrabar_low=88.0,
+        )
+
+        data = pos.to_dict()
+
+        assert data["intrabar_high"] == 105.0
+        assert data["intrabar_low"] == 88.0
+
+    def test_intrabar_type3_with_2d_entry(self):
+        """Type 3 detection should work for 2D entry bars as well."""
+        pos = self._create_position_with_intrabar(
+            entry_bar_type="2D",
+            entry_bar_high=100.0,
+            entry_bar_low=90.0,
+            intrabar_high=101.0,   # Broke high
+            intrabar_low=89.0,     # Broke low -> Type 3!
+        )
+
+        self.monitor._bar_cache = {}
+
+        exit_signal = self.monitor._check_pattern_invalidation(pos)
+
+        assert exit_signal is not None
+        assert exit_signal.reason == ExitReason.PATTERN_INVALIDATED

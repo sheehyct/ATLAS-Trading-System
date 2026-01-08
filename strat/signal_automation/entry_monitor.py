@@ -302,9 +302,10 @@ class EntryMonitor:
                         is_triggered = True
                     elif setup_low > 0 and current_price < setup_low:
                         # Opposite break - invalidate this setup
+                        # Session EQUITY-48: Include signal_key for lifecycle tracing
                         logger.info(
-                            f"INVALIDATED: {signal.symbol} {signal.pattern_type} CALL "
-                            f"broke DOWN instead (price ${current_price:.2f} < ${setup_low:.2f})"
+                            f"INVALIDATED: {signal.signal_key} - CALL broke DOWN "
+                            f"(${current_price:.2f} < ${setup_low:.2f})"
                         )
                         # Session EQUITY-41: Use signal store's mark_expired to persist change
                         self.signal_store.mark_expired(signal.signal_key)
@@ -317,9 +318,10 @@ class EntryMonitor:
                         is_triggered = True
                     elif setup_high > 0 and current_price > setup_high:
                         # Opposite break - invalidate this setup
+                        # Session EQUITY-48: Include signal_key for lifecycle tracing
                         logger.info(
-                            f"INVALIDATED: {signal.symbol} {signal.pattern_type} PUT "
-                            f"broke UP instead (price ${current_price:.2f} > ${setup_high:.2f})"
+                            f"INVALIDATED: {signal.signal_key} - PUT broke UP "
+                            f"(${current_price:.2f} > ${setup_high:.2f})"
                         )
                         # Session EQUITY-41: Use signal store's mark_expired to persist change
                         self.signal_store.mark_expired(signal.signal_key)
@@ -336,13 +338,13 @@ class EntryMonitor:
                 triggered.append(event)
 
                 # Log with direction change indicator if applicable
+                # Session EQUITY-48: Include signal_key for lifecycle tracing
                 direction_info = actual_direction
                 if actual_direction != signal.direction:
                     direction_info = f"{actual_direction} (was {signal.direction})"
                 logger.info(
-                    f"TRIGGER: {signal.symbol} {signal.pattern_type} {direction_info} "
-                    f"@ ${trigger_level:.2f} (current: ${current_price:.2f}, "
-                    f"priority: {signal.priority}, type: {signal.signal_type})"
+                    f"TRIGGER: {signal.signal_key} ({signal.symbol}) {signal.pattern_type} "
+                    f"{direction_info} @ ${trigger_level:.2f}"
                 )
 
         # Sort by priority (already sorted, but ensure after filtering)

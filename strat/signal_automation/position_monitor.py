@@ -171,8 +171,14 @@ class TrackedPosition:
     # Session EQUITY-44: Pattern invalidation tracking
     # Per STRAT methodology: exit immediately if entry bar evolves to Type 3
     entry_bar_type: str = ""             # Entry bar type: "2U", "2D", or "3"
-    entry_bar_high: float = 0.0          # Entry bar high (for Type 3 detection)
-    entry_bar_low: float = 0.0           # Entry bar low (for Type 3 detection)
+    entry_bar_high: float = 0.0          # Setup bar high (inside bar high for X-1-2 patterns)
+    entry_bar_low: float = 0.0           # Setup bar low (inside bar low for X-1-2 patterns)
+
+    # Session EQUITY-48: Real-time Type 3 evolution detection
+    # Track intrabar extremes since entry to detect Type 3 evolution in real-time
+    # (not just at bar close). Compare against setup bar bounds.
+    intrabar_high: float = 0.0           # Highest underlying price since entry
+    intrabar_low: float = float('inf')   # Lowest underlying price since entry
 
     # Tracking timestamps
     last_updated: datetime = field(default_factory=datetime.now)
@@ -216,6 +222,9 @@ class TrackedPosition:
             'entry_bar_type': self.entry_bar_type,
             'entry_bar_high': self.entry_bar_high,
             'entry_bar_low': self.entry_bar_low,
+            # Session EQUITY-48: Real-time Type 3 detection
+            'intrabar_high': self.intrabar_high,
+            'intrabar_low': self.intrabar_low if self.intrabar_low != float('inf') else 0.0,
             'last_updated': self.last_updated.isoformat(),
         }
 
@@ -448,6 +457,7 @@ class PositionMonitor:
             )
 
         # Session EQUITY-44: Get entry bar data from execution for pattern invalidation
+        # Note: entry_bar_high/low are actually the SETUP bar bounds (inside bar for X-1-2)
         entry_bar_type = ""
         entry_bar_high = 0.0
         entry_bar_low = 0.0
@@ -455,6 +465,12 @@ class PositionMonitor:
             entry_bar_type = getattr(execution, 'entry_bar_type', '')
             entry_bar_high = getattr(execution, 'entry_bar_high', 0.0)
             entry_bar_low = getattr(execution, 'entry_bar_low', 0.0)
+
+        # Session EQUITY-48: Initialize intrabar tracking with current underlying price
+        # This enables real-time Type 3 detection (not just at bar close)
+        current_underlying = alpaca_pos.get('current_price', 0.0) or actual_entry_underlying
+        intrabar_high = current_underlying if current_underlying > 0 else 0.0
+        intrabar_low = current_underlying if current_underlying > 0 else float('inf')
 
         return TrackedPosition(
             osi_symbol=osi_symbol,
@@ -482,6 +498,9 @@ class PositionMonitor:
             entry_bar_type=entry_bar_type,
             entry_bar_high=entry_bar_high,
             entry_bar_low=entry_bar_low,
+            # Session EQUITY-48: Real-time Type 3 detection
+            intrabar_high=intrabar_high,
+            intrabar_low=intrabar_low,
         )
 
     def _parse_expiration(self, osi_symbol: str) -> str:
@@ -602,6 +621,13 @@ class PositionMonitor:
         underlying_price = self._get_underlying_price(pos.symbol)
         if underlying_price:
             pos.underlying_price = underlying_price
+
+            # Session EQUITY-48: Update intrabar extremes for real-time Type 3 detection
+            # Track highest and lowest prices since entry to detect Type 3 evolution
+            if underlying_price > pos.intrabar_high:
+                pos.intrabar_high = underlying_price
+            if underlying_price < pos.intrabar_low:
+                pos.intrabar_low = underlying_price
 
         # 1. DTE Exit - mandatory close before expiration
         if pos.dte <= self.config.exit_dte:
@@ -977,6 +1003,11 @@ class PositionMonitor:
         if the entry bar breaks BOTH high and low (Type 3 evolution),
         exit immediately - the pattern premise is invalidated.
 
+        Session EQUITY-48: Enhanced with REAL-TIME detection using intrabar
+        high/low tracking. Previously only detected Type 3 at bar close via
+        bar cache. Now detects Type 3 evolution as it happens using accumulated
+        intrabar_high and intrabar_low since entry.
+
         Exit Priority:
         1. Target Hit
         2. Pattern Invalidated (Type 3 evolution) <- This check
@@ -988,35 +1019,57 @@ class PositionMonitor:
         Returns:
             ExitSignal if pattern invalidated, None otherwise
         """
-        # Skip if not a Type 2 entry or missing entry bar data
+        # Skip if not a Type 2 entry or missing setup bar data
+        # Note: entry_bar_high/low are actually setup bar (inside bar) bounds
         if pos.entry_bar_type not in ['2U', '2D']:
             return None
 
         if pos.entry_bar_high <= 0 or pos.entry_bar_low <= 0:
             return None
 
-        # Get current bar data from cache
-        bar_data = self._bar_cache.get(pos.symbol)
-        if not bar_data:
-            return None
+        # Session EQUITY-48: Use intrabar extremes for real-time detection
+        # Compare accumulated high/low since entry against setup bar bounds
+        # This detects Type 3 evolution as it happens, not just at bar close
+        intrabar_high = pos.intrabar_high
+        intrabar_low = pos.intrabar_low
 
-        # Check for Type 3 evolution: broke BOTH the entry bar high AND low
-        current_high = bar_data.get('high', 0)
-        current_low = bar_data.get('low', float('inf'))
+        # Fallback to bar cache if intrabar tracking not initialized
+        if intrabar_high <= 0 or intrabar_low == float('inf'):
+            bar_data = self._bar_cache.get(pos.symbol)
+            if bar_data:
+                # Validate bar cache has required keys
+                cache_high = bar_data.get('high', 0)
+                cache_low = bar_data.get('low', float('inf'))
+                if cache_high <= 0 or cache_low == float('inf'):
+                    logger.debug(
+                        f"Pattern invalidation skipped for {pos.symbol}: "
+                        f"incomplete bar cache (H={cache_high}, L={cache_low})"
+                    )
+                    return None
+                intrabar_high = cache_high
+                intrabar_low = cache_low
+            else:
+                logger.debug(
+                    f"Pattern invalidation skipped for {pos.symbol}: "
+                    f"no intrabar tracking and no bar cache"
+                )
+                return None
 
-        broke_high = current_high > pos.entry_bar_high
-        broke_low = current_low < pos.entry_bar_low
+        # Check for Type 3 evolution: broke BOTH the setup bar high AND low
+        broke_high = intrabar_high > pos.entry_bar_high
+        broke_low = intrabar_low < pos.entry_bar_low
 
         if broke_high and broke_low:
             # Pattern invalidated! Entry bar evolved to Type 3
             details = (
                 f"Entry bar evolved to Type 3: "
-                f"Entry H=${pos.entry_bar_high:.2f} L=${pos.entry_bar_low:.2f}, "
-                f"Current H=${current_high:.2f} L=${current_low:.2f}"
+                f"Setup H=${pos.entry_bar_high:.2f} L=${pos.entry_bar_low:.2f}, "
+                f"Intrabar H=${intrabar_high:.2f} L=${intrabar_low:.2f}"
             )
 
+            # Session EQUITY-48: Include signal_key for lifecycle tracing
             logger.warning(
-                f"PATTERN INVALIDATED for {pos.osi_symbol}: {details}"
+                f"PATTERN INVALIDATED: {pos.signal_key} ({pos.osi_symbol}) - {details}"
             )
 
             return ExitSignal(
@@ -1111,9 +1164,10 @@ class PositionMonitor:
             is_partial = exit_signal.contracts_to_close is not None
             qty_to_close = exit_signal.contracts_to_close
 
+            # Session EQUITY-48: Include signal_key for lifecycle tracing
             logger.info(
-                f"Executing {'partial ' if is_partial else ''}exit for {exit_signal.osi_symbol}: "
-                f"{exit_signal.reason.value} - {exit_signal.details}"
+                f"Executing {'partial ' if is_partial else ''}exit: {exit_signal.signal_key} "
+                f"({exit_signal.osi_symbol}) - {exit_signal.reason.value}"
             )
 
             result = self.trading_client.close_option_position(
@@ -1128,7 +1182,7 @@ class PositionMonitor:
                     pos.contracts_remaining = pos.contracts - qty_to_close
 
                     logger.info(
-                        f"Partial exit executed: {exit_signal.osi_symbol} - "
+                        f"Partial exit executed: {pos.signal_key} ({exit_signal.osi_symbol}) - "
                         f"Closed {qty_to_close}, remaining {pos.contracts_remaining}"
                     )
                 else:
@@ -1153,8 +1207,8 @@ class PositionMonitor:
                     pos.realized_pnl = pos.unrealized_pnl
 
                     logger.info(
-                        f"Position closed: {exit_signal.osi_symbol} - "
-                        f"P&L: ${pos.realized_pnl:.2f} (exit @ ${pos.exit_price:.2f})"
+                        f"Position closed: {pos.signal_key} ({exit_signal.osi_symbol}) - "
+                        f"P&L: ${pos.realized_pnl:.2f} ({exit_signal.reason.value})"
                     )
 
                 self._exit_count += 1
@@ -1170,14 +1224,15 @@ class PositionMonitor:
             else:
                 # Session EQUITY-45: Log when close_option_position returns falsy
                 # This was causing silent failures and infinite partial exit loops
+                # Session EQUITY-48: Include signal_key for lifecycle tracing
                 logger.error(
-                    f"Exit failed - close_option_position returned falsy: "
-                    f"{exit_signal.osi_symbol} ({exit_signal.reason.value})"
+                    f"Exit failed: {exit_signal.signal_key} ({exit_signal.osi_symbol}) - "
+                    f"close_option_position returned falsy ({exit_signal.reason.value})"
                 )
                 self._error_count += 1
 
         except Exception as e:
-            logger.error(f"Exit execution error for {exit_signal.osi_symbol}: {e}")
+            logger.error(f"Exit execution error: {exit_signal.signal_key} ({exit_signal.osi_symbol}) - {e}")
             self._error_count += 1
 
         return None

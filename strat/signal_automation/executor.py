@@ -64,10 +64,14 @@ class ExecutionResult:
     # For gap-through scenarios, this differs from signal.entry_trigger
     underlying_entry_price: Optional[float] = None
     # Session EQUITY-44: Pattern invalidation tracking
-    # Entry bar data for Type 3 detection during monitoring
+    # NOTE: Despite the name, entry_bar_high/low store SETUP BAR bounds
+    # (the inside bar's high/low for X-1-2 patterns). Used to detect Type 3
+    # evolution when the entry bar breaks BOTH bounds.
+    # Session EQUITY-48: Added intrabar tracking in position_monitor for
+    # real-time Type 3 detection (not just at bar close).
     entry_bar_type: str = ""             # Entry bar type: "2U", "2D", or "3"
-    entry_bar_high: float = 0.0          # Entry bar high
-    entry_bar_low: float = 0.0           # Entry bar low
+    entry_bar_high: float = 0.0          # Setup bar high (inside bar high)
+    entry_bar_low: float = 0.0           # Setup bar low (inside bar low)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -401,7 +405,11 @@ class SignalExecutor:
 
             # Create result
             # Session EQUITY-36: Store underlying_entry_price for gap-through tracking
-            # Session EQUITY-44: Capture entry bar data for pattern invalidation
+            # Session EQUITY-44: Capture setup bar bounds for pattern invalidation
+            # NOTE: entry_bar_type reflects the ENTRY bar classification, but
+            # entry_bar_high/low store SETUP bar (inside bar) bounds for Type 3 detection.
+            # Session EQUITY-48: Position monitor now tracks intrabar extremes for
+            # real-time Type 3 detection (not just at bar close).
             entry_bar_type = "2U" if signal.direction == "CALL" else "2D"
             entry_bar_high = getattr(signal, 'setup_bar_high', 0.0) or 0.0
             entry_bar_low = getattr(signal, 'setup_bar_low', 0.0) or 0.0
