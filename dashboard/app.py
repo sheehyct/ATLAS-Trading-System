@@ -245,6 +245,30 @@ def diagnostic():
         except Exception as e:
             status['options_loader']['closed_trades_test'] = f'ERROR: {str(e)}'
 
+    # If not connected, try to connect and capture actual error
+    if options_loader and not options_loader._connected:
+        try:
+            from alpaca.trading.client import TradingClient
+            import os
+
+            api_key = os.getenv('ALPACA_API_KEY')
+            secret_key = os.getenv('ALPACA_SECRET_KEY')
+
+            status['options_loader']['api_key_present'] = bool(api_key)
+            status['options_loader']['secret_key_present'] = bool(secret_key)
+            status['options_loader']['api_key_length'] = len(api_key) if api_key else 0
+
+            if api_key and secret_key:
+                test_client = TradingClient(
+                    api_key=api_key,
+                    secret_key=secret_key,
+                    paper=True
+                )
+                account = test_client.get_account()
+                status['options_loader']['retry_connect'] = f'SUCCESS: {account.id}'
+        except Exception as e:
+            status['options_loader']['retry_connect_error'] = str(e)
+
     return Response(
         json.dumps(status, indent=2),
         mimetype='application/json'
