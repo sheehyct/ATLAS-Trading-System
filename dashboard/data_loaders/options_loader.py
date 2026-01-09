@@ -426,11 +426,15 @@ class OptionsDataLoader:
                 # Look up pattern from signal store
                 trade['pattern'] = '-'
                 trade['timeframe'] = '-'
+                trade['tfc_score'] = None
+                trade['tfc_alignment'] = ''
                 if self.signal_store and osi_symbol:
                     signal = self.signal_store.get_signal_by_osi_symbol(osi_symbol)
                     if signal:
                         trade['pattern'] = signal.pattern_type
                         trade['timeframe'] = signal.timeframe
+                        trade['tfc_score'] = signal.tfc_score
+                        trade['tfc_alignment'] = signal.tfc_alignment
 
                 # Format timestamps for display
                 if trade.get('buy_time_dt'):

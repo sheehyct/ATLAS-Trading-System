@@ -756,10 +756,16 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                     'color': DARK_THEME['text_secondary']
                 }),
 
-                # Pattern (if available)
+                # TFC Score (Session EQUITY-50)
                 html.Td([
-                    dbc.Badge(pattern, color='dark', style={'fontSize': '0.8rem'}) if pattern else html.Small('-', style={'color': DARK_THEME['text_muted']})
-                ], style={'padding': '0.75rem'}),
+                    html.Span(
+                        f"{trade.get('tfc_score')}/5" if trade.get('tfc_score') is not None else '-',
+                        style={
+                            'color': DARK_THEME['accent_green'] if (trade.get('tfc_score') or 0) >= 4 else DARK_THEME['text_secondary'],
+                            'fontWeight': 'bold' if (trade.get('tfc_score') or 0) >= 4 else 'normal'
+                        }
+                    )
+                ], style={'padding': '0.75rem', 'textAlign': 'center'}),
 
             ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
         )
@@ -774,7 +780,7 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
                 html.Th('Exit', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Realized P&L', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
                 html.Th('Duration', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
-                html.Th('Pattern', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem'}),
+                html.Th('TFC', style={'color': DARK_THEME['text_secondary'], 'padding': '0.75rem', 'textAlign': 'center'}),
             ], style={'backgroundColor': DARK_THEME['card_header']})
         ]),
         html.Tbody(rows)
@@ -784,7 +790,183 @@ def create_closed_trades_table(trades: List[Dict]) -> html.Div:
         'backgroundColor': DARK_THEME['card_bg']
     })
 
-    return html.Div([summary, table])
+    # Create analytics section above the table
+    analytics = create_trade_analytics_section(trades)
+
+    return html.Div([analytics, summary, table])
+
+
+def calculate_trade_analytics(trades: List[Dict]) -> Dict[str, Any]:
+    """
+    Calculate analytics breakdowns from closed trades.
+
+    Session EQUITY-50: P6 Trade Analytics Dashboard
+
+    Returns dict with pattern_breakdown, tfc_breakdown, timeframe_breakdown.
+    Each breakdown: { key: { trades, winners, win_rate, total_pnl, avg_pnl } }
+    """
+    if not trades:
+        return {
+            'pattern_breakdown': {},
+            'tfc_breakdown': {},
+            'timeframe_breakdown': {}
+        }
+
+    def calc_breakdown(trades_list: List[Dict], key_field: str) -> Dict[str, Dict]:
+        """Calculate breakdown for a given dimension."""
+        groups = {}
+        for trade in trades_list:
+            key = trade.get(key_field, 'Unknown')
+            if key is None or key == '-' or key == '':
+                key = 'Unknown'
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(trade)
+
+        breakdown = {}
+        for key, group_trades in groups.items():
+            total_pnl = sum(t.get('realized_pnl', 0) for t in group_trades)
+            winners = sum(1 for t in group_trades if t.get('realized_pnl', 0) > 0)
+            count = len(group_trades)
+            breakdown[key] = {
+                'trades': count,
+                'winners': winners,
+                'win_rate': (winners / count * 100) if count > 0 else 0,
+                'total_pnl': total_pnl,
+                'avg_pnl': total_pnl / count if count > 0 else 0
+            }
+
+        # Sort by trade count descending
+        return dict(sorted(breakdown.items(), key=lambda x: x[1]['trades'], reverse=True))
+
+    return {
+        'pattern_breakdown': calc_breakdown(trades, 'pattern'),
+        'tfc_breakdown': calc_breakdown(trades, 'tfc_score'),
+        'timeframe_breakdown': calc_breakdown(trades, 'timeframe')
+    }
+
+
+def _create_breakdown_cards(breakdown: Dict[str, Dict], prefix: str = '') -> html.Div:
+    """
+    Create mini stat cards for a breakdown dimension.
+
+    Session EQUITY-50: P6 Trade Analytics Dashboard
+    """
+    if not breakdown:
+        return html.Div(
+            "No data",
+            style={'color': DARK_THEME['text_muted'], 'fontStyle': 'italic', 'padding': '0.5rem'}
+        )
+
+    cards = []
+    for key, data in breakdown.items():
+        # Format the key display
+        key_display = f"{prefix}{key}" if key != 'Unknown' else 'Unknown'
+        avg_pnl = data['avg_pnl']
+        pnl_color = DARK_THEME['accent_green'] if avg_pnl >= 0 else DARK_THEME['accent_red']
+
+        cards.append(
+            html.Div([
+                html.Div([
+                    html.Strong(key_display, style={'color': DARK_THEME['text_primary']}),
+                    html.Span(f" ({data['trades']})", style={'color': DARK_THEME['text_muted'], 'fontSize': '0.85rem'})
+                ]),
+                html.Div([
+                    html.Span(f"{data['win_rate']:.0f}% WR", style={'color': DARK_THEME['text_secondary'], 'fontSize': '0.85rem'}),
+                    html.Span(' | ', style={'color': DARK_THEME['border']}),
+                    html.Span(
+                        f"${avg_pnl:+,.0f} avg",
+                        style={'color': pnl_color, 'fontWeight': 'bold', 'fontSize': '0.85rem'}
+                    )
+                ])
+            ], style={
+                'backgroundColor': DARK_THEME['card_header'],
+                'padding': '0.5rem 0.75rem',
+                'borderRadius': '4px',
+                'marginBottom': '0.5rem',
+                'border': f"1px solid {DARK_THEME['border']}"
+            })
+        )
+
+    return html.Div(cards)
+
+
+def create_trade_analytics_section(trades: List[Dict]) -> html.Div:
+    """
+    Create collapsible analytics section with three breakdown views.
+
+    Session EQUITY-50: P6 Trade Analytics Dashboard
+
+    Displays:
+    - Pattern type breakdown (2U-2D, 3-2U, 3-1-2U, etc.)
+    - TFC score breakdown (0-5)
+    - Timeframe breakdown (1H, 1D, 1W, 1M)
+    """
+    if not trades:
+        return html.Div()
+
+    analytics = calculate_trade_analytics(trades)
+
+    return html.Div([
+        # Section header
+        html.Div([
+            html.Span('Performance Analytics', style={
+                'color': DARK_THEME['accent_blue'],
+                'fontWeight': 'bold',
+                'fontSize': '0.9rem'
+            }),
+            html.Small(f' ({len(trades)} trades)', style={'color': DARK_THEME['text_muted']})
+        ], style={'marginBottom': '0.75rem'}),
+
+        # Three-column breakdown
+        dbc.Row([
+            # Pattern breakdown
+            dbc.Col([
+                html.Div('By Pattern', style={
+                    'color': DARK_THEME['text_secondary'],
+                    'fontWeight': 'bold',
+                    'fontSize': '0.85rem',
+                    'marginBottom': '0.5rem',
+                    'borderBottom': f"1px solid {DARK_THEME['border']}",
+                    'paddingBottom': '0.25rem'
+                }),
+                _create_breakdown_cards(analytics['pattern_breakdown'])
+            ], width=12, lg=4, style={'marginBottom': '1rem'}),
+
+            # TFC score breakdown
+            dbc.Col([
+                html.Div('By TFC Score', style={
+                    'color': DARK_THEME['text_secondary'],
+                    'fontWeight': 'bold',
+                    'fontSize': '0.85rem',
+                    'marginBottom': '0.5rem',
+                    'borderBottom': f"1px solid {DARK_THEME['border']}",
+                    'paddingBottom': '0.25rem'
+                }),
+                _create_breakdown_cards(analytics['tfc_breakdown'], prefix='TFC ')
+            ], width=12, lg=4, style={'marginBottom': '1rem'}),
+
+            # Timeframe breakdown
+            dbc.Col([
+                html.Div('By Timeframe', style={
+                    'color': DARK_THEME['text_secondary'],
+                    'fontWeight': 'bold',
+                    'fontSize': '0.85rem',
+                    'marginBottom': '0.5rem',
+                    'borderBottom': f"1px solid {DARK_THEME['border']}",
+                    'paddingBottom': '0.25rem'
+                }),
+                _create_breakdown_cards(analytics['timeframe_breakdown'])
+            ], width=12, lg=4, style={'marginBottom': '1rem'}),
+        ]),
+
+    ], style={
+        'backgroundColor': DARK_THEME['card_bg'],
+        'padding': '1rem',
+        'borderRadius': '4px',
+        'marginBottom': '1rem',
+        'border': f"1px solid {DARK_THEME['border']}"
+    })
 
 
 def create_positions_table(positions: List[Dict]) -> html.Table:
