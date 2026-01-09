@@ -1,9 +1,77 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 8, 2026 (Session EQUITY-50)
+**Last Updated:** January 8, 2026 (Session EQUITY-51)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Entry Quality
-**Status:** P6 (Trade Analytics Dashboard) COMPLETE
+**Status:** Stale 1H Position Bug Fix COMPLETE
+
+---
+
+## Session EQUITY-51: Stale 1H Position EOD Exit Fix (COMPLETE)
+
+**Date:** January 8, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Critical bug fix for overnight 1H position holding
+
+### Overview
+
+Fixed critical bug where 1H trades entered on a previous trading day were not being exited until today's 15:59, instead of being exited immediately. The NFLX 3-2D 1H Put trade from Jan 7 at 10:48 was held overnight and only exited Jan 8 at 15:59.
+
+### The Bug
+
+**Root Cause:** EOD exit logic used `now.replace(hour=15, minute=59)` which always creates TODAY's 15:59, never checking if the position was entered on a previous trading day.
+
+```python
+# BROKEN - Always uses today's 15:59
+eod_exit_time = now_et.replace(hour=15, minute=59, ...)
+if now_et >= eod_exit_time:  # Only true after today's 15:59
+    trigger_exit()
+```
+
+### The Fix
+
+1. **Added `_is_stale_1h_position()` method** - Uses pandas_market_calendars to detect if entry was on a previous trading day
+2. **Modified EOD exit check** - Stale 1H positions exit IMMEDIATELY, not at today's 15:59
+3. **Fixed entry_time extraction** - Uses `execution.timestamp` instead of `datetime.now()` when syncing positions (critical for daemon restarts)
+
+| Fix | Location | Change |
+|-----|----------|--------|
+| Stale detection | position_monitor.py:1132-1180 | New `_is_stale_1h_position()` method |
+| Immediate exit | position_monitor.py:596-612 | Check stale before normal EOD |
+| Entry timestamp | position_monitor.py:475-481 | Use execution.timestamp |
+
+### Audit Findings
+
+Audited all stale-related files:
+- **position_monitor.py** - Fixed (2 bugs: stale check + entry_time)
+- **entry_monitor.py** - OK (relies on daemon for stale checks)
+- **daemon.py** - OK (has `_is_setup_stale()` from EQUITY-46)
+- **signal_store.py** - OK (proper timestamp handling)
+- **executor.py** - OK (proper timestamp persistence)
+
+### Test Results
+
+```
+tests/test_signal_automation/ - 65 passed (7 new stale position tests)
+tests/test_strat/             - 348 passed, 2 skipped
+```
+
+### Commit
+
+`10e381f` - fix(position-monitor): detect and exit stale 1H positions from previous trading day (EQUITY-51)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/position_monitor.py` | +_is_stale_1h_position(), +stale exit check, +entry_time fix |
+| `tests/test_signal_automation/test_stale_1h_position.py` | NEW - 7 tests for stale position detection |
+
+### Next Session (EQUITY-52) Priorities
+
+1. VPS deployment of EQUITY-51 fix
+2. Monitor for proper 1H EOD exits
+3. Consider adding stale position detection for other timeframes (1D held > 2 trading days, etc.)
 
 ---
 
