@@ -231,7 +231,6 @@ def diagnostic():
         },
         'live_loader': {
             'initialized': live_loader is not None,
-            'connected': live_loader._connected if live_loader else False,
         },
     }
 
