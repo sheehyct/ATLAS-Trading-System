@@ -472,6 +472,14 @@ class PositionMonitor:
         intrabar_high = current_underlying if current_underlying > 0 else 0.0
         intrabar_low = current_underlying if current_underlying > 0 else float('inf')
 
+        # Session EQUITY-51: Use actual execution timestamp, not datetime.now()
+        # This is critical for stale 1H position detection - if we use now(),
+        # a position from yesterday would appear as entered today after daemon restart
+        entry_time = datetime.now()
+        if execution and hasattr(execution, 'timestamp') and execution.timestamp:
+            entry_time = execution.timestamp
+            logger.debug(f"Using execution timestamp for {osi_symbol}: {entry_time}")
+
         return TrackedPosition(
             osi_symbol=osi_symbol,
             signal_key=execution.signal_key if execution else "",
@@ -484,7 +492,7 @@ class PositionMonitor:
             timeframe=timeframe,
             entry_price=alpaca_pos.get('avg_entry_price', 0.0),
             contracts=contracts,
-            entry_time=datetime.now(),  # Approximate
+            entry_time=entry_time,
             expiration=expiration,
             current_price=alpaca_pos.get('current_price', 0.0),
             unrealized_pnl=alpaca_pos.get('unrealized_pl', 0.0),
@@ -587,10 +595,31 @@ class PositionMonitor:
 
         # 0.5. Session EQUITY-35: EOD exit for 1H trades
         # All hourly trades must exit before market close to avoid overnight gap risk
+        # Session EQUITY-51: Also exit IMMEDIATELY if position is stale (entered previous day)
         if pos.timeframe == '1H':
             import pytz
             et = pytz.timezone('America/New_York')
             now_et = datetime.now(et)
+
+            # CRITICAL: Check for stale 1H position first (entered on previous trading day)
+            # These should have been exited yesterday but survived overnight
+            if self._is_stale_1h_position(pos.entry_time):
+                logger.warning(
+                    f"STALE EOD EXIT: {pos.osi_symbol} (1H) - "
+                    f"entered {pos.entry_time.strftime('%Y-%m-%d %H:%M')} but still open on {now_et.date()}"
+                )
+                return ExitSignal(
+                    osi_symbol=pos.osi_symbol,
+                    signal_key=pos.signal_key,
+                    reason=ExitReason.EOD_EXIT,
+                    underlying_price=pos.underlying_price or 0.0,
+                    current_option_price=pos.current_price,
+                    unrealized_pnl=pos.unrealized_pnl,
+                    dte=pos.dte,
+                    details=f"STALE 1H trade - entered {pos.entry_time.strftime('%Y-%m-%d')} but not exited, closing immediately",
+                )
+
+            # Normal EOD exit check for positions entered today
             eod_exit_time = now_et.replace(
                 hour=self.config.eod_exit_hour,
                 minute=self.config.eod_exit_minute,
@@ -1128,6 +1157,56 @@ class PositionMonitor:
             )
 
         return is_open
+
+    def _is_stale_1h_position(self, entry_time: datetime) -> bool:
+        """
+        Check if a 1H position was entered on a previous trading day.
+
+        Session EQUITY-51: 1H positions must exit before market close on the
+        SAME day they were entered. If a position somehow survives overnight
+        (daemon restart, timing issue, etc.), it should be closed immediately
+        at the next opportunity - not wait until today's 15:59.
+
+        Returns:
+            True if entry was on a previous trading day (stale position)
+            False if entry was today (normal position)
+        """
+        import pytz
+        import pandas_market_calendars as mcal
+
+        et = pytz.timezone('America/New_York')
+        now_et = datetime.now(et)
+
+        # Make entry_time timezone-aware if needed
+        if entry_time.tzinfo is None:
+            entry_time_et = et.localize(entry_time)
+        else:
+            entry_time_et = entry_time.astimezone(et)
+
+        # Same calendar day = not stale
+        if entry_time_et.date() == now_et.date():
+            return False
+
+        # Different calendar day - check if it's a different TRADING day
+        # (handles weekend positions that might span Fri->Mon)
+        nyse = mcal.get_calendar('NYSE')
+
+        # Get trading days between entry date and today
+        schedule = nyse.schedule(
+            start_date=entry_time_et.date(),
+            end_date=now_et.date()
+        )
+
+        # If there's more than 1 trading day in the range, it's stale
+        # (entry day + today = 2 days minimum for overnight hold)
+        if len(schedule) > 1:
+            logger.warning(
+                f"STALE 1H POSITION: Entered on {entry_time_et.date()}, "
+                f"now {now_et.date()} - {len(schedule)} trading days span"
+            )
+            return True
+
+        return False
 
     def execute_exit(self, exit_signal: ExitSignal) -> Optional[Dict[str, Any]]:
         """
