@@ -1,19 +1,68 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 8, 2026 (Session EQUITY-51)
+**Last Updated:** January 9, 2026 (Session EQUITY-51)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Entry Quality
-**Status:** Stale 1H Position Bug Fix COMPLETE
+**Status:** VPS Deployed, Pipeline Gap Analysis Complete
 
 ---
 
-## Session EQUITY-51: Stale 1H Position EOD Exit Fix (COMPLETE)
+## Session EQUITY-51: Analytics Tests + VPS Deployment + Pipeline Analysis (COMPLETE)
 
-**Date:** January 8, 2026
+**Date:** January 8-9, 2026
 **Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Critical bug fix for overnight 1H position holding
+**Status:** COMPLETE - Tests added, VPS deployed, pipeline gaps documented
 
 ### Overview
+
+Session covered three areas:
+1. Added unit tests for trade analytics (18 tests)
+2. Deployed EQUITY-47 through EQUITY-51 changes to VPS
+3. Comprehensive pipeline gap analysis between equity and crypto
+
+### Part 1: Trade Analytics Tests
+
+Added 18 unit tests for `calculate_trade_analytics()` function:
+
+| Test Class | Tests | Coverage |
+|------------|-------|----------|
+| TestCalculateTradeAnalyticsEmpty | 2 | Empty/None input handling |
+| TestCalculateTradeAnalyticsSingleTrade | 3 | Win/loss/breakeven single trades |
+| TestCalculateTradeAnalyticsMultipleTrades | 4 | Aggregation, sorting, breakdowns |
+| TestCalculateTradeAnalyticsMissingFields | 6 | None/missing field handling |
+| TestCalculateTradeAnalyticsCalculationAccuracy | 3 | Win rate, avg P&L, mixed data |
+
+**Commit:** `a59c384` - test(dashboard): add unit tests for trade analytics calculate function
+
+### Part 2: VPS Deployment
+
+Deployed all pending changes to VPS:
+- EQUITY-47: TFC logging + filter rejection logging
+- EQUITY-48: Type 3 evolution detection + signal lifecycle tracing
+- EQUITY-49: TFC re-evaluation at entry trigger
+- EQUITY-50: Trade analytics dashboard
+- EQUITY-51: Stale 1H position fix + analytics tests
+
+### Part 3: Pipeline Gap Analysis (Equity vs Crypto)
+
+Launched parallel explore agents to map both pipelines. Key findings:
+
+**Bug Fixes in Equity NOT in Crypto:**
+
+| Session | Fix | Equity Location | Crypto Status |
+|---------|-----|-----------------|---------------|
+| EQUITY-46 | Stale setup validation | daemon.py:786-877 | MISSING |
+| EQUITY-48 | Type 3 invalidation (intrabar) | position_monitor.py:1030-1056 | MISSING |
+| EQUITY-49 | TFC re-evaluation at entry | daemon.py:933-1056 | MISSING |
+| EQUITY-51 | Stale 1H position detection | position_monitor.py:1132-1180 | MISSING |
+
+**Recommended Unification Strategy:**
+
+1. Create shared execution validation module
+2. Port stale/TFC/Type3 logic to crypto
+3. Ensure unified_pattern_detector used by both
+
+### Part 1b: Stale 1H Position Fix (Other Terminal)
 
 Fixed critical bug where 1H trades entered on a previous trading day were not being exited until today's 15:59, instead of being exited immediately. The NFLX 3-2D 1H Put trade from Jan 7 at 10:48 was held overnight and only exited Jan 8 at 15:59.
 
@@ -69,9 +118,15 @@ tests/test_strat/             - 348 passed, 2 skipped
 
 ### Next Session (EQUITY-52) Priorities
 
-1. VPS deployment of EQUITY-51 fix
-2. Monitor for proper 1H EOD exits
-3. Consider adding stale position detection for other timeframes (1D held > 2 trading days, etc.)
+1. **Plan Mode:** Design shared execution validation module for equity/crypto
+2. Port stale setup validation (EQUITY-46) to crypto pipeline
+3. Port Type 3 pattern invalidation (EQUITY-48) to crypto pipeline
+4. Port TFC re-evaluation (EQUITY-49) to crypto pipeline
+5. Verify unified_pattern_detector used by both pipelines
+
+### Plan File
+
+`C:\Users\sheeh\.claude\plans\quirky-tumbling-rabin.md`
 
 ---
 
