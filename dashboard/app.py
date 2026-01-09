@@ -200,6 +200,58 @@ except Exception as e:
     crypto_loader = None
 
 # ============================================
+# DIAGNOSTIC ENDPOINT (Session EQUITY-51)
+# ============================================
+
+@app.server.route('/diagnostic')
+def diagnostic():
+    """
+    Diagnostic endpoint to check loader status.
+
+    Access at: /diagnostic
+    Returns JSON with connection status for all data loaders.
+    """
+    import json
+    from flask import Response
+
+    status = {
+        'timestamp': datetime.now().isoformat(),
+        'options_loader': {
+            'initialized': options_loader is not None,
+            'connected': options_loader._connected if options_loader else False,
+            'init_error': options_loader.init_error if options_loader else 'Not initialized',
+            'use_remote': options_loader.use_remote if options_loader else None,
+            'vps_api_url': options_loader.vps_api_url if options_loader else None,
+            'account': options_loader.account if options_loader else None,
+        },
+        'crypto_loader': {
+            'initialized': crypto_loader is not None,
+            'connected': crypto_loader._connected if crypto_loader else False,
+            'init_error': crypto_loader.init_error if crypto_loader else 'Not initialized',
+        },
+        'live_loader': {
+            'initialized': live_loader is not None,
+            'connected': live_loader._connected if live_loader else False,
+        },
+    }
+
+    # Test closed trades fetch if options_loader is connected
+    if options_loader and options_loader._connected:
+        try:
+            from datetime import timedelta
+            after = datetime.now() - timedelta(days=30)
+            closed = options_loader.client.get_closed_trades(after=after, options_only=True)
+            status['options_loader']['closed_trades_count'] = len(closed)
+            status['options_loader']['closed_trades_test'] = 'SUCCESS'
+        except Exception as e:
+            status['options_loader']['closed_trades_test'] = f'ERROR: {str(e)}'
+
+    return Response(
+        json.dumps(status, indent=2),
+        mimetype='application/json'
+    )
+
+# ============================================
 # APP LAYOUT
 # ============================================
 
