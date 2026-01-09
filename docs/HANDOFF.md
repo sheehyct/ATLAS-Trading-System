@@ -1,9 +1,81 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 8, 2026 (Session EQUITY-49)
+**Last Updated:** January 8, 2026 (Session EQUITY-50)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Entry Quality
-**Status:** P5 (TFC Re-evaluation at Entry) COMPLETE
+**Status:** P6 (Trade Analytics Dashboard) COMPLETE
+
+---
+
+## Session EQUITY-50: Trade Analytics Dashboard (COMPLETE)
+
+**Date:** January 8, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - P6 from EQUITY-49 priority list implemented
+
+### Overview
+
+Implemented P6 (Trade Analytics Dashboard) from the EQUITY-49 priority list. Added performance analytics to the closed trades tab showing breakdowns by pattern type, TFC score, and timeframe. Also added TFC column to the closed trades table.
+
+### P6: Trade Analytics Dashboard
+
+**Goal:** Show win rate and average P&L stats aggregated by pattern type, TFC score, and timeframe to help identify which setups perform best.
+
+**Solution:**
+1. Added TFC score enrichment to closed trades data loader
+2. Created analytics aggregation function with three breakdowns
+3. Created analytics display section with 3-column layout
+4. Added TFC column to closed trades table (replaced duplicate Pattern column)
+
+| Component | Change | Location |
+|-----------|--------|----------|
+| TFC Enrichment | Added tfc_score/tfc_alignment to trades | options_loader.py:429-437 |
+| `calculate_trade_analytics()` | Aggregation by pattern/TFC/timeframe | options_panel.py:793-840 |
+| `create_trade_analytics_section()` | 3-column analytics UI | options_panel.py:888-963 |
+| TFC Column | Added to closed trades table | options_panel.py:759-768 |
+
+### Analytics Display Format
+
+Each breakdown shows:
+- Dimension value (e.g., "3-1-2U", "TFC 4", "1D")
+- Trade count
+- Win rate percentage
+- Average P&L (color-coded green/red)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `dashboard/data_loaders/options_loader.py` | +4 lines - TFC enrichment in get_closed_trades() |
+| `dashboard/components/options_panel.py` | +191 lines - Analytics functions, TFC column |
+
+### Test Results
+
+```
+tests/test_signal_automation/ - 58 passed
+Code review - PASSED (no critical/important issues)
+```
+
+### Technical Debt Status
+
+| Priority | Task | Status |
+|----------|------|--------|
+| P1 | TFC Logging | DONE (EQUITY-47) |
+| P2 | Filter Rejection Logging | DONE (EQUITY-47) |
+| P3 | Type 3 Evolution Detection | DONE (EQUITY-48) |
+| P4 | Signal Lifecycle Tracing | DONE (EQUITY-48) |
+| P5 | TFC Re-evaluation at Entry | DONE (EQUITY-49) |
+| P6 | Trade Analytics Dashboard | DONE (EQUITY-50) |
+
+### Next Session (EQUITY-51) Priorities
+
+1. VPS deployment of EQUITY-49/50 changes
+2. Monitor TFC re-evaluation and analytics in production
+3. Consider adding analytics tests (per test analyzer recommendations)
+
+### Plan File
+
+`C:\Users\sheeh\.claude\plans\quirky-tumbling-rabin.md`
 
 ---
 
