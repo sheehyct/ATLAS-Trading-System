@@ -1,42 +1,111 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 10, 2026 (Session EQUITY-52-B)
+**Last Updated:** January 10, 2026 (Session EQUITY-52-A)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Entry Quality + Dashboard Overhaul
-**Status:** ATR-based 3-2 targets and trailing stops implemented
+**Phase:** Paper Trading - Dashboard Overhaul + Entry Quality
+**Status:** Unified STRAT Analytics dashboard implemented
 
 ---
 
 ## Next Session: EQUITY-53
 
-### Dashboard Overhaul (Terminal A continuation)
+### Test Unified Dashboard Locally
 
-**Goal:** Complete STRAT Pattern Analytics dashboard implementation.
+**Goal:** Verify the new STRAT Analytics panel works correctly.
 
-**Reference:** `c:\Users\sheeh\Downloads\strat-analytics-dashboard (1).html`
+**Commands:**
+```bash
+cd dashboard
+uv run python app.py
+# Open http://localhost:8050 and click STRAT Analytics tab
+```
 
-**Remaining Work:**
-- Fix pattern/TFC data population (signal lookup failing)
-- Add TFC column to open positions
-- Implement 6-tab dashboard structure
-- Integrate Alpaca portfolio history API for equity curve
+**Verify:**
+- Market dropdown switches between Equity Options and Crypto
+- All 6 sub-tabs render (Overview, Patterns, TFC, Closed, Pending, Equity)
+- Pattern data populates (should no longer show "-" with OSI reverse index fix)
+- TFC comparison shows data for trades with tfc_score
 
-### Verify ATR Changes in Production
+### Deploy to VPS
 
-**Goal:** Monitor VPS deployment of EQUITY-52-B changes.
+Both EQUITY-52-A and EQUITY-52-B changes need deployment:
+```bash
+# On VPS
+cd /path/to/vectorbt-workspace
+git pull origin main
+sudo systemctl restart atlas-signal-daemon
+```
 
-**Verification:**
-1. Confirm 3-2 patterns use ATR-based targets (not fixed 1.5%)
-2. Verify ATR trailing stops activate at 0.75 ATR
-3. Check daily audit report at 4:30 PM ET
+### Remaining Dashboard Work
 
-### Known Issues Still Open
+| Item | Status |
+|------|--------|
+| Add TFC column to open positions | Pending |
+| Test with real closed trades data | Pending |
+| Style refinements to match reference | Pending |
 
-| Issue | Root Cause | Status |
-|-------|-----------|--------|
-| TFC shows "-" on dashboard | Signal lookup by OSI symbol failing | Pending |
-| TFC shows 0/4 on Discord | Different code path or not populated | Pending |
-| Pattern column blank | Same root cause as TFC | Pending |
+---
+
+## Session EQUITY-52-A: Unified STRAT Analytics Dashboard (COMPLETE)
+
+**Date:** January 10, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Workstream:** Terminal A (Dashboard Overhaul)
+**Status:** COMPLETE - Core implementation done
+
+### Overview
+
+Implemented unified STRAT Analytics dashboard with market toggle and 6-tab structure.
+
+### Key Changes
+
+1. **Signal Lookup Fix (Root Cause)**
+   - Added OSI symbol reverse index to SignalStore for O(1) lookup
+   - Fixed pattern overwrite bug (fallback only when signal store lookup fails)
+   - File: `strat/signal_automation/signal_store.py` (+34 lines)
+
+2. **Unified STRAT Analytics Panel**
+   - New file: `dashboard/components/strat_analytics_panel.py` (1005 lines)
+   - Market dropdown: Equity Options / Crypto toggle
+   - 6 sub-tabs: Overview, Patterns, TFC Comparison, Closed Trades, Pending, Equity Curve
+   - TFC threshold: >= 4 for "WITH TFC" comparison
+   - No emojis (CLAUDE.md compliance)
+
+3. **Portfolio History API**
+   - Added `get_portfolio_history()` to LiveDataLoader
+   - Uses Alpaca `/v2/account/portfolio/history` endpoint
+   - File: `dashboard/data_loaders/live_loader.py` (+63 lines)
+
+4. **App Integration**
+   - Replaced Options Trading + Crypto Trading tabs with single STRAT Analytics tab
+   - Added callbacks for market toggle and 6 sub-tabs
+   - File: `dashboard/app.py` (+138 lines)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/signal_automation/signal_store.py` | OSI reverse index, O(1) lookup |
+| `dashboard/data_loaders/options_loader.py` | Fix pattern overwrite bug |
+| `dashboard/data_loaders/live_loader.py` | Portfolio history method |
+| `dashboard/components/strat_analytics_panel.py` | NEW - Unified panel |
+| `dashboard/app.py` | Tab integration and callbacks |
+
+### User Decisions
+
+- TFC threshold >= 4 for "WITH TFC"
+- No emojis (follow CLAUDE.md)
+- Replace both Options and Crypto tabs with unified panel
+- Market dropdown instead of separate tabs
+
+### Tests
+
+- 65 signal automation tests passed
+- Code review: No issues >= 80 confidence
+
+### Commit
+
+- `b31b8ff`: feat(dashboard): add unified STRAT Analytics panel with market toggle (EQUITY-52)
 
 ---
 
