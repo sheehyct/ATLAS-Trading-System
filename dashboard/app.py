@@ -69,6 +69,18 @@ from dashboard.components.crypto_panel import (
     create_closed_trades_table as create_crypto_closed_table,
     create_performance_metrics,
 )
+# Session EQUITY-52: Unified STRAT Analytics panel
+from dashboard.components.strat_analytics_panel import (
+    create_strat_analytics_panel,
+    create_overview_tab,
+    create_patterns_tab,
+    create_tfc_tab,
+    create_closed_trades_tab,
+    create_pending_tab,
+    create_equity_tab,
+    calculate_metrics,
+    calculate_pattern_stats,
+)
 
 # Import data loaders
 from dashboard.data_loaders.regime_loader import RegimeDataLoader
@@ -376,24 +388,13 @@ app.layout = dbc.Container([
                         }
                     ),
 
-                    # Tab 5: Options Trading (STRAT Integration)
+                    # Tab 5: STRAT Analytics (Session EQUITY-52 - Unified Options + Crypto)
                     dbc.Tab(
-                        label='Options Trading',
-                        tab_id='options-tab',
+                        label='STRAT Analytics',
+                        tab_id='strat-analytics-tab',
                         label_style={'color': COLORS['text_primary']},
                         active_label_style={
-                            'color': '#ffd700',  # Gold for options
-                            'font-weight': 'bold'
-                        }
-                    ),
-
-                    # Tab 6: Crypto Trading (Session CRYPTO-6)
-                    dbc.Tab(
-                        label='Crypto Trading',
-                        tab_id='crypto-tab',
-                        label_style={'color': COLORS['text_primary']},
-                        active_label_style={
-                            'color': '#22D3EE',  # Cyan for crypto
+                            'color': '#ffd700',  # Gold for STRAT
                             'font-weight': 'bold'
                         }
                     ),
@@ -447,10 +448,9 @@ def render_tab_content(active_tab):
         return create_portfolio_panel()
     elif active_tab == 'risk-tab':
         return create_risk_panel()
-    elif active_tab == 'options-tab':
-        return create_options_panel()
-    elif active_tab == 'crypto-tab':
-        return create_crypto_panel()
+    elif active_tab == 'strat-analytics-tab':
+        # Session EQUITY-52: Unified STRAT Analytics panel
+        return create_strat_analytics_panel()
     else:
         return html.Div('Tab content not found')
 
@@ -1857,6 +1857,106 @@ def update_crypto_tabs(n_intervals, active_tab):
             _create_no_closed_trades_placeholder(),
             _create_api_error_placeholder(f'Error: {str(e)[:50]}')
         )
+
+
+# ============================================
+# STRAT ANALYTICS CALLBACKS (Session EQUITY-52)
+# ============================================
+
+@app.callback(
+    Output('strat-analytics-tab-content', 'children'),
+    [Input('strat-analytics-tabs', 'active_tab'),
+     Input('strat-market-selector', 'value'),
+     Input('strat-analytics-refresh', 'n_intervals')]
+)
+def render_strat_analytics_tab(active_tab, market, n_intervals):
+    """
+    Render content for STRAT Analytics sub-tabs.
+
+    Args:
+        active_tab: Active sub-tab ID
+        market: Selected market (options/crypto)
+        n_intervals: Refresh interval count
+
+    Returns:
+        Tab content component
+    """
+    try:
+        # Get the appropriate data loader
+        if market == 'crypto':
+            loader = crypto_loader
+            if loader is None or not loader._connected:
+                return html.Div('Crypto loader not connected', style={'padding': '40px', 'textAlign': 'center'})
+        else:
+            loader = options_loader
+            if loader is None:
+                return html.Div('Options loader not available', style={'padding': '40px', 'textAlign': 'center'})
+
+        # Fetch closed trades for analytics
+        closed_trades = loader.get_closed_trades(days=30) if hasattr(loader, 'get_closed_trades') else []
+
+        if active_tab == 'tab-overview':
+            metrics = calculate_metrics(closed_trades)
+            pattern_stats = calculate_pattern_stats(closed_trades)
+            return create_overview_tab(metrics, pattern_stats)
+
+        elif active_tab == 'tab-patterns':
+            pattern_stats = calculate_pattern_stats(closed_trades)
+            return create_patterns_tab(pattern_stats)
+
+        elif active_tab == 'tab-tfc':
+            return create_tfc_tab(closed_trades)
+
+        elif active_tab == 'tab-closed':
+            return create_closed_trades_tab(closed_trades)
+
+        elif active_tab == 'tab-pending':
+            # Get pending signals
+            if market == 'crypto':
+                signals = loader.get_pending_signals() if hasattr(loader, 'get_pending_signals') else []
+            else:
+                # For options, get setup signals
+                signals = []
+                if hasattr(loader, 'signal_store') and loader.signal_store:
+                    stored_signals = loader.signal_store.get_setup_signals_for_monitoring()
+                    signals = [
+                        {
+                            'symbol': s.symbol,
+                            'pattern_type': s.pattern_type,
+                            'timeframe': s.timeframe,
+                            'entry_trigger': s.entry_trigger,
+                            'target_price': s.target_price,
+                            'stop_price': s.stop_price,
+                            'status': s.status,
+                        }
+                        for s in stored_signals
+                    ]
+            return create_pending_tab(signals)
+
+        elif active_tab == 'tab-equity':
+            # Get portfolio history
+            if market == 'options' and live_loader is not None:
+                history_df = live_loader.get_portfolio_history(days=90)
+                history = history_df.to_dict('records') if not history_df.empty else []
+            else:
+                history = []
+            return create_equity_tab(history)
+
+        else:
+            return html.Div('Tab not found')
+
+    except Exception as e:
+        logger.error(f"Error rendering STRAT analytics tab: {e}", exc_info=True)
+        return html.Div(f'Error: {str(e)[:100]}', style={'padding': '40px', 'textAlign': 'center', 'color': 'red'})
+
+
+@app.callback(
+    Output('strat-current-market', 'data'),
+    Input('strat-market-selector', 'value')
+)
+def update_market_store(market):
+    """Store current market selection."""
+    return market
 
 
 # ============================================

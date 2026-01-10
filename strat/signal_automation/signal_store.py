@@ -272,6 +272,10 @@ class SignalStore:
         self.signals_file = self.store_path / 'signals.json'
         self._signals: Dict[str, StoredSignal] = {}
 
+        # Session EQUITY-52: Reverse index for O(1) OSI symbol lookup
+        # Maps executed_osi_symbol -> signal_key
+        self._osi_symbol_index: Dict[str, str] = {}
+
         # Load existing signals
         self._load()
 
@@ -283,12 +287,29 @@ class SignalStore:
                     data = json.load(f)
                     for key, signal_data in data.items():
                         self._signals[key] = StoredSignal.from_dict(signal_data)
+
+                # Session EQUITY-52: Rebuild OSI symbol reverse index
+                self._rebuild_osi_index()
+
                 logger.info(f"Loaded {len(self._signals)} signals from {self.signals_file}")
             except (json.JSONDecodeError, KeyError) as e:
                 logger.error(f"Error loading signals: {e}")
                 self._signals = {}
+                self._osi_symbol_index = {}
         else:
             logger.info(f"No existing signals file at {self.signals_file}")
+
+    def _rebuild_osi_index(self) -> None:
+        """
+        Rebuild the OSI symbol reverse index from signals.
+
+        Session EQUITY-52: Called after loading signals to enable O(1) lookups.
+        """
+        self._osi_symbol_index.clear()
+        for signal_key, signal in self._signals.items():
+            if signal.executed_osi_symbol:
+                self._osi_symbol_index[signal.executed_osi_symbol] = signal_key
+        logger.debug(f"Rebuilt OSI symbol index with {len(self._osi_symbol_index)} entries")
 
     def load_signals(self) -> Dict[str, StoredSignal]:
         """
@@ -472,6 +493,10 @@ class SignalStore:
 
         signal = self._signals[signal_key]
         signal.executed_osi_symbol = osi_symbol
+
+        # Session EQUITY-52: Update reverse index for O(1) lookup
+        self._osi_symbol_index[osi_symbol] = signal_key
+
         self._save()
         logger.debug(f"Set executed_osi_symbol for {signal_key}: {osi_symbol}")
         return True
@@ -482,15 +507,18 @@ class SignalStore:
 
         Used to correlate closed trades with their originating patterns.
 
+        Session EQUITY-52: Now uses O(1) reverse index lookup instead of O(n) scan.
+
         Args:
             osi_symbol: OCC option symbol to look up
 
         Returns:
             StoredSignal if found, None otherwise
         """
-        for signal in self._signals.values():
-            if signal.executed_osi_symbol == osi_symbol:
-                return signal
+        # O(1) lookup using reverse index
+        signal_key = self._osi_symbol_index.get(osi_symbol)
+        if signal_key:
+            return self._signals.get(signal_key)
         return None
 
     def get_pending_signals(self) -> List[StoredSignal]:

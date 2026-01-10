@@ -188,3 +188,66 @@ class LiveDataLoader:
         except Exception as e:
             logger.error(f"Error getting market status: {e}", exc_info=True)
             return {'is_open': False}
+
+    def get_portfolio_history(self, days: int = 90) -> pd.DataFrame:
+        """
+        Fetch portfolio history from Alpaca for equity curve.
+
+        Session EQUITY-52: Added for unified STRAT analytics dashboard.
+
+        Args:
+            days: Number of days of history to fetch (default: 90)
+
+        Returns:
+            DataFrame with columns:
+                - date: Date string
+                - equity: Account equity value
+                - profit_loss: Daily P&L
+                - profit_loss_pct: Daily P&L percentage
+        """
+        try:
+            if self.client is None:
+                logger.warning("AlpacaTradingClient not initialized")
+                return pd.DataFrame()
+
+            # Use the Alpaca client's underlying trading_client to get portfolio history
+            # The alpaca-py library has a get_portfolio_history method
+            from alpaca.trading.requests import GetPortfolioHistoryRequest
+            from datetime import datetime, timedelta
+
+            # Calculate date range
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+
+            request = GetPortfolioHistoryRequest(
+                period=f'{days}D',
+                timeframe='1D',
+                extended_hours=False
+            )
+
+            history = self.client.trading_client.get_portfolio_history(request)
+
+            if history is None or history.timestamp is None:
+                logger.warning("No portfolio history returned from Alpaca")
+                return pd.DataFrame()
+
+            # Convert to DataFrame
+            df = pd.DataFrame({
+                'timestamp': history.timestamp,
+                'equity': history.equity,
+                'profit_loss': history.profit_loss,
+                'profit_loss_pct': history.profit_loss_pct
+            })
+
+            # Convert timestamp to date string
+            df['date'] = pd.to_datetime(df['timestamp'], unit='s').dt.strftime('%Y-%m-%d')
+
+            logger.info(f"Fetched {len(df)} days of portfolio history")
+            return df[['date', 'equity', 'profit_loss', 'profit_loss_pct']]
+
+        except ImportError as e:
+            logger.error(f"Missing alpaca-py dependency: {e}")
+            return pd.DataFrame()
+        except Exception as e:
+            logger.error(f"Error getting portfolio history: {e}", exc_info=True)
+            return pd.DataFrame()

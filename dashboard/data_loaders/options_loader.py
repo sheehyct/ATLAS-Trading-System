@@ -451,11 +451,14 @@ class OptionsDataLoader:
                 else:
                     trade['sell_time_display'] = ''
 
-                # Link pattern from execution data
-                trade['pattern'] = self._get_pattern_for_trade(
-                    trade.get('symbol', ''),
-                    executions
-                )
+                # Session EQUITY-52: Only use execution fallback if signal store lookup failed
+                if trade['pattern'] == '-':
+                    fallback_pattern = self._get_pattern_for_trade(
+                        trade.get('symbol', ''),
+                        executions
+                    )
+                    if fallback_pattern:
+                        trade['pattern'] = fallback_pattern
 
             return closed_trades
 
