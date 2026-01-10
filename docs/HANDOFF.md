@@ -2,8 +2,77 @@
 
 **Last Updated:** January 9, 2026 (Session EQUITY-51)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Entry Quality
-**Status:** VPS Deployed, Pipeline Gap Analysis Complete
+**Phase:** Paper Trading - Entry Quality + Dashboard Overhaul
+**Status:** Ready for EQUITY-52 (Two Parallel Workstreams)
+
+---
+
+## Next Session: EQUITY-52 (TWO PARALLEL WORKSTREAMS)
+
+### Workstream A: Dashboard Overhaul (Plan Mode)
+
+**Goal:** Implement STRAT Pattern Analytics dashboard based on reference design.
+
+**Reference:** `c:\Users\sheeh\Downloads\strat-analytics-dashboard (1).html`
+
+**Tab Structure:**
+| Tab | Content |
+|-----|---------|
+| Overview | 4 metrics cards + Win Rate by Pattern chart + Avg P&L by Pattern chart |
+| Patterns | Best/Worst performers + Pattern breakdown table with ranking |
+| Timeframe Continuity | WITH vs WITHOUT TFC comparison + charts |
+| Closed Trades | Trade table with Symbol, Pattern, Entry, Exit, P&L, %, Continuity |
+| Pending Patterns | Symbol, Pattern, Bars (X/4), Confidence%, Entry/Target/Stop, Status |
+| Equity Curve | Account balance line chart with timeframe selectors |
+
+**Key Metrics:**
+- Total Trades (W/L), Win Rate, Total P&L (with Profit Factor), Avg Trade (W/L breakdown)
+- TFC Impact: WITH vs WITHOUT comparison (trades, win rate, avg P&L)
+
+**Prerequisites:**
+- Fix pattern/TFC data population (signal lookup failing)
+- Add TFC column to open positions
+- Integrate Alpaca portfolio history API for equity curve
+
+### Workstream B: 3-2 ATR Targets + Trade Audit (Plan Mode)
+
+**Goal 1:** Fix 3-2 pattern R:R calculation - targets too far, winning trades becoming losers.
+
+**Current Issue:** Fixed 1.5% or 1.5x R:R doesn't scale across price ranges (COIN $300 vs ACHR $8).
+
+**Proposed Solution:**
+```python
+# ATR-based target for 3-2 patterns
+atr = calculate_atr(symbol, period=14)
+target = entry_price +/- (atr * 1.5)
+
+# Trailing stop
+trailing_activation = atr * 0.75  # Activate at 0.75 ATR profit
+trailing_distance = atr * 1.0      # Trail by 1.0 ATR
+```
+
+**Goal 2:** Automated Trade Audit system.
+
+**Components:**
+1. Daily VPS script (4:30 PM ET via systemd timer)
+2. Discord `/audit` command for on-demand review
+3. Validates: Pattern match, entry accuracy, TFC at detection vs entry, exit reason
+
+**Output Format:**
+```
+TRADE AUDIT REPORT - 2026-01-09
+Trades Today: 3 | Correct: 2 | Anomalies: 1
+Open Positions: 2 | Valid: 2 | Stale: 0
+```
+
+### Known Issues to Fix (Both Workstreams)
+
+| Issue | Root Cause | Fix |
+|-------|-----------|-----|
+| TFC shows "-" on dashboard | Signal lookup by OSI symbol failing | Fix signal store linkage |
+| TFC shows 0/4 on Discord | Different code path or not populated | Verify tfc_score population |
+| Pattern column blank | Same root cause as TFC | Fix signal store linkage |
+| Closed trades empty (Railway) | Alpaca credentials were invalid | FIXED - credentials updated |
 
 ---
 
