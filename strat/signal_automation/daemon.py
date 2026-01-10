@@ -1566,6 +1566,122 @@ class SignalDaemon:
 
         return status
 
+    # =========================================================================
+    # EQUITY-52: Daily Trade Audit
+    # =========================================================================
+
+    def _generate_daily_audit(self) -> Dict[str, Any]:
+        """
+        EQUITY-52: Generate daily trade audit statistics.
+
+        Collects today's trading activity including:
+        - Trades executed today
+        - Win/loss counts and P&L
+        - Open positions summary
+        - Anomaly detection
+
+        Returns:
+            Dictionary with audit data for Discord reporting
+        """
+        import json
+        from pathlib import Path
+        from datetime import date
+
+        today = date.today().isoformat()
+
+        # Initialize audit data
+        audit_data = {
+            'date': today,
+            'trades_today': 0,
+            'wins': 0,
+            'losses': 0,
+            'total_pnl': 0.0,
+            'profit_factor': 0.0,
+            'open_positions': [],
+            'anomalies': [],
+        }
+
+        # Load paper trades
+        paper_trades_path = Path('paper_trades/paper_trades.json')
+        if paper_trades_path.exists():
+            try:
+                with open(paper_trades_path, 'r') as f:
+                    data = json.load(f)
+                    trades = data if isinstance(data, list) else data.get('trades', [])
+
+                # Filter today's closed trades
+                gross_profit = 0.0
+                gross_loss = 0.0
+                for trade in trades:
+                    exit_time = trade.get('exit_time', '')
+                    if exit_time and exit_time.startswith(today):
+                        audit_data['trades_today'] += 1
+                        pnl = trade.get('pnl_dollars', 0)
+                        audit_data['total_pnl'] += pnl
+                        if pnl > 0:
+                            audit_data['wins'] += 1
+                            gross_profit += pnl
+                        elif pnl < 0:
+                            audit_data['losses'] += 1
+                            gross_loss += abs(pnl)
+
+                # Calculate profit factor
+                if gross_loss > 0:
+                    audit_data['profit_factor'] = gross_profit / gross_loss
+
+            except (json.JSONDecodeError, KeyError, IOError) as e:
+                logger.error(f"Failed to load paper trades for audit: {e}")
+                audit_data['anomalies'].append(f"Failed to load trades: {e}")
+
+        # Get open positions from position monitor
+        if self.position_monitor is not None:
+            positions = self.position_monitor.get_tracked_positions()
+            for pos in positions:
+                pos_summary = {
+                    'symbol': pos.symbol,
+                    'pattern_type': pos.pattern_type,
+                    'timeframe': pos.timeframe,
+                    'unrealized_pnl': pos.unrealized_pnl,
+                    'unrealized_pct': pos.unrealized_pct,
+                }
+                audit_data['open_positions'].append(pos_summary)
+
+        # Check for anomalies
+        # Anomaly 1: Trades with unexpected exit reasons
+        # Anomaly 2: Large losses (> $100)
+        # These can be expanded in future sessions
+
+        logger.info(
+            f"Daily audit generated: {audit_data['trades_today']} trades, "
+            f"P/L: ${audit_data['total_pnl']:.2f}, "
+            f"Open: {len(audit_data['open_positions'])}"
+        )
+
+        return audit_data
+
+    def _run_daily_audit(self) -> None:
+        """
+        EQUITY-52: Run daily audit and send to Discord.
+
+        Called by scheduler at 4:30 PM ET.
+        Generates audit data and sends via all alerters that support it.
+        """
+        try:
+            audit_data = self._generate_daily_audit()
+
+            # Send to all alerters that have send_daily_audit method
+            for alerter in self.alerters:
+                if hasattr(alerter, 'send_daily_audit'):
+                    try:
+                        alerter.send_daily_audit(audit_data)
+                    except Exception as e:
+                        logger.error(f"Failed to send daily audit via {alerter.name}: {e}")
+
+            logger.info("Daily audit completed and sent")
+        except Exception as e:
+            logger.error(f"Failed to run daily audit: {e}")
+            self._error_count += 1
+
     def _setup_signal_handlers(self) -> None:
         """Setup OS signal handlers for graceful shutdown."""
         def handle_shutdown(signum, frame):
@@ -1657,6 +1773,26 @@ class SignalDaemon:
                 f"Entry trigger monitoring enabled "
                 f"(1-minute polling during market hours)"
             )
+
+        # EQUITY-52: Daily trade audit at 4:30 PM ET
+        # Add as cron job via underlying APScheduler
+        try:
+            from apscheduler.triggers.cron import CronTrigger
+            audit_trigger = CronTrigger(
+                hour=16,
+                minute=30,
+                timezone='America/New_York'
+            )
+            self.scheduler._scheduler.add_job(
+                func=self._run_daily_audit,
+                trigger=audit_trigger,
+                id='daily_audit',
+                name='Daily Trade Audit',
+                replace_existing=True
+            )
+            logger.info("Daily trade audit scheduled for 4:30 PM ET")
+        except Exception as e:
+            logger.warning(f"Failed to schedule daily audit: {e}")
 
         # Start scheduler
         self.scheduler.start()

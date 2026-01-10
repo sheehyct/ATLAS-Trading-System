@@ -697,6 +697,112 @@ class DiscordAlerter(BaseAlerter):
 
         return success
 
+    def send_daily_audit(self, audit_data: Dict[str, Any]) -> bool:
+        """
+        EQUITY-52: Send daily trade audit report via webhook.
+
+        Args:
+            audit_data: Dictionary containing:
+                - date: Audit date string (YYYY-MM-DD)
+                - trades_today: Number of trades executed today
+                - wins: Number of winning trades
+                - losses: Number of losing trades
+                - total_pnl: Total P&L for the day
+                - profit_factor: Profit factor (gross profit / gross loss)
+                - open_positions: List of open position summaries
+                - anomalies: List of anomaly descriptions
+
+        Returns:
+            True if sent successfully
+        """
+        date = audit_data.get('date', 'Unknown')
+        trades_today = audit_data.get('trades_today', 0)
+        wins = audit_data.get('wins', 0)
+        losses = audit_data.get('losses', 0)
+        total_pnl = audit_data.get('total_pnl', 0.0)
+        profit_factor = audit_data.get('profit_factor', 0.0)
+        open_positions = audit_data.get('open_positions', [])
+        anomalies = audit_data.get('anomalies', [])
+
+        # Calculate win rate
+        total_closed = wins + losses
+        win_rate = (wins / total_closed * 100) if total_closed > 0 else 0
+
+        # Color based on P&L
+        if total_pnl >= 0:
+            color = COLORS['CALL']  # Green for profit
+        else:
+            color = COLORS['PUT']   # Red for loss
+
+        # Format P&L with sign
+        pnl_str = f"+${total_pnl:.2f}" if total_pnl >= 0 else f"-${abs(total_pnl):.2f}"
+
+        # Build description
+        description = f"Trades: {trades_today} | Win Rate: {win_rate:.0f}%\nP/L: {pnl_str}"
+        if profit_factor > 0:
+            description += f" | PF: {profit_factor:.2f}"
+
+        # Build fields
+        fields = []
+
+        # Open positions field
+        if open_positions:
+            positions_text = ""
+            for pos in open_positions[:5]:  # Limit to 5
+                symbol = pos.get('symbol', 'N/A')
+                pattern = pos.get('pattern_type', 'N/A')
+                timeframe = pos.get('timeframe', 'N/A')
+                pnl = pos.get('unrealized_pnl', 0)
+                pnl_pct = pos.get('unrealized_pct', 0) * 100
+                pnl_sign = '+' if pnl >= 0 else ''
+                positions_text += f"- {symbol} {pattern} {timeframe}: {pnl_sign}${pnl:.0f} ({pnl_sign}{pnl_pct:.0f}%)\n"
+            if len(open_positions) > 5:
+                positions_text += f"... +{len(open_positions) - 5} more"
+            fields.append({
+                'name': f'Open Positions ({len(open_positions)})',
+                'value': positions_text or 'None',
+                'inline': False
+            })
+
+        # Anomalies field
+        anomaly_count = len(anomalies)
+        if anomalies:
+            anomalies_text = "\n".join([f"- {a}" for a in anomalies[:3]])
+            if len(anomalies) > 3:
+                anomalies_text += f"\n... +{len(anomalies) - 3} more"
+            fields.append({
+                'name': f'Anomalies ({anomaly_count})',
+                'value': anomalies_text,
+                'inline': False
+            })
+        else:
+            fields.append({
+                'name': 'Anomalies',
+                'value': 'None detected',
+                'inline': False
+            })
+
+        embed = {
+            'title': f'DAILY TRADE AUDIT - {date}',
+            'description': description,
+            'color': color,
+            'fields': fields,
+            'timestamp': datetime.utcnow().isoformat(),
+            'footer': {'text': 'ATLAS Signal Automation'}
+        }
+
+        payload = {
+            'username': self.username,
+            'embeds': [embed]
+        }
+
+        success = self._send_webhook(payload)
+
+        if success:
+            logger.info(f"Discord daily audit sent for {date}: {trades_today} trades, P/L: {pnl_str}")
+
+        return success
+
     def test_connection(self) -> bool:
         """
         Test Discord webhook connection.

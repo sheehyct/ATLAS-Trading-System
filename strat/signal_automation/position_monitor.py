@@ -89,6 +89,13 @@ class MonitoringConfig:
     # Prevents confusing exits where trailing stop triggers but option P/L is negative
     trailing_stop_min_profit_pct: float = 0.0  # Minimum option profit % to allow trail exit (0 = breakeven)
 
+    # EQUITY-52: ATR-based trailing stop for 3-2 patterns
+    # 3-2 patterns use ATR-based stops instead of percentage-based
+    # Activation: 0.75 ATR profit, Trail distance: 1.0 ATR from high water mark
+    use_atr_trailing_for_32: bool = True       # Enable ATR-based trailing for 3-2 patterns
+    atr_trailing_activation_multiple: float = 0.75  # Activate at 0.75 ATR profit
+    atr_trailing_distance_multiple: float = 1.0     # Trail at 1.0 ATR distance from HWM
+
     # Partial exits - for multi-contract positions
     partial_exit_enabled: bool = True    # Enable partial exits at 1.0x R:R
     partial_exit_rr: float = 1.0         # Take partial profit at 1.0x R:R
@@ -164,6 +171,12 @@ class TrackedPosition:
     trailing_stop_price: float = 0.0     # Current trailing stop level (underlying price)
     high_water_mark: float = 0.0         # Best underlying price seen (for trailing calc)
 
+    # EQUITY-52: ATR-based trailing stop for 3-2 patterns
+    atr_at_detection: float = 0.0        # ATR(14) captured at signal detection time
+    use_atr_trailing: bool = False       # Whether this position uses ATR trailing (3-2 only)
+    atr_trail_distance: float = 0.0      # Pre-calculated 1.0 ATR trail distance
+    atr_activation_level: float = 0.0    # Pre-calculated 0.75 ATR profit level
+
     # Partial exit state
     partial_exit_done: bool = False      # Whether partial exit has been executed
     contracts_remaining: int = 0         # Contracts remaining after partial exit
@@ -216,6 +229,11 @@ class TrackedPosition:
             'trailing_stop_active': self.trailing_stop_active,
             'trailing_stop_price': self.trailing_stop_price,
             'high_water_mark': self.high_water_mark,
+            # EQUITY-52: ATR-based trailing stop fields
+            'atr_at_detection': self.atr_at_detection,
+            'use_atr_trailing': self.use_atr_trailing,
+            'atr_trail_distance': self.atr_trail_distance,
+            'atr_activation_level': self.atr_activation_level,
             'partial_exit_done': self.partial_exit_done,
             'contracts_remaining': self.contracts_remaining,
             # Session EQUITY-44: Pattern invalidation tracking
@@ -447,9 +465,24 @@ class PositionMonitor:
 
         # For 1H patterns, use 1.0x target instead of 1.5x
         # (Session EQUITY-36: TSLA analysis showed 1.5x too aggressive for intraday)
+        # EQUITY-52: 3-2 patterns use ATR-based targets and bypass 1H override
         effective_target = original_target
         timeframe = signal.timeframe
-        if timeframe and timeframe.upper() in ['1H', '60MIN', '60M']:
+        pattern_type = signal.pattern_type if hasattr(signal, 'pattern_type') else ''
+
+        # Check if this is a 3-2 pattern (not 3-2-2)
+        is_32_pattern = '3-2' in pattern_type and '3-2-2' not in pattern_type
+
+        if is_32_pattern:
+            # EQUITY-52: 3-2 patterns use ATR-based targets for ALL timeframes
+            # Do NOT override to 1.0x - keep the ATR-based target
+            atr_value = getattr(signal, 'atr_14', 0.0) or 0.0
+            logger.info(
+                f"3-2 pattern {osi_symbol}: Using ATR-based target ${original_target:.2f} "
+                f"(ATR: ${atr_value:.2f}, pattern: {pattern_type})"
+            )
+        elif timeframe and timeframe.upper() in ['1H', '60MIN', '60M']:
+            # Non-3-2 patterns on 1H: Use 1.0x R:R (EQUITY-36)
             effective_target = target_1x
             logger.info(
                 f"1H pattern {osi_symbol}: Adjusted target from ${original_target:.2f} "
@@ -480,6 +513,32 @@ class PositionMonitor:
             entry_time = execution.timestamp
             logger.debug(f"Using execution timestamp for {osi_symbol}: {entry_time}")
 
+        # EQUITY-52: Initialize ATR-based trailing stop for 3-2 patterns
+        atr_at_detection = getattr(signal, 'atr_14', 0.0) or 0.0
+        use_atr_trailing = (
+            is_32_pattern and
+            self.config.use_atr_trailing_for_32 and
+            atr_at_detection > 0
+        )
+        atr_trail_distance = 0.0
+        atr_activation_level = 0.0
+
+        if use_atr_trailing:
+            # Pre-calculate ATR trail distance (1.0 ATR)
+            atr_trail_distance = atr_at_detection * self.config.atr_trailing_distance_multiple
+            # Pre-calculate activation level (0.75 ATR profit from entry)
+            atr_activation_profit = atr_at_detection * self.config.atr_trailing_activation_multiple
+            if is_bullish:
+                atr_activation_level = actual_entry_underlying + atr_activation_profit
+            else:
+                atr_activation_level = actual_entry_underlying - atr_activation_profit
+
+            logger.info(
+                f"3-2 ATR trailing initialized for {osi_symbol}: "
+                f"ATR=${atr_at_detection:.2f}, activation=${atr_activation_level:.2f}, "
+                f"trail_distance=${atr_trail_distance:.2f}"
+            )
+
         return TrackedPosition(
             osi_symbol=osi_symbol,
             signal_key=execution.signal_key if execution else "",
@@ -509,6 +568,11 @@ class PositionMonitor:
             # Session EQUITY-48: Real-time Type 3 detection
             intrabar_high=intrabar_high,
             intrabar_low=intrabar_low,
+            # EQUITY-52: ATR-based trailing stop for 3-2 patterns
+            atr_at_detection=atr_at_detection,
+            use_atr_trailing=use_atr_trailing,
+            atr_trail_distance=atr_trail_distance,
+            atr_activation_level=atr_activation_level,
         )
 
     def _parse_expiration(self, osi_symbol: str) -> str:
@@ -778,7 +842,120 @@ class PositionMonitor:
 
     def _check_trailing_stop(self, pos: TrackedPosition) -> Optional[ExitSignal]:
         """
-        Session EQUITY-36: Check and update trailing stop logic.
+        Session EQUITY-36/52: Check and update trailing stop logic.
+
+        Routes to appropriate trailing stop method:
+        - ATR-based for 3-2 patterns (EQUITY-52): 0.75 ATR activation, 1.0 ATR trail
+        - Percentage-based for others (EQUITY-36): 0.5x R:R activation, 50% trail
+
+        Returns ExitSignal if trailing stop is hit, None otherwise.
+        """
+        # EQUITY-52: Route to ATR trailing for 3-2 patterns
+        if pos.use_atr_trailing and pos.atr_trail_distance > 0:
+            return self._check_atr_trailing_stop(pos)
+        else:
+            return self._check_percentage_trailing_stop(pos)
+
+    def _check_atr_trailing_stop(self, pos: TrackedPosition) -> Optional[ExitSignal]:
+        """
+        EQUITY-52: ATR-based trailing stop for 3-2 patterns.
+
+        Logic:
+        1. Update high water mark as price moves in our favor
+        2. Activate trailing stop once 0.75 ATR profit is reached
+        3. Trail stop at 1.0 ATR distance from high water mark
+        4. Exit if price retraces to trailing stop level
+
+        Returns ExitSignal if trailing stop is hit, None otherwise.
+        """
+        is_bullish = pos.direction.upper() in ['CALL', 'BULL', 'UP']
+        entry_price = pos.actual_entry_underlying if pos.actual_entry_underlying > 0 else pos.entry_trigger
+
+        # Calculate profit in direction of trade
+        if is_bullish:
+            current_profit = pos.underlying_price - entry_price
+            # Update high water mark
+            if pos.underlying_price > pos.high_water_mark or pos.high_water_mark == 0:
+                pos.high_water_mark = pos.underlying_price
+        else:
+            current_profit = entry_price - pos.underlying_price
+            # Update high water mark (lowest price for puts)
+            if pos.underlying_price < pos.high_water_mark or pos.high_water_mark == 0:
+                pos.high_water_mark = pos.underlying_price
+
+        # Check activation: 0.75 ATR profit
+        activation_threshold = pos.atr_at_detection * self.config.atr_trailing_activation_multiple
+
+        if not pos.trailing_stop_active and current_profit >= activation_threshold:
+            pos.trailing_stop_active = True
+            logger.info(
+                f"ATR Trailing stop ACTIVATED for {pos.osi_symbol}: "
+                f"profit ${current_profit:.2f} >= 0.75 ATR (${activation_threshold:.2f})"
+            )
+
+        # If active, calculate and check trailing stop level
+        if pos.trailing_stop_active:
+            trail_distance = pos.atr_trail_distance  # Pre-calculated 1.0 ATR
+
+            if is_bullish:
+                pos.trailing_stop_price = pos.high_water_mark - trail_distance
+
+                if pos.underlying_price <= pos.trailing_stop_price:
+                    # Check minimum profit requirement
+                    if pos.unrealized_pct < self.config.trailing_stop_min_profit_pct:
+                        logger.info(
+                            f"ATR TRAILING STOP BLOCKED for {pos.osi_symbol}: "
+                            f"option P/L {pos.unrealized_pct:.1%} < min"
+                        )
+                        return None
+
+                    logger.info(
+                        f"ATR TRAILING STOP HIT for {pos.osi_symbol}: "
+                        f"${pos.underlying_price:.2f} <= trail ${pos.trailing_stop_price:.2f} "
+                        f"(HWM: ${pos.high_water_mark:.2f}, 1.0 ATR: ${trail_distance:.2f})"
+                    )
+                    return ExitSignal(
+                        osi_symbol=pos.osi_symbol,
+                        signal_key=pos.signal_key,
+                        reason=ExitReason.TRAILING_STOP,
+                        underlying_price=pos.underlying_price,
+                        current_option_price=pos.current_price,
+                        unrealized_pnl=pos.unrealized_pnl,
+                        dte=pos.dte,
+                        details=f"ATR trailing stop at ${pos.trailing_stop_price:.2f} hit (1.0 ATR trail, HWM: ${pos.high_water_mark:.2f})",
+                    )
+            else:  # Bearish (PUT)
+                pos.trailing_stop_price = pos.high_water_mark + trail_distance
+
+                if pos.underlying_price >= pos.trailing_stop_price:
+                    if pos.unrealized_pct < self.config.trailing_stop_min_profit_pct:
+                        logger.info(
+                            f"ATR TRAILING STOP BLOCKED for {pos.osi_symbol}: "
+                            f"option P/L {pos.unrealized_pct:.1%} < min"
+                        )
+                        return None
+
+                    logger.info(
+                        f"ATR TRAILING STOP HIT for {pos.osi_symbol}: "
+                        f"${pos.underlying_price:.2f} >= trail ${pos.trailing_stop_price:.2f} "
+                        f"(HWM: ${pos.high_water_mark:.2f}, 1.0 ATR: ${trail_distance:.2f})"
+                    )
+                    return ExitSignal(
+                        osi_symbol=pos.osi_symbol,
+                        signal_key=pos.signal_key,
+                        reason=ExitReason.TRAILING_STOP,
+                        underlying_price=pos.underlying_price,
+                        current_option_price=pos.current_price,
+                        unrealized_pnl=pos.unrealized_pnl,
+                        dte=pos.dte,
+                        details=f"ATR trailing stop at ${pos.trailing_stop_price:.2f} hit (1.0 ATR trail, HWM: ${pos.high_water_mark:.2f})",
+                    )
+
+        return None
+
+    def _check_percentage_trailing_stop(self, pos: TrackedPosition) -> Optional[ExitSignal]:
+        """
+        Session EQUITY-36: Percentage-based trailing stop for non-3-2 patterns.
 
         Logic:
         1. Update high water mark as price moves in our favor

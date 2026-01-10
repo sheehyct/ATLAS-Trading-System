@@ -46,36 +46,136 @@ from strat.pattern_detector import (
 )
 
 
+def calculate_atr_target(
+    entry: float,
+    direction: int,
+    atr: float,
+    multiplier: float = 1.5
+) -> float:
+    """
+    Calculate ATR-based target for 3-2 patterns (EQUITY-52).
+
+    Replaces fixed 1.5% measured move with dynamic ATR-based target that
+    scales appropriately across price ranges (COIN $300 vs ACHR $8).
+
+    Formula: target = entry +/- (ATR * multiplier)
+
+    Args:
+        entry: Entry price
+        direction: 1 for bullish (CALL), -1 for bearish (PUT)
+        atr: ATR(14) value at detection time
+        multiplier: ATR multiplier for target distance (default 1.5)
+
+    Returns:
+        Target price. Returns 0.0 if ATR is invalid (caller should use fallback).
+    """
+    if atr <= 0:
+        return 0.0  # Invalid ATR - caller should fall back to measured move
+
+    target_distance = atr * multiplier
+
+    if direction > 0:  # Bullish (CALL)
+        return entry + target_distance
+    else:  # Bearish (PUT)
+        return entry - target_distance
+
+
+def _calculate_atr_from_df(
+    df: pd.DataFrame,
+    current_idx: int,
+    period: int = 14
+) -> float:
+    """
+    Calculate ATR up to current index for use in pattern detection (EQUITY-52).
+
+    Uses True Range formula: TR = max(H-L, |H-Cprev|, |L-Cprev|)
+    ATR = Simple moving average of TR over period.
+
+    Args:
+        df: OHLC DataFrame with High, Low, Close columns
+        current_idx: Current bar index (calculates ATR using bars 0 to current_idx)
+        period: ATR lookback period (default 14)
+
+    Returns:
+        ATR value. Returns 0.0 if insufficient data.
+    """
+    # Need at least period+1 bars for TR calculation
+    if current_idx < period:
+        return 0.0
+
+    # Need Close column for ATR
+    if 'Close' not in df.columns:
+        return 0.0
+
+    try:
+        high = df['High'].values[:current_idx + 1]
+        low = df['Low'].values[:current_idx + 1]
+        close = df['Close'].values[:current_idx + 1]
+
+        # Calculate True Range components
+        # TR1 = High - Low (current bar range)
+        tr1 = high[1:] - low[1:]
+        # TR2 = |High - Previous Close| (gap up capture)
+        tr2 = np.abs(high[1:] - close[:-1])
+        # TR3 = |Low - Previous Close| (gap down capture)
+        tr3 = np.abs(low[1:] - close[:-1])
+
+        # True Range = max of all three components
+        tr = np.maximum(np.maximum(tr1, tr2), tr3)
+
+        if len(tr) < period:
+            return 0.0
+
+        # ATR = Simple moving average of last 'period' TR values
+        atr = float(np.mean(tr[-period:]))
+        return atr if not np.isnan(atr) else 0.0
+    except Exception:
+        return 0.0
+
+
 def apply_timeframe_adjustment(
     target: float,
     entry: float,
     stop: float,
     direction: int,
-    timeframe: str
+    timeframe: str,
+    pattern_type: str = ''
 ) -> float:
     """
-    Apply timeframe-specific target adjustment (EQUITY-39).
+    Apply timeframe-specific target adjustment (EQUITY-39, updated EQUITY-52).
 
     This is part of the SINGLE SOURCE OF TRUTH for target calculation.
     Ensures paper trading and backtesting use identical target methodology.
 
     Rules:
-        1. 1H timeframe: Always use 1.0x R:R (EQUITY-36 - intraday targets)
-        2. 1D/1W/1M with valid geometry: Use structural target unchanged
-        3. 3-2 patterns: Already use 1.5x fallback from geometry validation
+        1. 3-2 patterns: Use ATR-based targets for ALL timeframes (EQUITY-52)
+           - Bypasses 1H 1.0x override from EQUITY-36
+           - Target already calculated as entry +/- (ATR * 1.5)
+        2. Non-3-2 on 1H: Use 1.0x R:R (EQUITY-36 - intraday targets)
+        3. 1D/1W/1M with valid geometry: Use structural target unchanged
         4. Invalid geometry: 1.5x fallback (handled earlier in _detect_single_pattern_type)
 
     Args:
-        target: Target price from pattern detector (may be structural or fallback)
+        target: Target price from pattern detector (may be structural, ATR, or fallback)
         entry: Entry trigger price
         stop: Stop loss price
         direction: 1 (bullish/CALL) or -1 (bearish/PUT)
         timeframe: Timeframe string ('1H', '1D', '1W', '1M', '60MIN', '60M')
+        pattern_type: Full bar sequence (e.g., '3-2U', '3-2D', '2D-2U') for bypass logic
 
     Returns:
-        Adjusted target price (1.0x R:R for 1H, unchanged for others)
+        Adjusted target price (ATR-based for 3-2, 1.0x R:R for non-3-2 1H, unchanged for others)
     """
-    # 1H patterns: Force 1.0x R:R (EQUITY-36)
+    # EQUITY-52: 3-2 patterns use ATR-based targets for ALL timeframes
+    # This overrides the EQUITY-36 1.0x rule for 3-2 specifically
+    # Pattern type contains '3-2' but not '3-2-2' (which is a different pattern)
+    is_32_pattern = '3-2' in pattern_type and '3-2-2' not in pattern_type
+
+    if is_32_pattern:
+        # 3-2 patterns bypass timeframe adjustment - keep ATR-based target
+        return target
+
+    # Non-3-2 patterns on 1H: Force 1.0x R:R (EQUITY-36)
     # Intraday targets are more conservative due to shorter holding periods
     if timeframe.upper() in ['1H', '60MIN', '60M']:
         risk = abs(entry - stop)
@@ -85,7 +185,6 @@ def apply_timeframe_adjustment(
             return entry - risk  # 1.0x R:R
 
     # All other timeframes (1D, 1W, 1M): Return structural target unchanged
-    # 3-2 patterns already have 1.5x fallback from geometry validation
     return target
 
 
@@ -310,8 +409,19 @@ def _detect_single_pattern_type(
             pattern_type, classifications, i, direction
         )
 
-        # Validate target geometry and apply measured move fallback
-        if not np.isnan(target) and not np.isnan(stop) and stop > 0:
+        # EQUITY-52: Calculate ATR for 3-2 patterns (ATR-based targets)
+        atr_at_detection = 0.0
+        if pattern_type == '3-2':
+            atr_at_detection = _calculate_atr_from_df(df, i, period=14)
+            if atr_at_detection > 0:
+                # Use ATR-based target: entry +/- (ATR * 1.5)
+                atr_target = calculate_atr_target(entry, direction, atr_at_detection, 1.5)
+                if atr_target > 0:
+                    target = atr_target
+
+        # Validate target geometry and apply measured move fallback (non-3-2 patterns)
+        # 3-2 patterns already have ATR-based targets from above
+        if pattern_type != '3-2' and not np.isnan(target) and not np.isnan(stop) and stop > 0:
             if direction > 0:  # Bullish - target must be ABOVE entry
                 if target <= entry:
                     # Target geometrically invalid - use measured move (1.5 R:R)
@@ -362,6 +472,7 @@ def _detect_single_pattern_type(
             'setup_bar_low': setup_bar_low,
             'setup_bar_timestamp': setup_bar_timestamp,
             'signal_type': 'COMPLETED',
+            'atr_at_detection': atr_at_detection,  # EQUITY-52: ATR for 3-2 patterns
         })
 
     return patterns
@@ -470,15 +581,17 @@ def detect_all_patterns(
             df, pattern_type, classifications, high, low, config
         )
 
-        # EQUITY-39: Apply timeframe-specific target adjustments
+        # EQUITY-39/52: Apply timeframe-specific target adjustments
         # This ensures paper trading and backtesting use identical target methodology
+        # EQUITY-52: 3-2 patterns bypass 1H override (use ATR-based targets)
         for pattern in patterns:
             pattern['target_price'] = apply_timeframe_adjustment(
                 target=pattern['target_price'],
                 entry=pattern['entry_price'],
                 stop=pattern['stop_price'],
                 direction=pattern['direction'],
-                timeframe=timeframe
+                timeframe=timeframe,
+                pattern_type=pattern['pattern_type']  # EQUITY-52: For 3-2 bypass
             )
             # Recalculate magnitude and R:R after adjustment
             if pattern['entry_price'] > 0:

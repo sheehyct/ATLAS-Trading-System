@@ -1,78 +1,127 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 9, 2026 (Session EQUITY-51)
+**Last Updated:** January 10, 2026 (Session EQUITY-52-B)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Entry Quality + Dashboard Overhaul
-**Status:** Ready for EQUITY-52 (Two Parallel Workstreams)
+**Status:** ATR-based 3-2 targets and trailing stops implemented
 
 ---
 
-## Next Session: EQUITY-52 (TWO PARALLEL WORKSTREAMS)
+## Next Session: EQUITY-53
 
-### Workstream A: Dashboard Overhaul (Plan Mode)
+### Dashboard Overhaul (Terminal A continuation)
 
-**Goal:** Implement STRAT Pattern Analytics dashboard based on reference design.
+**Goal:** Complete STRAT Pattern Analytics dashboard implementation.
 
 **Reference:** `c:\Users\sheeh\Downloads\strat-analytics-dashboard (1).html`
 
-**Tab Structure:**
-| Tab | Content |
-|-----|---------|
-| Overview | 4 metrics cards + Win Rate by Pattern chart + Avg P&L by Pattern chart |
-| Patterns | Best/Worst performers + Pattern breakdown table with ranking |
-| Timeframe Continuity | WITH vs WITHOUT TFC comparison + charts |
-| Closed Trades | Trade table with Symbol, Pattern, Entry, Exit, P&L, %, Continuity |
-| Pending Patterns | Symbol, Pattern, Bars (X/4), Confidence%, Entry/Target/Stop, Status |
-| Equity Curve | Account balance line chart with timeframe selectors |
-
-**Key Metrics:**
-- Total Trades (W/L), Win Rate, Total P&L (with Profit Factor), Avg Trade (W/L breakdown)
-- TFC Impact: WITH vs WITHOUT comparison (trades, win rate, avg P&L)
-
-**Prerequisites:**
+**Remaining Work:**
 - Fix pattern/TFC data population (signal lookup failing)
 - Add TFC column to open positions
+- Implement 6-tab dashboard structure
 - Integrate Alpaca portfolio history API for equity curve
 
-### Workstream B: 3-2 ATR Targets + Trade Audit (Plan Mode)
+### Verify ATR Changes in Production
 
-**Goal 1:** Fix 3-2 pattern R:R calculation - targets too far, winning trades becoming losers.
+**Goal:** Monitor VPS deployment of EQUITY-52-B changes.
 
-**Current Issue:** Fixed 1.5% or 1.5x R:R doesn't scale across price ranges (COIN $300 vs ACHR $8).
+**Verification:**
+1. Confirm 3-2 patterns use ATR-based targets (not fixed 1.5%)
+2. Verify ATR trailing stops activate at 0.75 ATR
+3. Check daily audit report at 4:30 PM ET
 
-**Proposed Solution:**
+### Known Issues Still Open
+
+| Issue | Root Cause | Status |
+|-------|-----------|--------|
+| TFC shows "-" on dashboard | Signal lookup by OSI symbol failing | Pending |
+| TFC shows 0/4 on Discord | Different code path or not populated | Pending |
+| Pattern column blank | Same root cause as TFC | Pending |
+
+---
+
+## Session EQUITY-52-B: ATR Targets + Trailing Stops + Daily Audit (COMPLETE)
+
+**Date:** January 10, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Workstream:** Terminal B (ATR + Audit)
+**Status:** COMPLETE - All three parts implemented and tested
+
+### Overview
+
+Implemented three features for 3-2 patterns:
+1. **ATR-based targets** - Replace fixed 1.5% with `ATR * 1.5` for dynamic scaling
+2. **ATR-based trailing stops** - Activate at 0.75 ATR, trail by 1.0 ATR
+3. **Automated daily audit** - Webhook-based report at 4:30 PM ET
+
+### Part 1: ATR-Based Targets
+
+**Problem:** Fixed percentage targets don't scale across price ranges (COIN $300 vs ACHR $8).
+
+**Solution:**
+- Added `calculate_atr_target()` function to `unified_pattern_detector.py`
+- Added `_calculate_atr_from_df()` helper for ATR calculation
+- 3-2 patterns now use: `target = entry +/- (ATR * 1.5)`
+- 3-2 patterns bypass 1H 1.0x override (user decision)
+- ATR stored in pattern dict as `atr_at_detection` for audit trail
+
+**Files Modified:**
+- `strat/unified_pattern_detector.py` (+92 lines)
+
+### Part 2: ATR-Based Trailing Stops
+
+**3-2 Pattern Trailing:**
+- Activation: 0.75 ATR profit
+- Trail distance: 1.0 ATR from high water mark
+
+**Non-3-2 Patterns:** Keep existing percentage-based (0.5x R:R activation, 50% trail)
+
+**Configuration Added:**
 ```python
-# ATR-based target for 3-2 patterns
-atr = calculate_atr(symbol, period=14)
-target = entry_price +/- (atr * 1.5)
-
-# Trailing stop
-trailing_activation = atr * 0.75  # Activate at 0.75 ATR profit
-trailing_distance = atr * 1.0      # Trail by 1.0 ATR
+use_atr_trailing_for_32: bool = True
+atr_trailing_activation_multiple: float = 0.75
+atr_trailing_distance_multiple: float = 1.0
 ```
 
-**Goal 2:** Automated Trade Audit system.
+**Files Modified:**
+- `strat/signal_automation/position_monitor.py` (+181 lines)
+  - New config options (lines 92-97)
+  - New TrackedPosition fields (lines 174-178)
+  - ATR initialization in `_create_tracked_position()`
+  - New `_check_atr_trailing_stop()` method
+  - Router in `_check_trailing_stop()` to select method
 
-**Components:**
-1. Daily VPS script (4:30 PM ET via systemd timer)
-2. Discord `/audit` command for on-demand review
-3. Validates: Pattern match, entry accuracy, TFC at detection vs entry, exit reason
+### Part 3: Automated Daily Audit
 
-**Output Format:**
-```
-TRADE AUDIT REPORT - 2026-01-09
-Trades Today: 3 | Correct: 2 | Anomalies: 1
-Open Positions: 2 | Valid: 2 | Stale: 0
-```
+**Scheduled:** 4:30 PM ET daily via APScheduler
 
-### Known Issues to Fix (Both Workstreams)
+**Report Contents:**
+- Trades today, wins, losses, total P&L
+- Open positions summary
+- Anomaly detection (expandable)
 
-| Issue | Root Cause | Fix |
-|-------|-----------|-----|
-| TFC shows "-" on dashboard | Signal lookup by OSI symbol failing | Fix signal store linkage |
-| TFC shows 0/4 on Discord | Different code path or not populated | Verify tfc_score population |
-| Pattern column blank | Same root cause as TFC | Fix signal store linkage |
-| Closed trades empty (Railway) | Alpaca credentials were invalid | FIXED - credentials updated |
+**Files Modified:**
+- `strat/signal_automation/alerters/discord_alerter.py` (+106 lines)
+  - New `send_daily_audit()` method with rich embed
+- `strat/signal_automation/daemon.py` (+136 lines)
+  - New `_generate_daily_audit()` method
+  - New `_run_daily_audit()` method
+  - Scheduler job at 4:30 PM ET
+
+### Tests
+
+| Suite | Result |
+|-------|--------|
+| STRAT tests | 348 passed, 2 skipped |
+| Signal automation tests | 65 passed |
+
+### User Decisions
+
+| Decision | Choice |
+|----------|--------|
+| Discord implementation | Webhook first (can upgrade to bot later) |
+| Trailing stop scope | 3-2 patterns only |
+| 1H timeframe override | ATR for ALL timeframes (override EQUITY-36 for 3-2) |
 
 ---
 
