@@ -23,6 +23,10 @@ from integrations.alpaca_trading_client import AlpacaTradingClient
 
 logger = logging.getLogger(__name__)
 
+# Session EQUITY-55: Use absolute path for data files (works from any working directory)
+_MODULE_DIR = Path(__file__).parent
+_PROJECT_ROOT = _MODULE_DIR.parent.parent
+
 # VPS Signal API URL - set this for Railway deployments
 VPS_SIGNAL_API_URL = os.getenv('VPS_SIGNAL_API_URL', '')
 
@@ -416,6 +420,9 @@ class OptionsDataLoader:
             # Load executions to link patterns
             executions = self._load_executions()
 
+            # Session EQUITY-55: Load enriched TFC data from backfill script
+            enriched_tfc = self._load_enriched_tfc_data()
+
             # Enhance with display-friendly fields
             for trade in closed_trades:
                 osi_symbol = trade.get('symbol', '')
@@ -423,11 +430,13 @@ class OptionsDataLoader:
                 # Parse OCC symbol for display
                 trade['display_contract'] = self._parse_occ_symbol(osi_symbol)
 
-                # Look up pattern from signal store
+                # Initialize pattern/TFC fields with defaults
                 trade['pattern'] = '-'
                 trade['timeframe'] = '-'
                 trade['tfc_score'] = None
                 trade['tfc_alignment'] = ''
+
+                # Priority 1: Look up pattern/TFC from signal store (for recent trades)
                 if self.signal_store and osi_symbol:
                     signal = self.signal_store.get_signal_by_osi_symbol(osi_symbol)
                     if signal:
@@ -435,6 +444,19 @@ class OptionsDataLoader:
                         trade['timeframe'] = signal.timeframe
                         trade['tfc_score'] = signal.tfc_score
                         trade['tfc_alignment'] = signal.tfc_alignment
+
+                # Session EQUITY-55: Priority 2: Merge enriched TFC data if available
+                # This provides retroactive TFC for trades where signals had tfc_score=0
+                if osi_symbol in enriched_tfc:
+                    enriched = enriched_tfc[osi_symbol]
+                    # Only override if current TFC is missing/zero
+                    if trade['tfc_score'] is None or trade['tfc_score'] == 0:
+                        trade['tfc_score'] = enriched.get('tfc_score')
+                        trade['tfc_alignment'] = enriched.get('tfc_alignment', '')
+                    # Use enriched pattern if signal store lookup failed
+                    if trade['pattern'] == '-' and enriched.get('pattern_type'):
+                        trade['pattern'] = enriched['pattern_type']
+                        trade['timeframe'] = enriched.get('timeframe', '1D')
 
                 # Format timestamps for display
                 if trade.get('buy_time_dt'):
@@ -451,7 +473,7 @@ class OptionsDataLoader:
                 else:
                     trade['sell_time_display'] = ''
 
-                # Session EQUITY-52: Only use execution fallback if signal store lookup failed
+                # Session EQUITY-52: Only use execution fallback if all other lookups failed
                 if trade['pattern'] == '-':
                     fallback_pattern = self._get_pattern_for_trade(
                         trade.get('symbol', ''),
@@ -477,6 +499,56 @@ class OptionsDataLoader:
         except Exception as e:
             logger.debug(f"Could not load executions: {e}")
         return {}
+
+    def _load_enriched_tfc_data(self) -> Dict[str, Dict]:
+        """
+        Load enriched TFC data from backfill script output.
+
+        Session EQUITY-55: Retroactive TFC backfill provides historical TFC
+        scores for trades where the original signals had tfc_score=0.
+
+        Returns:
+            Dict mapping OSI symbol to TFC enrichment fields:
+            {
+                'AAPL250117C00250000': {
+                    'tfc_score': 3,
+                    'tfc_alignment': '1M, 1W, 1D',
+                    'tfc_passes': True,
+                    'pattern_type': '3-1-2U',
+                    'timeframe': '1D'
+                },
+                ...
+            }
+        """
+        try:
+            import json
+            enriched_file = _PROJECT_ROOT / 'data' / 'enriched_trades.json'
+            if not enriched_file.exists():
+                logger.debug(f"No enriched_trades.json file found at {enriched_file}")
+                return {}
+
+            with open(enriched_file, 'r') as f:
+                data = json.load(f)
+
+            # Build lookup dict by OSI symbol for O(1) access
+            enriched_lookup = {}
+            for trade in data.get('trades', []):
+                osi_symbol = trade.get('osi_symbol')
+                if osi_symbol:
+                    enriched_lookup[osi_symbol] = {
+                        'tfc_score': trade.get('tfc_score'),
+                        'tfc_alignment': trade.get('tfc_alignment', ''),
+                        'tfc_passes': trade.get('tfc_passes', False),
+                        'pattern_type': trade.get('pattern_type'),
+                        'timeframe': trade.get('timeframe', '1D')
+                    }
+
+            logger.debug(f"Loaded {len(enriched_lookup)} enriched TFC records")
+            return enriched_lookup
+
+        except Exception as e:
+            logger.debug(f"Could not load enriched TFC data: {e}")
+            return {}
 
     def _get_pattern_for_trade(self, osi_symbol: str, executions: Dict) -> str:
         """

@@ -1,73 +1,25 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 11, 2026 (Session EQUITY-54)
+**Last Updated:** January 11, 2026 (Session EQUITY-55)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Dashboard Overhaul + Entry Quality
-**Status:** Bug fixes deployed, retroactive TFC backfill planned
+**Status:** Retroactive TFC backfill implemented
 
 ---
 
-## Next Session: EQUITY-55
+## Next Session: EQUITY-56
 
-### Priority 1: Retroactive TFC Backfill Script
+### Priority 1: Deploy EQUITY-55 to VPS
 
-**Goal:** Calculate TFC for all 34 historical closed trades to enable trade analysis.
-
-**Problem:**
-- Dashboard shows 34 trades but TFC shows 0/4 for all
-- Pattern column is blank (cannot match to signals with tfc_score=0)
-- Cannot analyze which trades had good TFC alignment vs poor
-
-**Solution:** One-time backfill script (`scripts/backfill_trade_tfc.py`)
-
-**Algorithm:**
-1. Read closed trades from Alpaca (entry timestamp, OSI symbol)
-2. Extract underlying from OSI symbol (e.g., `AAPL250117C00250000` → `AAPL`)
-3. Fetch historical OHLC for underlying at entry time (all timeframes)
-4. Run `evaluate_tfc()` with direction from option type (CALL=bullish, PUT=bearish)
-5. Match trade to signal store for pattern type (if available)
-6. Output to `data/enriched_trades.json`
-
-**Output format:**
-```json
-{
-  "generated_at": "2026-01-13T10:00:00-05:00",
-  "trades": [
-    {
-      "osi_symbol": "AAPL250117C00250000",
-      "underlying": "AAPL",
-      "direction": "CALL",
-      "entry_time": "2025-12-15T10:30:00-05:00",
-      "entry_price": 2.45,
-      "exit_price": 3.10,
-      "pnl": 65.00,
-      "pnl_pct": 26.53,
-      "pattern_type": "3-1-2U",
-      "timeframe": "1D",
-      "tfc_score": 7,
-      "tfc_alignment": "1D 1W 1M aligned bullish",
-      "tfc_passes": true
-    }
-  ],
-  "summary": {
-    "total_trades": 34,
-    "with_tfc_4plus": 12,
-    "without_tfc_4plus": 22,
-    "win_rate_with_tfc": 75.0,
-    "win_rate_without_tfc": 45.5,
-    "avg_pnl_with_tfc": 42.50,
-    "avg_pnl_without_tfc": -15.20
-  }
-}
+```bash
+ssh atlas@178.156.223.251 "cd /home/atlas/vectorbt-workspace && git pull origin main"
+ssh atlas@178.156.223.251 "sudo systemctl restart atlas-daemon"
 ```
 
-**Dashboard integration:**
-- Modify closed trades tab to read from `enriched_trades.json`
-- TFC and pattern columns now populated from backfill data
-
-**API Note:** Alpaca Algo Trader Plus = 10,000 calls/minute (no rate limiting needed)
-
-**Plan Mode:** ON (multi-file implementation)
+After deployment, run the backfill script on VPS:
+```bash
+ssh atlas@178.156.223.251 "cd /home/atlas/vectorbt-workspace && python scripts/backfill_trade_tfc.py --days 90"
+```
 
 ### Priority 2: Verify New Signal TFC Population
 
@@ -84,10 +36,54 @@ If no non-zero TFC scores appear after Monday trading, investigate further.
 
 | Item | Status |
 |------|--------|
-| Retroactive TFC backfill script | Priority 1 |
-| Dashboard reads enriched_trades.json | Priority 1 |
+| Retroactive TFC backfill script | DONE (EQUITY-55) |
+| Dashboard reads enriched_trades.json | DONE (EQUITY-55) |
 | Add TFC column to open positions | Pending |
 | Style refinements to match reference | Pending |
+| Deploy to VPS | Priority 1 |
+
+---
+
+## Session EQUITY-55: Retroactive TFC Backfill (COMPLETE)
+
+**Date:** January 11, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Local implementation and testing done
+
+### Implementation
+
+1. **Created `scripts/backfill_trade_tfc.py`** (529 lines)
+   - Parses OSI symbols to extract underlying and direction
+   - Fetches historical OHLC data at entry time
+   - Uses `TimeframeContinuityChecker.check_flexible_continuity_at_datetime()` for historical TFC
+   - Outputs to `data/enriched_trades.json` with summary statistics
+
+2. **Modified `dashboard/data_loaders/options_loader.py`**
+   - Added `_load_enriched_tfc_data()` method for O(1) OSI symbol lookup
+   - Modified `get_closed_trades()` to merge enriched TFC data into live Alpaca data
+   - Uses absolute paths for data files (works from any working directory)
+
+### Results
+
+34 trades processed with retroactive TFC:
+- **All 34 trades had TFC < 4** (no high-TFC trades in history)
+- Overall win rate: 29.4%
+- Total P&L: -$2,125
+
+**Key Insight:** The trading account was taking trades without TFC alignment, which may explain the poor win rate. New signals (after EQUITY-54 fix) will have TFC calculated at detection time, allowing filtering for TFC >= 4.
+
+### Tests
+
+- 431 tests passed, 2 skipped (no regressions)
+- Dashboard integration verified locally
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `scripts/backfill_trade_tfc.py` | NEW - Backfill script |
+| `dashboard/data_loaders/options_loader.py` | Added TFC merge logic |
+| `data/enriched_trades.json` | NEW - Generated output |
 
 ---
 
