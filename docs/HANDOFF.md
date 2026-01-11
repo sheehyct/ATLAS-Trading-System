@@ -9,24 +9,41 @@
 
 ## Next Session: EQUITY-56
 
-### Priority 1: Verify New Signal TFC Population
+### Priority 1: Audit Dashboard Data Pipeline (Plan Mode ON)
 
-**Goal:** Confirm signals detected after EQUITY-54 fix have non-zero tfc_score.
+**Problem:** TFC/pattern data still not showing in Railway dashboard despite:
+- enriched_trades.json committed to git
+- options_loader.py modified to merge enriched data
+- VPS backfill executed successfully
+
+**Root Cause Hypothesis:** The STRAT Analytics panel (`strat_analytics_panel.py`) may have its own data loading that bypasses `options_loader.get_closed_trades()`.
+
+**Audit Steps:**
+1. Trace data flow: STRAT Analytics Closed Trades tab -> data source
+2. Identify which file/method actually loads closed trades for the panel
+3. Verify Railway data sources (local files vs VPS API vs Alpaca direct)
+4. Inject enriched TFC data at the correct point
+
+**Key Files to Investigate:**
+- `dashboard/components/strat_analytics_panel.py` (EQUITY-52-A)
+- `dashboard/app.py` (callbacks for STRAT Analytics)
+- `dashboard/data_loaders/options_loader.py` (may not be used)
+
+### Priority 2: Verify New Signal TFC Population
 
 **Check on VPS (after Monday market activity):**
 ```bash
 ssh atlas@178.156.223.251 "grep 'tfc_score' /home/atlas/vectorbt-workspace/data/signals/signals.json | grep -v 'tfc_score\": 0' | head -5"
 ```
 
-If no non-zero TFC scores appear after Monday trading, investigate further.
-
 ### Remaining Dashboard Work
 
 | Item | Status |
 |------|--------|
 | Retroactive TFC backfill script | DONE (EQUITY-55) |
-| Dashboard reads enriched_trades.json | DONE (EQUITY-55) |
-| Deploy to VPS | DONE (EQUITY-55) |
+| enriched_trades.json committed | DONE (EQUITY-55) |
+| options_loader.py merge logic | DONE (EQUITY-55) - may be wrong injection point |
+| **Audit dashboard data pipeline** | **Priority 1 (EQUITY-56)** |
 | Add TFC column to open positions | Pending |
 | Style refinements to match reference | Pending |
 
