@@ -1,39 +1,21 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 10, 2026 (Session EQUITY-52-A)
+**Last Updated:** January 11, 2026 (Session EQUITY-54)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Dashboard Overhaul + Entry Quality
-**Status:** Unified STRAT Analytics dashboard implemented
+**Status:** Bug fixes deployed (CryptoDataLoader + TFC calculation)
 
 ---
 
-## Next Session: EQUITY-53
+## Next Session: EQUITY-55
 
-### Test Unified Dashboard Locally
+### Verify TFC Population
 
-**Goal:** Verify the new STRAT Analytics panel works correctly.
+**Goal:** Confirm new signals have tfc_score populated.
 
-**Commands:**
+**Check on VPS:**
 ```bash
-cd dashboard
-uv run python app.py
-# Open http://localhost:8050 and click STRAT Analytics tab
-```
-
-**Verify:**
-- Market dropdown switches between Equity Options and Crypto
-- All 6 sub-tabs render (Overview, Patterns, TFC, Closed, Pending, Equity)
-- Pattern data populates (should no longer show "-" with OSI reverse index fix)
-- TFC comparison shows data for trades with tfc_score
-
-### Deploy to VPS
-
-Both EQUITY-52-A and EQUITY-52-B changes need deployment:
-```bash
-# On VPS
-cd /path/to/vectorbt-workspace
-git pull origin main
-sudo systemctl restart atlas-signal-daemon
+ssh atlas@178.156.223.251 "grep -c 'tfc_score.*[1-9]' /home/atlas/vectorbt-workspace/data/signals/signals.json"
 ```
 
 ### Remaining Dashboard Work
@@ -43,6 +25,102 @@ sudo systemctl restart atlas-signal-daemon
 | Add TFC column to open positions | Pending |
 | Test with real closed trades data | Pending |
 | Style refinements to match reference | Pending |
+| Visual verification of 6-tab structure | Pending |
+
+---
+
+## Session EQUITY-54: Dashboard Bug Fixes (COMPLETE)
+
+**Date:** January 11, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Bug fixes deployed to VPS
+
+### Issues Fixed
+
+1. **CryptoDataLoader.get_closed_trades() Parameter Mismatch**
+   - Problem: Called with `days=30` but CryptoDataLoader expects `limit=50`
+   - Fix: Check market type before calling method with correct parameter
+   - File: `dashboard/app.py` line 1896-1900
+
+2. **TFC Score Always 0 in Signals**
+   - Problem: `scan_symbol_all_timeframes_resampled()` didn't call `evaluate_tfc()`
+   - Fix: Added TFC evaluation for both COMPLETED and SETUP patterns
+   - File: `strat/paper_signal_scanner.py` lines 1470-1486, 1523-1539
+
+### Root Cause Analysis
+
+The `scan_symbol_all_timeframes_resampled()` method (used by daemon's 15-min base scan) was using basic `_get_market_context()` which returns a `SignalContext` without TFC data. The working `scan_single_symbol()` method correctly called `evaluate_tfc()` for each pattern.
+
+### Tests
+
+- 413 tests passed (no regressions)
+- Dashboard imports verified
+
+### Commit
+
+- `2dcb801`: fix(dashboard): crypto loader parameter and TFC calculation (EQUITY-54)
+
+### Note
+
+**Existing signals still have `tfc_score=0`** because they were detected before this fix. New signals detected after deployment will have correct TFC scores. TFC for existing trades shows as 0/4 on dashboard because the underlying signals lack TFC data.
+
+---
+
+## Session EQUITY-53: Testing and VPS Deployment (COMPLETE)
+
+**Date:** January 10, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - EQUITY-52-A/B deployed, daemon restarted
+
+### Overview
+
+Testing and deployment session for EQUITY-52-A (Dashboard) and EQUITY-52-B (ATR targets/trailing) changes.
+
+### Verified
+
+1. **Tests Passed**
+   - 413 tests passed (348 STRAT + 65 signal automation)
+   - 2 skipped, 7 warnings (expected)
+
+2. **Dashboard Local Testing**
+   - Dashboard starts without errors via `python -m dashboard.app`
+   - Alpaca LARGE connected ($10,330.95 equity)
+   - Alpaca SMALL connected ($739.85 equity)
+   - SignalStore loaded 170 signals (local), 352 signals (VPS)
+   - CryptoDataLoader connected to VPS API
+
+3. **VPS Deployment**
+   - Git pull successful (11 files, +2150 lines)
+   - `atlas-daemon` restarted and running
+   - Daily audit scheduled for 4:30 PM ET
+   - 352 signals loaded, 351 executions loaded
+
+### Deployment Commands Used
+
+```bash
+# On VPS
+ssh atlas@178.156.223.251 "cd /home/atlas/vectorbt-workspace && git pull origin main"
+ssh atlas@178.156.223.251 "sudo systemctl restart atlas-daemon"
+```
+
+### Files Deployed (EQUITY-52-A/B Combined)
+
+| File | Changes |
+|------|---------|
+| `dashboard/components/strat_analytics_panel.py` | NEW - 1005 lines |
+| `dashboard/app.py` | +213 lines |
+| `dashboard/data_loaders/live_loader.py` | +63 lines |
+| `strat/unified_pattern_detector.py` | +139 lines (ATR targets) |
+| `strat/signal_automation/position_monitor.py` | +181 lines (ATR trailing) |
+| `strat/signal_automation/daemon.py` | +136 lines (daily audit) |
+| `strat/signal_automation/alerters/discord_alerter.py` | +106 lines |
+| `strat/signal_automation/signal_store.py` | +34 lines (OSI index) |
+
+### Pending Verification
+
+- Daily audit runs at 4:30 PM ET (scheduled, not yet executed)
+- ATR calculations on new 3-2 patterns (no new patterns since deployment)
+- Visual browser test of 6-tab dashboard structure
 
 ---
 
