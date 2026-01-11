@@ -83,6 +83,7 @@ config/local_*.json
 # DATA FILES - Too large for git
 # ============================================
 data/
+!data/enriched_trades.json
 *.csv
 *.parquet
 *.h5
