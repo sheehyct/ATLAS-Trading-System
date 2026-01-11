@@ -3,29 +3,91 @@
 **Last Updated:** January 11, 2026 (Session EQUITY-54)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Dashboard Overhaul + Entry Quality
-**Status:** Bug fixes deployed (CryptoDataLoader + TFC calculation)
+**Status:** Bug fixes deployed, retroactive TFC backfill planned
 
 ---
 
 ## Next Session: EQUITY-55
 
-### Verify TFC Population
+### Priority 1: Retroactive TFC Backfill Script
 
-**Goal:** Confirm new signals have tfc_score populated.
+**Goal:** Calculate TFC for all 34 historical closed trades to enable trade analysis.
 
-**Check on VPS:**
-```bash
-ssh atlas@178.156.223.251 "grep -c 'tfc_score.*[1-9]' /home/atlas/vectorbt-workspace/data/signals/signals.json"
+**Problem:**
+- Dashboard shows 34 trades but TFC shows 0/4 for all
+- Pattern column is blank (cannot match to signals with tfc_score=0)
+- Cannot analyze which trades had good TFC alignment vs poor
+
+**Solution:** One-time backfill script (`scripts/backfill_trade_tfc.py`)
+
+**Algorithm:**
+1. Read closed trades from Alpaca (entry timestamp, OSI symbol)
+2. Extract underlying from OSI symbol (e.g., `AAPL250117C00250000` → `AAPL`)
+3. Fetch historical OHLC for underlying at entry time (all timeframes)
+4. Run `evaluate_tfc()` with direction from option type (CALL=bullish, PUT=bearish)
+5. Match trade to signal store for pattern type (if available)
+6. Output to `data/enriched_trades.json`
+
+**Output format:**
+```json
+{
+  "generated_at": "2026-01-13T10:00:00-05:00",
+  "trades": [
+    {
+      "osi_symbol": "AAPL250117C00250000",
+      "underlying": "AAPL",
+      "direction": "CALL",
+      "entry_time": "2025-12-15T10:30:00-05:00",
+      "entry_price": 2.45,
+      "exit_price": 3.10,
+      "pnl": 65.00,
+      "pnl_pct": 26.53,
+      "pattern_type": "3-1-2U",
+      "timeframe": "1D",
+      "tfc_score": 7,
+      "tfc_alignment": "1D 1W 1M aligned bullish",
+      "tfc_passes": true
+    }
+  ],
+  "summary": {
+    "total_trades": 34,
+    "with_tfc_4plus": 12,
+    "without_tfc_4plus": 22,
+    "win_rate_with_tfc": 75.0,
+    "win_rate_without_tfc": 45.5,
+    "avg_pnl_with_tfc": 42.50,
+    "avg_pnl_without_tfc": -15.20
+  }
+}
 ```
+
+**Dashboard integration:**
+- Modify closed trades tab to read from `enriched_trades.json`
+- TFC and pattern columns now populated from backfill data
+
+**API Note:** Alpaca Algo Trader Plus = 10,000 calls/minute (no rate limiting needed)
+
+**Plan Mode:** ON (multi-file implementation)
+
+### Priority 2: Verify New Signal TFC Population
+
+**Goal:** Confirm signals detected after EQUITY-54 fix have non-zero tfc_score.
+
+**Check on VPS (after Monday market activity):**
+```bash
+ssh atlas@178.156.223.251 "grep 'tfc_score' /home/atlas/vectorbt-workspace/data/signals/signals.json | grep -v 'tfc_score\": 0' | head -5"
+```
+
+If no non-zero TFC scores appear after Monday trading, investigate further.
 
 ### Remaining Dashboard Work
 
 | Item | Status |
 |------|--------|
+| Retroactive TFC backfill script | Priority 1 |
+| Dashboard reads enriched_trades.json | Priority 1 |
 | Add TFC column to open positions | Pending |
-| Test with real closed trades data | Pending |
 | Style refinements to match reference | Pending |
-| Visual verification of 6-tab structure | Pending |
 
 ---
 
