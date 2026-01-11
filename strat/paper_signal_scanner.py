@@ -1446,12 +1446,13 @@ class PaperSignalScanner:
                 warnings.warn(f"Failed to resample {symbol} to {tf}")
                 continue
 
-            # Get market context from resampled data
-            context = self._get_market_context(resampled_df)
+            # Get base market context from resampled data
+            base_context = self._get_market_context(resampled_df)
 
             # =================================================================
             # COMPLETED patterns (entry already happened, historical)
             # Session CRYPTO-MONITOR-3: Only include patterns from the LAST bar
+            # Session EQUITY-54: Add TFC evaluation for resampled scans
             # =================================================================
             last_bar_idx_resamp = len(resampled_df) - 1
             for pattern_type in self.ALL_PATTERNS:
@@ -1465,6 +1466,24 @@ class PaperSignalScanner:
                         setup_ts = p.get('setup_bar_timestamp')
                         if hasattr(setup_ts, 'to_pydatetime'):
                             setup_ts = setup_ts.to_pydatetime()
+
+                        # Session EQUITY-54: Calculate TFC for resampled patterns
+                        direction_int = 1 if p['direction'] == 'CALL' else -1
+                        tfc_assessment = self.evaluate_tfc(symbol, tf, direction_int)
+                        tfc_alignment = tfc_assessment.alignment_label()
+
+                        # Create context with TFC data
+                        context = SignalContext(
+                            vix=base_context.vix,
+                            atr_14=base_context.atr_14,
+                            atr_percent=base_context.atr_percent,
+                            volume_ratio=base_context.volume_ratio,
+                            tfc_score=tfc_assessment.strength,
+                            tfc_alignment=tfc_alignment,
+                            tfc_passes=tfc_assessment.passes_flexible,
+                            risk_multiplier=tfc_assessment.risk_multiplier,
+                            priority_rank=tfc_assessment.priority_rank,
+                        )
 
                         signal = DetectedSignal(
                             pattern_type=pattern_name,
@@ -1490,6 +1509,7 @@ class PaperSignalScanner:
             # =================================================================
             # SETUP patterns (waiting for live break)
             # Only consider the LAST bar as a valid setup
+            # Session EQUITY-54: Add TFC evaluation for resampled scans
             # =================================================================
             setups = self._detect_setups(resampled_df)
 
@@ -1499,6 +1519,24 @@ class PaperSignalScanner:
                     setup_ts = p.get('setup_bar_timestamp')
                     if hasattr(setup_ts, 'to_pydatetime'):
                         setup_ts = setup_ts.to_pydatetime()
+
+                    # Session EQUITY-54: Calculate TFC for SETUP patterns
+                    direction_int = 1 if p['direction'] == 'CALL' else -1
+                    tfc_assessment = self.evaluate_tfc(symbol, tf, direction_int)
+                    tfc_alignment = tfc_assessment.alignment_label()
+
+                    # Create context with TFC data
+                    setup_context = SignalContext(
+                        vix=base_context.vix,
+                        atr_14=base_context.atr_14,
+                        atr_percent=base_context.atr_percent,
+                        volume_ratio=base_context.volume_ratio,
+                        tfc_score=tfc_assessment.strength,
+                        tfc_alignment=tfc_alignment,
+                        tfc_passes=tfc_assessment.passes_flexible,
+                        risk_multiplier=tfc_assessment.risk_multiplier,
+                        priority_rank=tfc_assessment.priority_rank,
+                    )
 
                     signal = DetectedSignal(
                         pattern_type=p['bar_sequence'],
@@ -1511,7 +1549,7 @@ class PaperSignalScanner:
                         target_price=p['target'],
                         magnitude_pct=p['magnitude_pct'],
                         risk_reward=p['risk_reward'],
-                        context=context,
+                        context=setup_context,
                         signal_type='SETUP',
                         setup_bar_high=p.get('setup_bar_high', 0.0),
                         setup_bar_low=p.get('setup_bar_low', 0.0),

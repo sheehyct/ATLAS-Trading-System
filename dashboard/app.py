@@ -1893,7 +1893,11 @@ def render_strat_analytics_tab(active_tab, market, n_intervals):
                 return html.Div('Options loader not available', style={'padding': '40px', 'textAlign': 'center'})
 
         # Fetch closed trades for analytics
-        closed_trades = loader.get_closed_trades(days=30) if hasattr(loader, 'get_closed_trades') else []
+        # Note: OptionsDataLoader uses days=, CryptoDataLoader uses limit=
+        if market == 'crypto':
+            closed_trades = loader.get_closed_trades(limit=50) if hasattr(loader, 'get_closed_trades') else []
+        else:
+            closed_trades = loader.get_closed_trades(days=30) if hasattr(loader, 'get_closed_trades') else []
 
         if active_tab == 'tab-overview':
             metrics = calculate_metrics(closed_trades)
