@@ -3,25 +3,13 @@
 **Last Updated:** January 11, 2026 (Session EQUITY-55)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Dashboard Overhaul + Entry Quality
-**Status:** Retroactive TFC backfill implemented
+**Status:** Retroactive TFC backfill deployed to VPS
 
 ---
 
 ## Next Session: EQUITY-56
 
-### Priority 1: Deploy EQUITY-55 to VPS
-
-```bash
-ssh atlas@178.156.223.251 "cd /home/atlas/vectorbt-workspace && git pull origin main"
-ssh atlas@178.156.223.251 "sudo systemctl restart atlas-daemon"
-```
-
-After deployment, run the backfill script on VPS:
-```bash
-ssh atlas@178.156.223.251 "cd /home/atlas/vectorbt-workspace && python scripts/backfill_trade_tfc.py --days 90"
-```
-
-### Priority 2: Verify New Signal TFC Population
+### Priority 1: Verify New Signal TFC Population
 
 **Goal:** Confirm signals detected after EQUITY-54 fix have non-zero tfc_score.
 
@@ -38,9 +26,9 @@ If no non-zero TFC scores appear after Monday trading, investigate further.
 |------|--------|
 | Retroactive TFC backfill script | DONE (EQUITY-55) |
 | Dashboard reads enriched_trades.json | DONE (EQUITY-55) |
+| Deploy to VPS | DONE (EQUITY-55) |
 | Add TFC column to open positions | Pending |
 | Style refinements to match reference | Pending |
-| Deploy to VPS | Priority 1 |
 
 ---
 
@@ -48,7 +36,7 @@ If no non-zero TFC scores appear after Monday trading, investigate further.
 
 **Date:** January 11, 2026
 **Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Local implementation and testing done
+**Status:** COMPLETE - Deployed to VPS
 
 ### Implementation
 
@@ -63,10 +51,16 @@ If no non-zero TFC scores appear after Monday trading, investigate further.
    - Modified `get_closed_trades()` to merge enriched TFC data into live Alpaca data
    - Uses absolute paths for data files (works from any working directory)
 
+3. **VPS Deployment**
+   - Git pull: 4 files changed, 697 insertions
+   - Daemon restarted
+   - Backfill script executed: 34 trades processed, all 34 have pattern data
+
 ### Results
 
 34 trades processed with retroactive TFC:
 - **All 34 trades had TFC < 4** (no high-TFC trades in history)
+- **All 34 trades have pattern data** (VPS signal store has OSI mappings)
 - Overall win rate: 29.4%
 - Total P&L: -$2,125
 
@@ -75,7 +69,13 @@ If no non-zero TFC scores appear after Monday trading, investigate further.
 ### Tests
 
 - 431 tests passed, 2 skipped (no regressions)
-- Dashboard integration verified locally
+- Dashboard integration verified locally and on VPS
+
+### Commits
+
+| Hash | Description |
+|------|-------------|
+| 4ab1e8d | feat(dashboard): add retroactive TFC backfill script (EQUITY-55) |
 
 ### Files Modified
 
@@ -83,7 +83,7 @@ If no non-zero TFC scores appear after Monday trading, investigate further.
 |------|--------|
 | `scripts/backfill_trade_tfc.py` | NEW - Backfill script |
 | `dashboard/data_loaders/options_loader.py` | Added TFC merge logic |
-| `data/enriched_trades.json` | NEW - Generated output |
+| `data/enriched_trades.json` | NEW - Generated output (VPS) |
 
 ---
 
