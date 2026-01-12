@@ -225,7 +225,8 @@ class LiveDataLoader:
                 extended_hours=False
             )
 
-            history = self.client.trading_client.get_portfolio_history(request)
+            # Session EQUITY-57: AlpacaTradingClient stores TradingClient as .client
+            history = self.client.client.get_portfolio_history(request)
 
             if history is None or history.timestamp is None:
                 logger.warning("No portfolio history returned from Alpaca")

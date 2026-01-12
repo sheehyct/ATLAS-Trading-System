@@ -257,6 +257,34 @@ def diagnostic():
         except Exception as e:
             status['options_loader']['closed_trades_test'] = f'ERROR: {str(e)}'
 
+        # Session EQUITY-57: Test enriched data loading and pattern merge
+        try:
+            # Check enriched_trades.json loading
+            enriched = options_loader._load_enriched_tfc_data()
+            status['options_loader']['enriched_records'] = len(enriched)
+
+            # Sample first 3 enriched OSI symbols
+            if enriched:
+                sample_keys = list(enriched.keys())[:3]
+                status['options_loader']['enriched_sample_osi'] = sample_keys
+
+            # Test full get_closed_trades() with pattern merge
+            full_trades = options_loader.get_closed_trades(days=30)
+            status['options_loader']['full_trades_count'] = len(full_trades)
+
+            # Show first 3 trades with their pattern data
+            sample_trades = []
+            for t in full_trades[:3]:
+                sample_trades.append({
+                    'osi': t.get('symbol', '')[-20:],
+                    'pattern': t.get('pattern', '-'),
+                    'tfc_score': t.get('tfc_score'),
+                    'pnl': t.get('pnl', 0)
+                })
+            status['options_loader']['sample_trades'] = sample_trades
+        except Exception as e:
+            status['options_loader']['enriched_test_error'] = str(e)
+
     # If not connected, try to connect and capture actual error
     if options_loader and not options_loader._connected:
         try:
