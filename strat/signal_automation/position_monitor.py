@@ -660,7 +660,8 @@ class PositionMonitor:
         # 0.5. Session EQUITY-35: EOD exit for 1H trades
         # All hourly trades must exit before market close to avoid overnight gap risk
         # Session EQUITY-51: Also exit IMMEDIATELY if position is stale (entered previous day)
-        if pos.timeframe == '1H':
+        # Session EQUITY-58: Handle timeframe variants (1H, 60MIN, 60M) - matches line 484
+        if pos.timeframe and pos.timeframe.upper() in ['1H', '60MIN', '60M']:
             import pytz
             et = pytz.timezone('America/New_York')
             now_et = datetime.now(et)
