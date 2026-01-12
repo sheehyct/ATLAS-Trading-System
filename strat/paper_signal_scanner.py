@@ -1508,14 +1508,17 @@ class PaperSignalScanner:
 
             # =================================================================
             # SETUP patterns (waiting for live break)
-            # Only consider the LAST bar as a valid setup
+            # Session EQUITY-57: Fixed bug - _detect_setups excludes last bar (incomplete),
+            # so checking index == len-1 matched NOTHING. Now matches non-resampled logic.
+            # Include recent setups (up to 3 bars back) that haven't been broken yet.
             # Session EQUITY-54: Add TFC evaluation for resampled scans
             # =================================================================
             setups = self._detect_setups(resampled_df)
 
             for p in setups:
-                # SETUP signals: Only include if at the LAST bar
-                if p['index'] == len(resampled_df) - 1:
+                # SETUP signals: Include recent closed bars (len-4 to len-2)
+                # _detect_setups excludes last bar (len-1), so most recent is len-2
+                if p['index'] >= len(resampled_df) - 4:
                     setup_ts = p.get('setup_bar_timestamp')
                     if hasattr(setup_ts, 'to_pydatetime'):
                         setup_ts = setup_ts.to_pydatetime()

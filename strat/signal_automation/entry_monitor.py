@@ -199,8 +199,9 @@ class EntryMonitor:
             if s.status in (SignalStatus.DETECTED.value, SignalStatus.ALERTED.value)
         ]
 
-        # Sort by priority (highest first)
-        signals.sort(key=lambda s: s.priority, reverse=True)
+        # Sort by priority: TFC rank first (higher = better), timeframe second (higher = better)
+        # Session EQUITY-57: Hybrid priority - execute high-TFC signals before low-TFC
+        signals.sort(key=lambda s: (s.priority_rank, s.priority), reverse=True)
 
         # Apply limit if configured
         if self.config.max_signals_per_poll > 0:
@@ -347,8 +348,9 @@ class EntryMonitor:
                     f"{direction_info} @ ${trigger_level:.2f}"
                 )
 
-        # Sort by priority (already sorted, but ensure after filtering)
-        triggered.sort(key=lambda e: e.priority, reverse=True)
+        # Sort by priority: TFC rank first, timeframe second
+        # Session EQUITY-57: Hybrid priority for triggered events
+        triggered.sort(key=lambda e: (e.signal.priority_rank, e.priority), reverse=True)
 
         self._last_check = datetime.now()
         self._trigger_count += len(triggered)
