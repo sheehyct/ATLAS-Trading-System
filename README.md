@@ -4,19 +4,21 @@ A quantitative trading system implementing regime-aware portfolio management wit
 
 ## Overview
 
-ATLAS is a multi-layer algorithmic trading architecture that combines regime detection, pattern recognition, options execution, and autonomous signal monitoring.
+ATLAS is a multi-layer algorithmic trading architecture that combines regime detection, STRAT pattern recognition, options execution, and autonomous signal monitoring.
 
 **Architecture Layers**:
 - **Layer 1 (Regime Detection)**: Market state classification using academic statistical jump model
 - **Layer 2 (Pattern Recognition)**: STRAT bar pattern analysis for precise entry and exit levels
-- **Layer 3 (Execution)**: Capital-aware options and equity execution with delta targeting
-- **Layer 4 (Risk Management)**: Position monitoring with automated exit logic
+- **Layer 3 (Execution)**: Capital-aware options execution with delta targeting and TFC filtering
+- **Layer 4 (Risk Management)**: Position monitoring with automated exit logic and daily audits
 
-**Signal Automation System** (Phase 4 Complete):
+**Signal Automation System** (Phase 5 Deployed - VPS Live):
 - **Signal Detection**: Autonomous pattern scanning across multiple timeframes (1H, 1D, 1W, 1M)
-- **Alert Delivery**: Discord webhooks and structured logging for real-time notifications
+- **Timeframe Continuity (TFC)**: Multi-timeframe alignment scoring for trade quality
+- **Alert Delivery**: Discord webhooks with entry/exit notifications and daily trade audits
 - **Options Execution**: Automated paper trading to Alpaca with strike/DTE optimization
 - **Position Monitoring**: Real-time target/stop/DTE exit condition detection
+- **Analytics Dashboard**: Railway-hosted dashboard with pattern performance tracking
 
 The system classifies market conditions into four regimes (TREND_BULL, TREND_BEAR, TREND_NEUTRAL, CRASH) using peer-reviewed statistical methods with 33 years of empirical validation.
 
@@ -36,7 +38,7 @@ The system classifies market conditions into four regimes (TREND_BULL, TREND_BEA
 
 ## Project Status
 
-**Current Phase**: Phase 4 Full Orchestration COMPLETE
+**Current Phase**: Phase 5 VPS Deployed - Active Paper Trading
 
 ### Signal Automation (5-Phase Deployment)
 
@@ -46,16 +48,23 @@ The system classifies market conditions into four regimes (TREND_BULL, TREND_BEA
 | Phase 2 | COMPLETE | Options Execution with Delta/DTE Targeting |
 | Phase 3 | COMPLETE | Position Monitoring with Auto-Exit Logic |
 | Phase 4 | COMPLETE | Full Orchestration + Market Data Integration |
-| Phase 5 | DEPLOYED | VPS Deployment for 24/7 Operation (Dec 11, 2025) |
+| Phase 5 | LIVE | VPS Deployment (Hetzner) + Railway Dashboard |
+
+### Active Components
+
+- **VPS Daemon**: 24/7 signal scanning and options execution on Hetzner VPS
+- **Analytics Dashboard**: Real-time trade monitoring on Railway (pattern analytics, TFC tracking, equity curve)
+- **Discord Alerts**: Entry/exit notifications, position updates, daily trade audits
+- **Paper Trading**: Alpaca paper account with automated entry and exit
 
 ### Test Coverage
 
-**913 tests passing** across all layers:
+**1069 tests** across all layers:
 - Regime Detection: 31 tests
-- STRAT Patterns: 56 tests
-- ThetaData Integration: 80 tests
-- Signal Automation E2E: 14 tests
-- Additional validation tests: 732 tests
+- STRAT Patterns: 348 tests
+- Signal Automation: 65 tests
+- Dashboard: 18 tests
+- Validation/Integration: 607 tests
 
 ### Validated Strategies
 
@@ -208,17 +217,18 @@ Bar-level pattern recognition for precise entry and exit timing:
 - Type 2U/2D (Directional): Breaks previous high or low only
 - Type 3 (Outside Bar): Breaks both previous high and low
 
-**Primary Patterns**:
-- 3-1-2 Reversal: Outside → Inside → Breakout
-- 2-1-2 Reversal: Failed breakdown/breakout
-- 2-2 Continuation: Consecutive directional bars
-- Rev Strat: Pattern invalidation
+**Implemented Patterns**:
+- 3-1-2 (Chicago): Outside bar, inside bar, directional breakout
+- 2-1-2 Reversal: Directional, inside bar, reversal breakout (2U-1-2D, 2D-1-2U)
+- 3-2 Breakout: Outside bar, directional continuation (1.5% measured move target)
+- 3-2-2 Reversal: Outside bar, directional, reversal (3-2U-2D, 3-2D-2U)
+- 2-2 Reversal: Consecutive opposing directional bars (2U-2D, 2D-2U)
 
-**Timeframe Continuity**:
-- Control: All timeframes aligned (highest confidence)
-- Confirm: Majority aligned
-- Conflict: Mixed signals
-- Change: Majority reversing
+**Timeframe Continuity (TFC)**:
+- Evaluates alignment across 1M, 1W, 1D, 1H timeframes
+- TFC Score: Count of aligned timeframes (0-4)
+- Higher TFC = higher trade quality and execution priority
+- Flexible continuity: Risk-adjusted position sizing based on TFC score
 
 ### Layer 3: Options Execution
 
@@ -289,11 +299,11 @@ atlas-trading-system/
 
 | Metric | Target | Current |
 |--------|--------|---------|
-| Sharpe Ratio | >0.8 | 0.99 |
-| CAGR | >10% | 11.80% |
+| Sharpe Ratio | >0.8 | 0.99 (52W Momentum) |
+| CAGR | >10% | 11.80% (52W Momentum) |
 | Maximum Drawdown | <25% | -19.06% |
-| Win Rate | 45-55% | TBD (paper trading) |
-| Test Coverage | 100% pass | 886/894 (8 known failures) |
+| Win Rate | 45-55% | 29.4% (paper trading - pre-TFC filter) |
+| Test Coverage | 100% pass | 1069 tests passing |
 
 ## Technical Requirements
 
@@ -327,9 +337,10 @@ Before live deployment:
 |-----------|--------|
 | Regime Detection >50% crash accuracy | PASS (77-82%) |
 | Walk-Forward <30% degradation | In Progress |
-| Paper Trading 100+ trades | In Progress |
-| Test Coverage 100% pass | 913 passing (10 known regime failures) |
+| Paper Trading 100+ trades | In Progress (38 closed trades) |
+| Test Coverage 100% pass | PASS (1069 tests) |
 | Risk Controls 100% compliance | Implemented |
+| TFC Filter Validation | In Progress (analyzing TFC vs win rate) |
 
 ## Contributing
 
@@ -358,6 +369,6 @@ This software is for educational and research purposes only. Algorithmic trading
 
 ---
 
-**Version**: 3.0 (Phase 4 Full Orchestration)
-**Last Updated**: December 2025
-**Status**: Active Development - Phase 5 VPS Deployed (Hetzner, Dec 11, 2025)
+**Version**: 4.0 (Phase 5 Live Trading)
+**Last Updated**: January 2026
+**Status**: Active Paper Trading - VPS (Hetzner) + Dashboard (Railway)
