@@ -430,6 +430,14 @@ class OptionsDataLoader:
                 # Parse OCC symbol for display
                 trade['display_contract'] = self._parse_occ_symbol(osi_symbol)
 
+                # Session EQUITY-56: Normalize Alpaca field names for dashboard compatibility
+                # Panel expects: pnl, pnl_pct, entry_price, exit_price
+                # Alpaca returns: realized_pnl, roi_percent, buy_price, sell_price
+                trade['pnl'] = trade.get('realized_pnl', 0)
+                trade['pnl_pct'] = trade.get('roi_percent', 0)
+                trade['entry_price'] = trade.get('buy_price', 0)
+                trade['exit_price'] = trade.get('sell_price', 0)
+
                 # Initialize pattern/TFC fields with defaults
                 trade['pattern'] = '-'
                 trade['timeframe'] = '-'

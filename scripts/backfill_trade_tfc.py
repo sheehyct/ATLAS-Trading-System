@@ -412,6 +412,20 @@ def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
             aligned_tfs = tfc_result.get('aligned_timeframes', [])
             passes_flexible = tfc_result.get('passes_flexible', False)
 
+            # Session EQUITY-56: Detection timeframe is aligned BY DEFINITION at entry
+            # Entry triggers when price breaks in expected direction intrabar
+            # Historical data truncated to entry_time may not capture intrabar state
+            # (bar may show as Type 1 if entry was mid-bar before bar close)
+            # Since entry occurred, the bar HAS broken in expected direction
+            if timeframe not in aligned_tfs:
+                aligned_tfs = aligned_tfs.copy()  # Don't mutate original
+                aligned_tfs.append(timeframe)
+                tfc_score = len(aligned_tfs)
+                # Recalculate passes_flexible with corrected score
+                # Using TFC >= 4 as threshold (full timeframe continuity)
+                passes_flexible = tfc_score >= 4
+                logger.debug(f"  Added detection TF {timeframe} to aligned list (entry = aligned)")
+
             logger.info(f"  TFC: {tfc_score}/4, Aligned: {aligned_tfs}, Passes: {passes_flexible}")
 
             # Build enriched trade record
