@@ -1,51 +1,107 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 11, 2026 (Session EQUITY-55)
+**Last Updated:** January 12, 2026 (Session EQUITY-56)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Dashboard Overhaul + Entry Quality
-**Status:** Retroactive TFC backfill deployed to VPS
+**Status:** Dashboard field normalization and TFC calculation fixes deployed
 
 ---
 
-## Next Session: EQUITY-56
+## Next Session: EQUITY-57
 
-### Priority 1: Audit Dashboard Data Pipeline (Plan Mode ON)
+### Priority 1: Deploy EQUITY-56 to VPS
 
-**Problem:** TFC/pattern data still not showing in Railway dashboard despite:
-- enriched_trades.json committed to git
-- options_loader.py modified to merge enriched data
-- VPS backfill executed successfully
-
-**Root Cause Hypothesis:** The STRAT Analytics panel (`strat_analytics_panel.py`) may have its own data loading that bypasses `options_loader.get_closed_trades()`.
-
-**Audit Steps:**
-1. Trace data flow: STRAT Analytics Closed Trades tab -> data source
-2. Identify which file/method actually loads closed trades for the panel
-3. Verify Railway data sources (local files vs VPS API vs Alpaca direct)
-4. Inject enriched TFC data at the correct point
-
-**Key Files to Investigate:**
-- `dashboard/components/strat_analytics_panel.py` (EQUITY-52-A)
-- `dashboard/app.py` (callbacks for STRAT Analytics)
-- `dashboard/data_loaders/options_loader.py` (may not be used)
-
-### Priority 2: Verify New Signal TFC Population
-
-**Check on VPS (after Monday market activity):**
 ```bash
-ssh atlas@178.156.223.251 "grep 'tfc_score' /home/atlas/vectorbt-workspace/data/signals/signals.json | grep -v 'tfc_score\": 0' | head -5"
+ssh atlas@178.156.223.251
+cd /home/atlas/vectorbt-workspace
+git pull
+sudo systemctl restart atlas-daemon
+uv run python scripts/backfill_trade_tfc.py --days 90
 ```
+
+### Priority 2: Verify Dashboard Displays
+
+After VPS deployment:
+- Check Railway dashboard shows P&L values (not $0.00)
+- Check TFC column shows 1-4 (not 0)
+- Check pattern column shows pattern types (not "-")
 
 ### Remaining Dashboard Work
 
 | Item | Status |
 |------|--------|
-| Retroactive TFC backfill script | DONE (EQUITY-55) |
-| enriched_trades.json committed | DONE (EQUITY-55) |
-| options_loader.py merge logic | DONE (EQUITY-55) - may be wrong injection point |
-| **Audit dashboard data pipeline** | **Priority 1 (EQUITY-56)** |
+| Field name normalization | DONE (EQUITY-56) |
+| TFC calculation fix (detection TF aligned) | DONE (EQUITY-56) |
+| enriched_trades.json regenerated | DONE (EQUITY-56) - 38 trades, no TFC 0 |
 | Add TFC column to open positions | Pending |
 | Style refinements to match reference | Pending |
+
+---
+
+## Session EQUITY-56: Dashboard Field Normalization + TFC Fix (COMPLETE)
+
+**Date:** January 12, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Pushed to origin, needs VPS deployment
+
+### Root Cause Analysis
+
+1. **Field Name Mismatch (Bug 1):**
+   - Alpaca returns: `realized_pnl`, `roi_percent`, `buy_price`, `sell_price`
+   - Panel expects: `pnl`, `pnl_pct`, `entry_price`, `exit_price`
+   - Result: Dashboard showed $0.00 for all P&L values
+
+2. **TFC Calculation Bug (Bug 2):**
+   - Historical data truncated to entry_time doesn't capture intrabar state
+   - Detection timeframe bar may show as Type 1 when it was 2U/2D at entry
+   - Per STRAT methodology: Entry = break = bar became 2U/2D = aligned
+   - Fix: Count detection timeframe as aligned BY DEFINITION at entry
+
+### Implementation
+
+1. **`dashboard/data_loaders/options_loader.py`** (+8 lines)
+   - Added field name normalization in `get_closed_trades()` loop
+   - Maps Alpaca field names to panel-expected field names
+
+2. **`scripts/backfill_trade_tfc.py`** (+14 lines)
+   - Added detection timeframe alignment logic
+   - If detection TF not in aligned list, add it (entry = aligned)
+   - Recalculate TFC score and passes_flexible
+
+3. **`data/enriched_trades.json`** (regenerated)
+   - 38 trades processed (4 more recent trades found)
+   - NO trades with TFC 0 (minimum is now 1/4)
+   - TFC distribution: 1/4 (10), 2/4 (13), 3/4 (15), 4/4 (0)
+
+### STRAT Methodology Clarification (User Input)
+
+TFC at entry:
+1. Higher timeframes (1M, 1W, 1D) checked for alignment
+2. Detection timeframe bar starts as Type 1 (inside, waiting for break)
+3. Entry trigger fires when detection TF bar becomes 2U/2D
+4. **At entry moment:** Detection TF is aligned BY DEFINITION
+5. TFC score = count of aligned timeframes (1-4)
+
+**Key Insight:** Entry itself makes the detection timeframe bar become 2U/2D. They happen simultaneously.
+
+### Tests
+
+- 83 tests passed (dashboard + signal automation)
+- Code review passed (95% and 88% confidence)
+
+### Commits
+
+| Hash | Description |
+|------|-------------|
+| f4c2449 | fix(dashboard): normalize field names and fix TFC calculation (EQUITY-56) |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `dashboard/data_loaders/options_loader.py` | Added field name normalization |
+| `scripts/backfill_trade_tfc.py` | Added detection TF alignment fix |
+| `data/enriched_trades.json` | Regenerated with corrected TFC scores |
 
 ---
 
