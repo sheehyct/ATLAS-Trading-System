@@ -1294,7 +1294,12 @@ class SignalDaemon:
         if signal.timeframe not in intraday_timeframes:
             return True
 
-        current_time = datetime.now().time()
+        # Session EQUITY-57: CRITICAL FIX - Must use Eastern Time, not system local time
+        # VPS runs in UTC, so datetime.now().time() returns UTC time, not ET
+        # The time thresholds (10:30, 11:30) are in Eastern Time
+        import pytz
+        eastern = pytz.timezone('America/New_York')
+        current_time = datetime.now(eastern).time()
 
         # Session EQUITY-18: Time thresholds per timeframe
         # Based on "Let the Market Breathe" design from HANDOFF.md
