@@ -3,38 +3,46 @@
 **Last Updated:** January 12, 2026 (Session EQUITY-56)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Dashboard Overhaul + Entry Quality
-**Status:** Dashboard field normalization and TFC calculation fixes deployed
+**Status:** Dashboard fixes deployed to VPS and Railway - P&L, TFC, and Patterns now showing
 
 ---
 
 ## Next Session: EQUITY-57
 
-### Priority 1: Deploy EQUITY-56 to VPS
+### Priority 1: Dashboard Final Verification
 
-```bash
-ssh atlas@178.156.223.251
-cd /home/atlas/vectorbt-workspace
-git pull
-sudo systemctl restart atlas-daemon
-uv run python scripts/backfill_trade_tfc.py --days 90
-```
+Confirm Railway dashboard displays correctly:
+- P&L values (VERIFIED in EQUITY-56)
+- TFC scores 1-4 (VERIFIED - no TFC 0)
+- Pattern types (FIXED - VPS enriched_trades.json committed)
 
-### Priority 2: Verify Dashboard Displays
+### Priority 2: Trade Entry Audit
 
-After VPS deployment:
-- Check Railway dashboard shows P&L values (not $0.00)
-- Check TFC column shows 1-4 (not 0)
-- Check pattern column shows pattern types (not "-")
+Audit all trades entered today to ensure compliance:
+1. Pull today's trades from Alpaca
+2. For each trade, verify:
+   - Pattern is correct (pull Alpaca OHLC data, classify bars)
+   - Entry trigger was valid (price broke trigger level)
+   - No entry rule violations
+3. Document any discrepancies
+
+### Priority 3: Trade Selection Logic Review
+
+Walk through HOW the system chooses trades:
+1. Pattern detection flow (paper_signal_scanner.py)
+2. Signal filtering (TFC, stale setup, etc.)
+3. Entry trigger monitoring (daemon.py)
+4. Execution logic (executor.py)
 
 ### Remaining Dashboard Work
 
 | Item | Status |
 |------|--------|
 | Field name normalization | DONE (EQUITY-56) |
-| TFC calculation fix (detection TF aligned) | DONE (EQUITY-56) |
-| enriched_trades.json regenerated | DONE (EQUITY-56) - 38 trades, no TFC 0 |
+| TFC calculation fix | DONE (EQUITY-56) |
+| Pattern data from VPS | DONE (EQUITY-56) |
 | Add TFC column to open positions | Pending |
-| Style refinements to match reference | Pending |
+| Style refinements | Pending |
 
 ---
 
@@ -42,7 +50,7 @@ After VPS deployment:
 
 **Date:** January 12, 2026
 **Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** COMPLETE - Pushed to origin, needs VPS deployment
+**Status:** COMPLETE - Deployed to VPS and Railway
 
 ### Root Cause Analysis
 
