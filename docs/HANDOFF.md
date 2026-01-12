@@ -1,46 +1,88 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 12, 2026 (Session EQUITY-57)
+**Last Updated:** January 12, 2026 (Session EQUITY-58)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Bug Fixes + Trade Quality
-**Status:** Critical bugs fixed, VPS deployed, README updated
+**Status:** 1H EOD exit bug fixed, VPS deployed
 
 ---
 
-## Next Session: EQUITY-58
+## Next Session: EQUITY-59
 
-### Priority 1: 1H Timeframe EOD Exit Investigation
+### Priority 1: Crypto Pipeline Unification (HIGH)
 
-1H timeframe trades are not exiting before EOD as intended:
-- Investigate position_monitor.py exit logic for intraday positions
-- Check if 15:30 bar rule is implemented (positions must exit before 16:00)
-- Verify daemon exit scheduling for intraday patterns
+Crypto pipeline missing 3 critical equity fixes:
 
-### Priority 2: Technical Debt Review
+| Fix | Equity Location | Crypto Status | Session |
+|-----|-----------------|---------------|---------|
+| Stale Setup Validation | daemon.py:840-931 | MISSING | EQUITY-46 |
+| Type 3 Pattern Invalidation | position_monitor.py:1204+ | MISSING | EQUITY-44/48 |
+| TFC Re-evaluation at Entry | daemon.py:933-1056 | MISSING | EQUITY-49 |
 
-Query OpenMemory and review docs for forgotten work:
-1. Crypto pipeline status (docs/ folder)
-2. Unified detector implementation status
-3. Any other technical debt deferred due to bug fixes
+Recommended approach:
+1. Create shared execution validation module
+2. Port stale/TFC/Type3 logic to crypto
+3. Standardize pattern detector usage (crypto bypasses unified_pattern_detector.py)
 
-### Priority 3: TFC Code Consistency Audit
+### Priority 2: TFC Scanner 4H Timeframe Fix (MEDIUM)
 
-Review timeframe continuity implementation files:
-1. `strat/timeframe_continuity.py` - has 5 timeframes including 4H
-2. `strat/timeframe_continuity_checker.py` - verify alignment
-3. Run mock data through TFC code with various:
-   - Timeframes (15m, 30m, 1H, 4H, 1D, 1W, 1M)
-   - TFC levels (0-4)
-   - Pattern types (3-1-2, 2-1-2, 3-2, 2-2)
-4. Ensure consistency across all TFC-related files
+Scanner missing 4H timeframe:
+- `paper_signal_scanner.py` line 130: `DEFAULT_TIMEFRAMES = ['1H', '1D', '1W', '1M']`
+- Base classes define: `['1M', '1W', '1D', '4H', '1H']` (5 timeframes)
+- Impact: TFC evaluation never checks 4H alignment
 
-### Remaining Dashboard Work
+Fix: Add '4H' to DEFAULT_TIMEFRAMES in paper_signal_scanner.py
+
+### Priority 3: Dashboard Enhancements (LOW)
 
 | Item | Status |
 |------|--------|
 | Add TFC column to open positions | Pending |
 | Style refinements | Pending |
-| Equity curve (portfolio history) | FIXED (EQUITY-57) |
+
+---
+
+## Session EQUITY-58: 1H EOD Exit Bug Fix (COMPLETE)
+
+**Date:** January 12, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Fix deployed to VPS
+
+### Bug Fixed
+
+**1H Positions Not Exiting at 15:59 ET**
+
+- **Root Cause:** Line 664 used exact string match `pos.timeframe == '1H'`
+- **Problem:** Fails for timeframe variants like '60MIN', '60M', or lowercase '1h'
+- **Fix:** Changed to `pos.timeframe and pos.timeframe.upper() in ['1H', '60MIN', '60M']`
+- **Location:** `strat/signal_automation/position_monitor.py:664`
+- **Pattern Match:** Now consistent with line 484 (target adjustment) which handles same variants
+
+### Investigation Findings
+
+**1. EOD Exit Timing Confirmed:**
+- Live trading exits at 15:59 ET (intentional per EQUITY-45)
+- Backtesting uses 15:30 (potential future alignment needed)
+- 15:59 was changed from 15:55 to "capture late momentum moves"
+
+**2. Crypto Pipeline Gaps:**
+- Missing stale setup validation (EQUITY-46)
+- Missing Type 3 pattern invalidation (EQUITY-48)
+- Missing TFC re-evaluation at entry (EQUITY-49)
+- Crypto bypasses unified_pattern_detector.py
+
+**3. TFC Scanner Inconsistency:**
+- paper_signal_scanner.py uses 4 timeframes (missing 4H)
+- Base classes define 5 timeframes including 4H
+- Impact: TFC never evaluates 4H alignment
+
+### Tests
+
+- 65 signal automation tests passed (no regressions)
+
+### Commit
+
+- `cf5630d`: fix(position-monitor): handle timeframe variants in 1H EOD exit check (EQUITY-58)
 
 ---
 
