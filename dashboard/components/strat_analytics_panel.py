@@ -29,6 +29,9 @@ import logging
 
 from dashboard.config import COLORS, REFRESH_INTERVALS
 
+# Dashboard Overhaul: Import progress bar function for Open Positions tab
+from dashboard.components.options_panel import create_trade_progress_display
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,6 +92,24 @@ def create_strat_analytics_panel():
                        className='text-muted mb-0', style={'fontSize': '0.9rem'})
             ], width=8),
             dbc.Col([
+                # Account selector (for Equity Options only - hidden for Crypto)
+                dbc.Select(
+                    id='strat-account-selector',
+                    options=[
+                        {'label': 'SMALL ($3k)', 'value': 'SMALL'},
+                        {'label': 'MID ($5k)', 'value': 'MID'},
+                        {'label': 'LARGE ($10k)', 'value': 'LARGE'},
+                    ],
+                    value='SMALL',
+                    style={
+                        'backgroundColor': DARK_THEME['input_bg'],
+                        'color': DARK_THEME['text_primary'],
+                        'border': f'1px solid {DARK_THEME["border"]}',
+                        'width': '140px',
+                        'marginRight': '10px',
+                    }
+                ),
+                # Market selector
                 dbc.Select(
                     id='strat-market-selector',
                     options=[
@@ -100,6 +121,7 @@ def create_strat_analytics_panel():
                         'backgroundColor': DARK_THEME['input_bg'],
                         'color': DARK_THEME['text_primary'],
                         'border': f'1px solid {DARK_THEME["border"]}',
+                        'width': '160px',
                     }
                 )
             ], width=4, className='d-flex align-items-center justify-content-end')
@@ -112,6 +134,7 @@ def create_strat_analytics_panel():
         # Tab navigation
         dbc.Tabs([
             dbc.Tab(label='Overview', tab_id='tab-overview'),
+            dbc.Tab(label='Open Positions', tab_id='tab-positions'),  # Dashboard Overhaul: Restored
             dbc.Tab(label='Patterns', tab_id='tab-patterns'),
             dbc.Tab(label='Timeframe Continuity', tab_id='tab-tfc'),
             dbc.Tab(label='Closed Trades', tab_id='tab-closed'),
@@ -178,7 +201,7 @@ def create_overview_tab(metrics: Dict, pattern_stats: Dict) -> html.Div:
             ),
         ], className='mb-4'),
 
-        # Win Rate by Pattern chart
+        # Win Rate by Pattern - Dashboard Overhaul: Replaced Plotly with progress bars
         dbc.Card([
             dbc.CardHeader('Win Rate by Pattern', style={
                 'backgroundColor': LIGHT_THEME['card_bg'],
@@ -186,14 +209,11 @@ def create_overview_tab(metrics: Dict, pattern_stats: Dict) -> html.Div:
                 'borderBottom': f'1px solid {LIGHT_THEME["border"]}'
             }),
             dbc.CardBody([
-                dcc.Graph(
-                    figure=_create_win_rate_chart(pattern_stats),
-                    config={'displayModeBar': False}
-                )
-            ], style={'backgroundColor': LIGHT_THEME['card_bg']})
+                _create_win_rate_bars(pattern_stats)
+            ], style={'backgroundColor': LIGHT_THEME['card_bg'], 'padding': '12px 16px'})
         ], className='mb-3', style={'border': f'1px solid {LIGHT_THEME["border"]}'}),
 
-        # Avg P&L by Pattern chart
+        # Avg P&L by Pattern - Dashboard Overhaul: Replaced Plotly with progress bars
         dbc.Card([
             dbc.CardHeader('Average P&L by Pattern', style={
                 'backgroundColor': LIGHT_THEME['card_bg'],
@@ -201,11 +221,8 @@ def create_overview_tab(metrics: Dict, pattern_stats: Dict) -> html.Div:
                 'borderBottom': f'1px solid {LIGHT_THEME["border"]}'
             }),
             dbc.CardBody([
-                dcc.Graph(
-                    figure=_create_pnl_chart(pattern_stats),
-                    config={'displayModeBar': False}
-                )
-            ], style={'backgroundColor': LIGHT_THEME['card_bg']})
+                _create_pnl_bars(pattern_stats)
+            ], style={'backgroundColor': LIGHT_THEME['card_bg'], 'padding': '12px 16px'})
         ], style={'border': f'1px solid {LIGHT_THEME["border"]}'}),
     ])
 
@@ -243,8 +260,195 @@ def _create_metric_card(label: str, value: str, subtext: str,
     ], width=3)
 
 
+def _create_win_rate_bars(pattern_stats: Dict) -> html.Div:
+    """
+    Create win rate by pattern with horizontal progress bars.
+
+    Dashboard Overhaul: Replaced Plotly bar chart with clean HTML progress bars.
+    """
+    if not pattern_stats:
+        return html.Div('No pattern data available', style={
+            'textAlign': 'center',
+            'padding': '40px',
+            'color': LIGHT_THEME['text_secondary']
+        })
+
+    # Sort by win rate descending
+    sorted_patterns = sorted(
+        pattern_stats.items(),
+        key=lambda x: x[1].get('win_rate', 0),
+        reverse=True
+    )
+
+    rows = []
+    for pattern, stats in sorted_patterns:
+        win_rate = stats.get('win_rate', 0)
+        trades = stats.get('trades', 0)
+
+        # Color based on win rate
+        bar_color = LIGHT_THEME['accent_green'] if win_rate >= 50 else LIGHT_THEME['accent_red']
+
+        rows.append(
+            html.Div([
+                # Pattern name (left)
+                html.Div(pattern, style={
+                    'flex': '0 0 100px',
+                    'fontWeight': '500',
+                    'color': LIGHT_THEME['text_primary'],
+                    'fontSize': '0.9rem'
+                }),
+
+                # Progress bar (middle)
+                html.Div([
+                    html.Div([
+                        # Background
+                        html.Div(style={
+                            'position': 'absolute',
+                            'top': '0',
+                            'left': '0',
+                            'right': '0',
+                            'bottom': '0',
+                            'backgroundColor': '#e5e5e5',
+                            'borderRadius': '4px'
+                        }),
+                        # Fill
+                        html.Div(style={
+                            'position': 'absolute',
+                            'top': '0',
+                            'left': '0',
+                            'bottom': '0',
+                            'width': f'{min(100, win_rate)}%',
+                            'backgroundColor': bar_color,
+                            'borderRadius': '4px',
+                            'transition': 'width 0.3s ease'
+                        }),
+                    ], style={
+                        'position': 'relative',
+                        'height': '10px',
+                        'borderRadius': '4px'
+                    })
+                ], style={'flex': '1', 'padding': '0 1rem'}),
+
+                # Win rate value (right)
+                html.Div([
+                    html.Span(f"{win_rate:.1f}%", style={
+                        'fontWeight': '600',
+                        'color': bar_color,
+                        'fontSize': '0.9rem'
+                    }),
+                    html.Span(f" ({trades})", style={
+                        'color': LIGHT_THEME['text_secondary'],
+                        'fontSize': '0.8rem',
+                        'marginLeft': '4px'
+                    }),
+                ], style={'flex': '0 0 80px', 'textAlign': 'right'}),
+            ], style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'padding': '8px 0',
+                'borderBottom': f'1px solid {LIGHT_THEME["border"]}'
+            })
+        )
+
+    return html.Div(rows, style={'padding': '8px 0'})
+
+
+def _create_pnl_bars(pattern_stats: Dict) -> html.Div:
+    """
+    Create avg P&L by pattern with horizontal progress bars.
+
+    Dashboard Overhaul: Replaced Plotly bar chart with clean HTML progress bars.
+    """
+    if not pattern_stats:
+        return html.Div('No pattern data available', style={
+            'textAlign': 'center',
+            'padding': '40px',
+            'color': LIGHT_THEME['text_secondary']
+        })
+
+    # Sort by avg P&L descending
+    sorted_patterns = sorted(
+        pattern_stats.items(),
+        key=lambda x: x[1].get('avg_pnl', 0),
+        reverse=True
+    )
+
+    # Calculate max absolute P&L for scaling
+    max_abs_pnl = max(abs(stats.get('avg_pnl', 0)) for _, stats in sorted_patterns) or 1
+
+    rows = []
+    for pattern, stats in sorted_patterns:
+        avg_pnl = stats.get('avg_pnl', 0)
+
+        # Color based on P&L
+        bar_color = LIGHT_THEME['accent_green'] if avg_pnl >= 0 else LIGHT_THEME['accent_red']
+
+        # Scale bar width relative to max
+        bar_width = abs(avg_pnl) / max_abs_pnl * 100
+
+        rows.append(
+            html.Div([
+                # Pattern name (left)
+                html.Div(pattern, style={
+                    'flex': '0 0 100px',
+                    'fontWeight': '500',
+                    'color': LIGHT_THEME['text_primary'],
+                    'fontSize': '0.9rem'
+                }),
+
+                # Progress bar (middle)
+                html.Div([
+                    html.Div([
+                        # Background
+                        html.Div(style={
+                            'position': 'absolute',
+                            'top': '0',
+                            'left': '0',
+                            'right': '0',
+                            'bottom': '0',
+                            'backgroundColor': '#e5e5e5',
+                            'borderRadius': '4px'
+                        }),
+                        # Fill
+                        html.Div(style={
+                            'position': 'absolute',
+                            'top': '0',
+                            'left': '0',
+                            'bottom': '0',
+                            'width': f'{bar_width}%',
+                            'backgroundColor': bar_color,
+                            'borderRadius': '4px',
+                            'transition': 'width 0.3s ease'
+                        }),
+                    ], style={
+                        'position': 'relative',
+                        'height': '10px',
+                        'borderRadius': '4px'
+                    })
+                ], style={'flex': '1', 'padding': '0 1rem'}),
+
+                # P&L value (right)
+                html.Div(f"${avg_pnl:,.2f}", style={
+                    'flex': '0 0 80px',
+                    'textAlign': 'right',
+                    'fontWeight': '600',
+                    'color': bar_color,
+                    'fontSize': '0.9rem'
+                }),
+            ], style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'padding': '8px 0',
+                'borderBottom': f'1px solid {LIGHT_THEME["border"]}'
+            })
+        )
+
+    return html.Div(rows, style={'padding': '8px 0'})
+
+
+# Legacy chart functions (kept for backward compatibility)
 def _create_win_rate_chart(pattern_stats: Dict) -> go.Figure:
-    """Create win rate by pattern bar chart."""
+    """Create win rate by pattern bar chart. DEPRECATED - use _create_win_rate_bars()."""
     patterns = list(pattern_stats.keys())
     win_rates = [pattern_stats[p].get('win_rate', 0) for p in patterns]
 
@@ -272,7 +476,7 @@ def _create_win_rate_chart(pattern_stats: Dict) -> go.Figure:
 
 
 def _create_pnl_chart(pattern_stats: Dict) -> go.Figure:
-    """Create avg P&L by pattern bar chart."""
+    """Create avg P&L by pattern bar chart. DEPRECATED - use _create_pnl_bars()."""
     patterns = list(pattern_stats.keys())
     avg_pnls = [pattern_stats[p].get('avg_pnl', 0) for p in patterns]
     colors = [LIGHT_THEME['accent_green'] if p >= 0 else LIGHT_THEME['accent_red'] for p in avg_pnls]
@@ -298,6 +502,175 @@ def _create_pnl_chart(pattern_stats: Dict) -> go.Figure:
     )
 
     return fig
+
+
+# ============================================
+# OPEN POSITIONS TAB (Dashboard Overhaul: Restored)
+# ============================================
+
+def create_open_positions_tab(
+    positions: List[Dict],
+    progress_data: List[Dict],
+    account_info: Dict
+) -> html.Div:
+    """
+    Create Open Positions tab with account summary and progress bars.
+
+    Dashboard Overhaul: Restored functionality lost during EQUITY-52 consolidation.
+
+    Args:
+        positions: List of open position dicts from Alpaca
+        progress_data: List of trade progress data for progress bars
+        account_info: Account summary dict with equity, cash, buying_power
+
+    Returns:
+        Open Positions tab content
+    """
+    # Account Summary Section
+    equity = account_info.get('equity', 0) if account_info else 0
+    cash = account_info.get('cash', 0) if account_info else 0
+    buying_power = account_info.get('buying_power', 0) if account_info else 0
+
+    account_section = dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.Div('ACCOUNT BALANCE', style={
+                        'fontSize': '0.75rem',
+                        'color': LIGHT_THEME['text_secondary'],
+                        'textTransform': 'uppercase',
+                        'letterSpacing': '1px',
+                        'marginBottom': '8px'
+                    }),
+                    html.H3(f"${equity:,.2f}", style={
+                        'fontWeight': '600',
+                        'color': LIGHT_THEME['text_primary'],
+                        'marginBottom': '8px'
+                    }),
+                    html.Small([
+                        f"Cash: ${cash:,.2f}  |  ",
+                        f"Buying Power: ${buying_power:,.2f}"
+                    ], style={'color': LIGHT_THEME['text_secondary']})
+                ], style={'padding': '20px'})
+            ], style={
+                'backgroundColor': LIGHT_THEME['card_bg'],
+                'border': f'1px solid {LIGHT_THEME["border"]}',
+                'borderRadius': '8px'
+            })
+        ], width=12)
+    ], className='mb-3') if account_info and not account_info.get('error') else html.Div()
+
+    # Positions Table Section
+    if positions:
+        positions_table = html.Table([
+            html.Thead([
+                html.Tr([
+                    html.Th('Symbol', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                    html.Th('Pattern', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                    html.Th('Qty', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                    html.Th('Entry', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                    html.Th('Current', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                    html.Th('P&L', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                    html.Th('%', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                ], style={'backgroundColor': '#f5f5f5', 'borderBottom': '1px solid #e5e5e5'})
+            ]),
+            html.Tbody([
+                html.Tr([
+                    html.Td(
+                        html.Strong(pos.get('symbol', '-')[:15]),
+                        style={'padding': '12px 16px'}
+                    ),
+                    html.Td(
+                        html.Span(pos.get('pattern', '-'), style={
+                            'backgroundColor': '#eff6ff',
+                            'color': '#0c4a6e',
+                            'padding': '3px 8px',
+                            'borderRadius': '4px',
+                            'fontSize': '0.85rem',
+                            'fontWeight': '500'
+                        }),
+                        style={'padding': '12px 16px'}
+                    ),
+                    html.Td(str(pos.get('qty', 0)), style={'padding': '12px 16px'}),
+                    html.Td(
+                        f"${float(pos.get('avg_entry_price', 0)):.2f}",
+                        style={'padding': '12px 16px'}
+                    ),
+                    html.Td(
+                        f"${float(pos.get('current_price', 0)):.2f}",
+                        style={'padding': '12px 16px'}
+                    ),
+                    html.Td(
+                        f"${float(pos.get('unrealized_pl', 0)):,.2f}",
+                        style={
+                            'padding': '12px 16px',
+                            'color': LIGHT_THEME['accent_green']
+                            if float(pos.get('unrealized_pl', 0)) >= 0
+                            else LIGHT_THEME['accent_red']
+                        }
+                    ),
+                    html.Td(
+                        f"{float(pos.get('unrealized_plpc', 0)) * 100:.1f}%",
+                        style={
+                            'padding': '12px 16px',
+                            'color': LIGHT_THEME['accent_green']
+                            if float(pos.get('unrealized_plpc', 0)) >= 0
+                            else LIGHT_THEME['accent_red']
+                        }
+                    ),
+                ], style={'borderBottom': '1px solid #f0f0f0'})
+                for pos in positions
+            ])
+        ], style={
+            'width': '100%',
+            'borderCollapse': 'collapse',
+            'fontSize': '0.95rem'
+        })
+    else:
+        positions_table = html.Div(
+            'No open positions',
+            style={
+                'textAlign': 'center',
+                'padding': '40px 20px',
+                'color': LIGHT_THEME['text_secondary']
+            }
+        )
+
+    positions_section = dbc.Card([
+        dbc.CardHeader('Open Positions', style={
+            'backgroundColor': LIGHT_THEME['card_bg'],
+            'fontWeight': '600',
+            'borderBottom': f'1px solid {LIGHT_THEME["border"]}'
+        }),
+        dbc.CardBody([
+            positions_table
+        ], style={'backgroundColor': LIGHT_THEME['card_bg'], 'padding': 0})
+    ], className='mb-3', style={'border': f'1px solid {LIGHT_THEME["border"]}'})
+
+    # Progress Bars Section (using restored function from options_panel)
+    progress_section = dbc.Card([
+        dbc.CardHeader('Trade Progress to Target', style={
+            'backgroundColor': DARK_THEME['card_bg'],
+            'fontWeight': '600',
+            'color': DARK_THEME['text_primary'],
+            'borderBottom': f'1px solid {DARK_THEME["border"]}'
+        }),
+        dbc.CardBody([
+            create_trade_progress_display(progress_data)
+        ], style={
+            'backgroundColor': DARK_THEME['card_bg'],
+            'padding': '16px'
+        })
+    ], style={
+        'border': f'1px solid {DARK_THEME["border"]}',
+        'borderRadius': '8px'
+    })
+
+    return html.Div([
+        account_section,
+        positions_section,
+        progress_section,
+    ])
 
 
 # ============================================

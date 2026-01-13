@@ -351,6 +351,52 @@ def get_setup_signals():
         return jsonify([])
 
 
+@app.route('/signals/pending')
+def get_pending_signals():
+    """
+    Alias for /signals/setups - pending SETUP signals awaiting entry trigger.
+
+    Dashboard Overhaul: Added to match options_loader._fetch_from_api() calls.
+
+    Returns:
+        List of pending signal dictionaries with TFC data
+    """
+    return get_setup_signals()
+
+
+@app.route('/signals/closed')
+def get_closed_signals():
+    """
+    Signals that have been converted to trades (closed trades).
+
+    Dashboard Overhaul: Added for closed trades with TFC data on Railway.
+
+    Query params:
+        days: Number of days to look back (default: 30)
+
+    Returns:
+        List of closed signal dictionaries with TFC fields
+    """
+    if _daemon is None:
+        return jsonify([])
+
+    try:
+        days = int(request.args.get('days', 30))
+
+        # Get signals that have been executed (have OSI symbol)
+        all_signals = _daemon.signal_store.get_recent_signals(days=days)
+        closed = [
+            s for s in all_signals
+            if s.executed_osi_symbol and s.status in ('CONVERTED', 'EXECUTED')
+        ]
+
+        return jsonify([_signal_to_dict(s) for s in closed])
+
+    except Exception as e:
+        logger.error(f"Error fetching closed signals: {e}")
+        return jsonify([])
+
+
 @app.route('/signals/by_category')
 def get_signals_by_category():
     """

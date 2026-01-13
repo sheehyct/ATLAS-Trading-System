@@ -160,6 +160,67 @@ class CryptoDataLoader:
             return data['performance_metrics']
         return {}
 
+    def get_account_history(self, days: int = 90) -> List[Dict]:
+        """
+        Get account balance history for equity curve display.
+
+        Attempts to fetch from VPS /account/history endpoint.
+        Falls back to constructing history from closed trades if endpoint unavailable.
+
+        Args:
+            days: Number of days of history to fetch
+
+        Returns:
+            List of dicts with 'timestamp', 'equity' keys for equity curve.
+            Empty list on error.
+        """
+        # Try fetching from dedicated history endpoint first
+        data = self._fetch(f'/account/history', params={'days': days})
+        if isinstance(data, list) and data:
+            # Normalize field names if needed
+            return [
+                {
+                    'timestamp': h.get('timestamp') or h.get('date'),
+                    'equity': h.get('equity') or h.get('balance') or h.get('current_balance', 0)
+                }
+                for h in data
+            ]
+
+        # Fallback: Construct equity curve from trades
+        # This provides a basic equity curve based on cumulative P&L
+        account = self.get_account_summary()
+        starting_balance = account.get('starting_balance', 10000)
+        trades = self.get_closed_trades(limit=500)
+
+        if not trades:
+            # Return single point with current balance
+            return [{
+                'timestamp': datetime.now().isoformat(),
+                'equity': account.get('current_balance', starting_balance)
+            }]
+
+        # Sort trades by time and calculate cumulative equity
+        history = []
+        cumulative_pnl = 0
+
+        # Sort trades by entry_time or exit_time
+        sorted_trades = sorted(
+            trades,
+            key=lambda t: t.get('exit_time') or t.get('entry_time') or ''
+        )
+
+        for trade in sorted_trades:
+            pnl = trade.get('pnl', 0) or 0
+            cumulative_pnl += pnl
+            timestamp = trade.get('exit_time') or trade.get('entry_time')
+            if timestamp:
+                history.append({
+                    'timestamp': timestamp,
+                    'equity': starting_balance + cumulative_pnl
+                })
+
+        return history if history else []
+
     # =========================================================================
     # POSITION METHODS
     # =========================================================================
@@ -268,8 +329,46 @@ class CryptoDataLoader:
         return self.get_trade_history(status='open')
 
     def get_closed_trades(self, limit: int = 50) -> List[Dict]:
-        """Get closed trades only."""
-        return self.get_trade_history(status='closed', limit=limit)
+        """
+        Get closed trades with normalized field names for dashboard compatibility.
+
+        Args:
+            limit: Maximum trades to return
+
+        Returns:
+            List of normalized trade dicts compatible with strat_analytics_panel
+        """
+        trades = self.get_trade_history(status='closed', limit=limit)
+
+        # Normalize field names for dashboard compatibility
+        # Dashboard expects: pattern, pnl_pct, entry_price, exit_price
+        # Crypto API returns: pattern_type, pnl_percent
+        for trade in trades:
+            # Map pattern_type -> pattern (dashboard field name)
+            trade['pattern'] = trade.get('pattern_type') or '-'
+            if not trade['pattern']:
+                trade['pattern'] = '-'
+
+            # Map pnl_percent -> pnl_pct (dashboard field name)
+            trade['pnl_pct'] = trade.get('pnl_percent', 0) or 0
+
+            # Ensure pnl field exists
+            trade['pnl'] = trade.get('pnl', 0) or 0
+
+            # Map entry_price/exit_price for consistency (may already exist)
+            if 'entry_price' not in trade:
+                trade['entry_price'] = trade.get('entry', 0)
+            if 'exit_price' not in trade:
+                trade['exit_price'] = trade.get('exit', 0)
+
+            # Add display_symbol for table rendering
+            trade['display_symbol'] = trade.get('symbol', '-')
+
+            # Add TFC fields (crypto daemon sends tfc_score if available)
+            if 'tfc_score' not in trade:
+                trade['tfc_score'] = trade.get('timeframe_continuity_score', None)
+
+        return trades
 
     def get_closed_trades_summary(self, limit: int = 50) -> Dict:
         """

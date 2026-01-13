@@ -70,9 +70,11 @@ from dashboard.components.crypto_panel import (
     create_performance_metrics,
 )
 # Session EQUITY-52: Unified STRAT Analytics panel
+# Dashboard Overhaul: Added create_open_positions_tab
 from dashboard.components.strat_analytics_panel import (
     create_strat_analytics_panel,
     create_overview_tab,
+    create_open_positions_tab,  # Dashboard Overhaul: Restored
     create_patterns_tab,
     create_tfc_tab,
     create_closed_trades_tab,
@@ -1932,6 +1934,28 @@ def render_strat_analytics_tab(active_tab, market, n_intervals):
             pattern_stats = calculate_pattern_stats(closed_trades)
             return create_overview_tab(metrics, pattern_stats)
 
+        elif active_tab == 'tab-positions':
+            # Dashboard Overhaul: Restored Open Positions tab with progress bars
+            positions = []
+            progress_data = []
+            account_info = {}
+
+            if market == 'options' and options_loader is not None:
+                # Get open option positions
+                positions = options_loader.get_option_positions() if hasattr(options_loader, 'get_option_positions') else []
+                # Get positions with signals for progress bars
+                progress_data = options_loader.get_positions_with_signals() if hasattr(options_loader, 'get_positions_with_signals') else []
+                # Get account summary
+                account_info = options_loader.get_account_summary() if hasattr(options_loader, 'get_account_summary') else {}
+            elif market == 'crypto' and crypto_loader is not None:
+                # Get crypto open positions
+                positions = crypto_loader.get_open_positions() if hasattr(crypto_loader, 'get_open_positions') else []
+                # Crypto doesn't have progress bars yet
+                progress_data = []
+                account_info = crypto_loader.get_account_summary() if hasattr(crypto_loader, 'get_account_summary') else {}
+
+            return create_open_positions_tab(positions, progress_data, account_info)
+
         elif active_tab == 'tab-patterns':
             pattern_stats = calculate_pattern_stats(closed_trades)
             return create_patterns_tab(pattern_stats)
@@ -1966,12 +1990,14 @@ def render_strat_analytics_tab(active_tab, market, n_intervals):
             return create_pending_tab(signals)
 
         elif active_tab == 'tab-equity':
-            # Get portfolio history
-            if market == 'options' and live_loader is not None:
-                history_df = live_loader.get_portfolio_history(days=90)
-                history = history_df.to_dict('records') if not history_df.empty else []
-            else:
-                history = []
+            # Dashboard Overhaul: Use options_loader for consistent account data
+            history = []
+            if market == 'options' and options_loader is not None:
+                # Use options_loader (SMALL account) for consistency with other data
+                history = options_loader.get_portfolio_history(days=90) if hasattr(options_loader, 'get_portfolio_history') else []
+            elif market == 'crypto' and crypto_loader is not None:
+                # Use crypto_loader for crypto equity curve
+                history = crypto_loader.get_account_history(days=90) if hasattr(crypto_loader, 'get_account_history') else []
             return create_equity_tab(history)
 
         else:

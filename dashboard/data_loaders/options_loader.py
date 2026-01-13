@@ -385,6 +385,63 @@ class OptionsDataLoader:
             logger.error(f"Error getting account summary: {e}")
             return {'error': str(e)}
 
+    def get_portfolio_history(self, days: int = 90) -> List[Dict]:
+        """
+        Fetch portfolio history from Alpaca for equity curve display.
+
+        Uses the same account (SMALL/MID/LARGE) as this loader was initialized with,
+        ensuring consistency between equity curve and other data.
+
+        Args:
+            days: Number of days of history to fetch (default: 90)
+
+        Returns:
+            List of dicts with 'timestamp', 'equity', 'profit_loss', 'profit_loss_pct'
+            Empty list on error.
+        """
+        if not self._connected:
+            self.connect()
+        if not self._connected:
+            logger.warning("Cannot get portfolio history: not connected")
+            return []
+
+        try:
+            from alpaca.trading.requests import GetPortfolioHistoryRequest
+            from datetime import timedelta
+
+            request = GetPortfolioHistoryRequest(
+                period=f'{days}D',
+                timeframe='1D',
+                extended_hours=False
+            )
+
+            # AlpacaTradingClient stores TradingClient as .client
+            history = self.client.client.get_portfolio_history(request)
+
+            if history is None or history.timestamp is None:
+                logger.warning(f"No portfolio history returned for {self.account} account")
+                return []
+
+            # Convert to list of dicts (dashboard-compatible format)
+            result = []
+            for i, ts in enumerate(history.timestamp):
+                result.append({
+                    'timestamp': ts.isoformat() if hasattr(ts, 'isoformat') else str(ts),
+                    'equity': history.equity[i] if history.equity else 0,
+                    'profit_loss': history.profit_loss[i] if history.profit_loss else 0,
+                    'profit_loss_pct': history.profit_loss_pct[i] if history.profit_loss_pct else 0,
+                })
+
+            logger.info(f"Fetched {len(result)} days of portfolio history for {self.account} account")
+            return result
+
+        except ImportError as e:
+            logger.error(f"alpaca-py not installed or import error: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Error getting portfolio history: {e}")
+            return []
+
     def get_closed_trades(self, days: int = 30) -> List[Dict]:
         """
         Get closed option trades with realized P&L using FIFO matching.
