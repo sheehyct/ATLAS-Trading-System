@@ -56,7 +56,11 @@ from crypto.scanning.models import CryptoDetectedSignal
 from crypto.scanning.signal_scanner import CryptoSignalScanner
 from crypto.simulation.paper_trader import PaperTrader
 from crypto.simulation.position_monitor import CryptoPositionMonitor
-from crypto.trading.sizing import calculate_position_size, should_skip_trade
+from crypto.trading.sizing import (
+    calculate_position_size,
+    calculate_position_size_leverage_first,
+    should_skip_trade,
+)
 
 # Optional Discord alerter import - Session CRYPTO-5
 try:
@@ -321,6 +325,12 @@ class CryptoSignalDaemon:
             f"@ ${event.current_price:,.2f} (trigger: ${event.trigger_price:,.2f})"
         )
 
+        # Session EQUITY-59: Check if setup is stale before executing
+        is_stale, stale_reason = self._is_setup_stale(signal)
+        if is_stale:
+            logger.warning(f"STALE SETUP REJECTED: {stale_reason}")
+            return
+
         # Execute via paper trader if available
         if self.paper_trader is not None:
             try:
@@ -351,6 +361,86 @@ class CryptoSignalDaemon:
         # Fallback: approximate ET as UTC-5 (ignores DST)
         from datetime import timedelta
         return now_utc - timedelta(hours=5)
+
+    def _is_setup_stale(self, signal: CryptoDetectedSignal) -> tuple[bool, str]:
+        """
+        Check if a SETUP signal is stale (forming bar period has passed).
+
+        Session EQUITY-59: Port of EQUITY-46 stale setup validation for crypto.
+        Adapted for 24/7 crypto markets (no NYSE calendar needed).
+
+        A setup is only valid during the "forming bar" period. Once that period ends:
+        - If trigger was hit -> pattern COMPLETED (entry happened)
+        - If trigger NOT hit -> pattern EVOLVED (new bar inserted, setup stale)
+
+        Staleness windows for crypto 24/7 markets:
+        - 1H: 2 hours (1 bar + 1 buffer)
+        - 4H: 8 hours (2x bar width)
+        - 1D: 48 hours (2 calendar days)
+        - 1W: 336 hours (2 weeks)
+
+        Args:
+            signal: The detected signal to check
+
+        Returns:
+            Tuple of (is_stale: bool, reason: str)
+        """
+        from datetime import timedelta
+
+        # Only check SETUP signals (COMPLETED are already validated)
+        if signal.signal_type == "COMPLETED":
+            return False, ""
+
+        # Need setup_bar_timestamp to check staleness
+        setup_ts = getattr(signal, 'setup_bar_timestamp', None)
+        if setup_ts is None:
+            # Try to get from context
+            if hasattr(signal, 'context') and signal.context:
+                setup_ts = getattr(signal.context, 'setup_bar_timestamp', None)
+
+        if setup_ts is None:
+            logger.warning(
+                f"STALE CHECK SKIPPED: {signal.symbol} {signal.pattern_type} has no setup_bar_timestamp"
+            )
+            return False, ""
+
+        # Get current time in UTC for comparison
+        now = datetime.now(timezone.utc)
+
+        # Ensure setup_ts is in UTC for comparison
+        if setup_ts.tzinfo is None:
+            setup_ts = setup_ts.replace(tzinfo=timezone.utc)
+        else:
+            # Convert to UTC if already has timezone (e.g., ET)
+            setup_ts = setup_ts.astimezone(timezone.utc)
+
+        # Calculate staleness based on timeframe
+        timeframe = signal.timeframe.upper() if signal.timeframe else ""
+
+        # Staleness windows for 24/7 crypto markets
+        # Note: Using 2x bar width allows for market volatility during bar formation
+        # and accounts for the fact that triggers may fire late in the forming bar.
+        # This is intentionally looser than strict 1-bar validity to avoid
+        # rejecting valid setups that trigger near bar boundaries.
+        staleness_hours = {
+            '1H': 2,     # 2 hours (1 bar + buffer for late triggers)
+            '4H': 8,     # 8 hours (2x bar width)
+            '1D': 48,    # 48 hours (2 calendar days)
+            '1W': 336,   # 2 weeks
+            '1M': 1440,  # ~2 months (60 days)
+        }
+
+        hours = staleness_hours.get(timeframe, 2)  # Default to 2 hours
+        valid_until = setup_ts + timedelta(hours=hours)
+
+        if now > valid_until:
+            age_hours = (now - setup_ts).total_seconds() / 3600
+            return True, (
+                f"Setup expired: {signal.symbol} {signal.pattern_type} ({timeframe}) "
+                f"detected {age_hours:.1f}h ago, max validity {hours}h"
+            )
+
+        return False, ""
 
     def _execute_trade(self, event: CryptoTriggerEvent) -> None:
         """
@@ -409,18 +499,28 @@ class CryptoSignalDaemon:
             f"Leverage tier: {tier} ({max_leverage}x) for {signal.symbol}"
         )
 
-        # Check if trade should be skipped due to leverage constraints
-        skip, reason = should_skip_trade(
-            account_value=self.paper_trader.account.current_balance,
-            risk_percent=config.DEFAULT_RISK_PERCENT,
-            entry_price=event.current_price,
-            stop_price=stop_price,  # Use corrected stop
-            max_leverage=max_leverage,
-        )
-
-        if skip:
-            logger.warning(f"SKIPPING TRADE: {reason}")
+        # Session EQUITY-59: Always validate trade inputs (bug prevention)
+        if event.current_price <= 0 or stop_price <= 0:
+            logger.warning("SKIPPING TRADE: Invalid entry or stop price")
             return
+        if abs(event.current_price - stop_price) == 0:
+            logger.warning("SKIPPING TRADE: Stop distance is zero")
+            return
+
+        # Session EQUITY-59: Skip leverage-constraint check when using leverage-first sizing
+        if not config.LEVERAGE_FIRST_SIZING:
+            # Check if trade should be skipped due to leverage constraints
+            skip, reason = should_skip_trade(
+                account_value=self.paper_trader.account.current_balance,
+                risk_percent=config.DEFAULT_RISK_PERCENT,
+                entry_price=event.current_price,
+                stop_price=stop_price,  # Use corrected stop
+                max_leverage=max_leverage,
+            )
+
+            if skip:
+                logger.warning(f"SKIPPING TRADE: {reason}")
+                return
 
         # Timeframe continuity-driven filtering and sizing
         tfc_passes = getattr(signal.context, "tfc_passes", False)
@@ -433,17 +533,31 @@ class CryptoSignalDaemon:
 
         # Calculate position size with time-based leverage (Session EQUITY-34: use available balance)
         available_balance = self.paper_trader.get_available_balance()
-        position_size, implied_leverage, actual_risk = calculate_position_size(
-            account_value=available_balance,
-            risk_percent=config.DEFAULT_RISK_PERCENT,
-            entry_price=event.current_price,
-            stop_price=stop_price,  # Use corrected stop
-            max_leverage=max_leverage,
-        )
 
-        # Apply continuity-based risk multiplier
-        position_size *= risk_multiplier
-        actual_risk *= risk_multiplier
+        # Session EQUITY-59: Use leverage-first sizing for full capital deployment
+        if config.LEVERAGE_FIRST_SIZING:
+            position_size, implied_leverage, actual_risk = calculate_position_size_leverage_first(
+                account_value=available_balance,
+                entry_price=event.current_price,
+                stop_price=stop_price,
+                leverage=max_leverage,
+            )
+            logger.info(
+                f"LEVERAGE-FIRST SIZING: {max_leverage}x leverage, "
+                f"notional=${available_balance * max_leverage:,.2f}, "
+                f"actual_risk=${actual_risk:,.2f} ({actual_risk/available_balance*100:.1f}% of account)"
+            )
+        else:
+            position_size, implied_leverage, actual_risk = calculate_position_size(
+                account_value=available_balance,
+                risk_percent=config.DEFAULT_RISK_PERCENT,
+                entry_price=event.current_price,
+                stop_price=stop_price,  # Use corrected stop
+                max_leverage=max_leverage,
+            )
+            # Apply continuity-based risk multiplier (only for risk-based sizing)
+            position_size *= risk_multiplier
+            actual_risk *= risk_multiplier
 
         if position_size <= 0:
             logger.warning("Position size is zero or negative - skipping trade")
@@ -734,18 +848,28 @@ class CryptoSignalDaemon:
             f"({signal.timeframe}) - executing at ${current_price:,.2f}"
         )
 
-        # Check if trade should be skipped due to leverage constraints
-        skip, reason = should_skip_trade(
-            account_value=self.paper_trader.account.current_balance,
-            risk_percent=config.DEFAULT_RISK_PERCENT,
-            entry_price=current_price,
-            stop_price=stop_price,
-            max_leverage=max_leverage,
-        )
-
-        if skip:
-            logger.warning(f"SKIPPING TRIGGERED: {reason}")
+        # Session EQUITY-59: Always validate trade inputs (bug prevention)
+        if current_price <= 0 or stop_price <= 0:
+            logger.warning("SKIPPING TRIGGERED: Invalid entry or stop price")
             return
+        if abs(current_price - stop_price) == 0:
+            logger.warning("SKIPPING TRIGGERED: Stop distance is zero")
+            return
+
+        # Session EQUITY-59: Skip leverage-constraint check when using leverage-first sizing
+        if not config.LEVERAGE_FIRST_SIZING:
+            # Check if trade should be skipped due to leverage constraints
+            skip, reason = should_skip_trade(
+                account_value=self.paper_trader.account.current_balance,
+                risk_percent=config.DEFAULT_RISK_PERCENT,
+                entry_price=current_price,
+                stop_price=stop_price,
+                max_leverage=max_leverage,
+            )
+
+            if skip:
+                logger.warning(f"SKIPPING TRIGGERED: {reason}")
+                return
 
         tfc_passes = getattr(signal.context, "tfc_passes", False)
         risk_multiplier = getattr(signal.context, "risk_multiplier", 1.0) or 0.0
@@ -755,16 +879,31 @@ class CryptoSignalDaemon:
 
         # Calculate position size using available balance (Session EQUITY-34)
         available_balance = self.paper_trader.get_available_balance()
-        position_size, implied_leverage, actual_risk = calculate_position_size(
-            account_value=available_balance,
-            risk_percent=config.DEFAULT_RISK_PERCENT,
-            entry_price=current_price,
-            stop_price=stop_price,
-            max_leverage=max_leverage,
-        )
 
-        position_size *= risk_multiplier
-        actual_risk *= risk_multiplier
+        # Session EQUITY-59: Use leverage-first sizing for full capital deployment
+        if config.LEVERAGE_FIRST_SIZING:
+            position_size, implied_leverage, actual_risk = calculate_position_size_leverage_first(
+                account_value=available_balance,
+                entry_price=current_price,
+                stop_price=stop_price,
+                leverage=max_leverage,
+            )
+            logger.info(
+                f"LEVERAGE-FIRST SIZING (TRIGGERED): {max_leverage}x leverage, "
+                f"notional=${available_balance * max_leverage:,.2f}, "
+                f"actual_risk=${actual_risk:,.2f} ({actual_risk/available_balance*100:.1f}% of account)"
+            )
+        else:
+            position_size, implied_leverage, actual_risk = calculate_position_size(
+                account_value=available_balance,
+                risk_percent=config.DEFAULT_RISK_PERCENT,
+                entry_price=current_price,
+                stop_price=stop_price,
+                max_leverage=max_leverage,
+            )
+            # Apply continuity-based risk multiplier (only for risk-based sizing)
+            position_size *= risk_multiplier
+            actual_risk *= risk_multiplier
 
         if position_size <= 0:
             logger.warning("Position size is zero or negative - skipping")

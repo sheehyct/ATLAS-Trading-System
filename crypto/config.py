@@ -175,7 +175,7 @@ MAINTENANCE_MARGIN_PERCENT: Dict[str, float] = {
 # RISK PARAMETERS
 # =============================================================================
 
-# Default risk per trade
+# Default risk per trade (used only when LEVERAGE_FIRST_SIZING is False)
 DEFAULT_RISK_PERCENT: float = 0.02  # 2%
 
 # Maximum leverage (can be overridden per symbol and tier)
@@ -186,6 +186,12 @@ MIN_POSITION_USD: float = 10.0
 
 # Maximum position size as percent of account
 MAX_POSITION_PERCENT: float = 0.50  # 50% of account max per position
+
+# Session EQUITY-59: Leverage-first sizing mode
+# When True: Always use full available leverage (10x intraday, 4x swing)
+# Actual risk floats based on stop distance. Used for paper trading and data collection.
+# When False: Risk-based sizing (2% risk per trade, leverage as needed)
+LEVERAGE_FIRST_SIZING: bool = True
 
 # =============================================================================
 # TIMEFRAMES
@@ -299,19 +305,57 @@ TRADE_LOG_PATH: str = "crypto/logs/trades.log"
 # =============================================================================
 
 
-def is_intraday_window(now_et: "datetime.datetime") -> bool:
+def is_weekend_leverage_window(now_et: "datetime.datetime") -> bool:
     """
-    Check if current time is within intraday leverage window.
+    Check if current time is within weekend leverage window (4x only).
 
-    Intraday window: 6PM ET to 4PM ET next day (22 hours).
-    Unavailable: 4PM ET to 6PM ET (2 hours).
+    Weekend window (swing leverage only):
+    - Friday 4PM ET to Sunday 6PM ET
+
+    Similar to equity futures weekend handling.
 
     Args:
         now_et: Current datetime in ET timezone
 
     Returns:
-        True if intraday leverage is available
+        True if in weekend window (10x leverage unavailable)
     """
+    weekday = now_et.weekday()  # Monday=0, Friday=4, Saturday=5, Sunday=6
+    hour = now_et.hour
+
+    # Friday after 4PM ET
+    if weekday == 4 and hour >= INTRADAY_WINDOW_END_HOUR_ET:
+        return True
+
+    # All of Saturday
+    if weekday == 5:
+        return True
+
+    # Sunday before 6PM ET
+    if weekday == 6 and hour < INTRADAY_WINDOW_START_HOUR_ET:
+        return True
+
+    return False
+
+
+def is_intraday_window(now_et: "datetime.datetime") -> bool:
+    """
+    Check if current time is within intraday leverage window.
+
+    Intraday window: 6PM ET to 4PM ET next day (22 hours) - weekdays only.
+    Unavailable: 4PM ET to 6PM ET (2 hours).
+    Weekend: No intraday leverage (Friday 4PM ET to Sunday 6PM ET).
+
+    Args:
+        now_et: Current datetime in ET timezone
+
+    Returns:
+        True if intraday leverage (10x) is available
+    """
+    # Session EQUITY-59: No intraday leverage during weekend
+    if is_weekend_leverage_window(now_et):
+        return False
+
     hour = now_et.hour
     # Intraday window: 18:00 (6PM) to 16:00 (4PM) next day
     # This means: hour >= 18 OR hour < 16

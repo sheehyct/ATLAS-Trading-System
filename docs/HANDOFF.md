@@ -1,37 +1,30 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 12, 2026 (Session EQUITY-58)
+**Last Updated:** January 13, 2026 (Session EQUITY-59)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Bug Fixes + Trade Quality
-**Status:** 1H EOD exit bug fixed, VPS deployed
+**Status:** Crypto leverage-first sizing + stale setup validation complete
 
 ---
 
-## Next Session: EQUITY-59
+## Next Session: EQUITY-60
 
-### Priority 1: Crypto Pipeline Unification (HIGH)
+### Priority 1: Port Remaining Crypto Fixes (HIGH)
 
-Crypto pipeline missing 3 critical equity fixes:
+Two fixes still missing from crypto pipeline:
 
 | Fix | Equity Location | Crypto Status | Session |
 |-----|-----------------|---------------|---------|
-| Stale Setup Validation | daemon.py:840-931 | MISSING | EQUITY-46 |
+| Stale Setup Validation | daemon.py:840-931 | DONE (EQUITY-59) | EQUITY-46 |
 | Type 3 Pattern Invalidation | position_monitor.py:1204+ | MISSING | EQUITY-44/48 |
 | TFC Re-evaluation at Entry | daemon.py:933-1056 | MISSING | EQUITY-49 |
-
-Recommended approach:
-1. Create shared execution validation module
-2. Port stale/TFC/Type3 logic to crypto
-3. Standardize pattern detector usage (crypto bypasses unified_pattern_detector.py)
 
 ### Priority 2: TFC Scanner 4H Timeframe Fix (MEDIUM)
 
 Scanner missing 4H timeframe:
 - `paper_signal_scanner.py` line 130: `DEFAULT_TIMEFRAMES = ['1H', '1D', '1W', '1M']`
 - Base classes define: `['1M', '1W', '1D', '4H', '1H']` (5 timeframes)
-- Impact: TFC evaluation never checks 4H alignment
-
-Fix: Add '4H' to DEFAULT_TIMEFRAMES in paper_signal_scanner.py
+- Fix: Add '4H' to DEFAULT_TIMEFRAMES
 
 ### Priority 3: Dashboard Enhancements (LOW)
 
@@ -39,6 +32,59 @@ Fix: Add '4H' to DEFAULT_TIMEFRAMES in paper_signal_scanner.py
 |------|--------|
 | Add TFC column to open positions | Pending |
 | Style refinements | Pending |
+
+---
+
+## Session EQUITY-59: Crypto Leverage-First Sizing + Stale Setup (COMPLETE)
+
+**Date:** January 13, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Crypto sizing and validation ported
+
+### What Was Accomplished
+
+**1. Leverage-First Sizing (EQUITY-59)**
+
+Added new sizing mode for crypto paper trading that uses full available leverage:
+- **Function:** `calculate_position_size_leverage_first()` in `crypto/trading/sizing.py`
+- **Config Flag:** `LEVERAGE_FIRST_SIZING = True` in `crypto/config.py`
+- **Behavior:** Always uses max leverage (10x intraday, 4x swing) instead of risk-based sizing
+- **Purpose:** Full capital deployment for data collection during paper trading
+
+**2. Weekend Leverage Handling (EQUITY-59)**
+
+Added Coinbase derivatives weekend leverage rules:
+- **Function:** `is_weekend_leverage_window()` in `crypto/config.py`
+- **Window:** Friday 4PM ET to Sunday 6PM ET = swing leverage only (4x)
+- **Pattern:** Similar to equity futures weekend handling
+
+**3. Stale Setup Validation (EQUITY-46 Port)**
+
+Ported equity stale setup validation to crypto with 24/7 market adaptations:
+- **Method:** `_is_setup_stale()` in `crypto/scanning/daemon.py`
+- **Windows:** 1H=2h, 4H=8h, 1D=48h, 1W=2 weeks
+- **Check Location:** `_on_trigger()` before trade execution
+
+**4. Code Review Fixes**
+
+Addressed issues found during code review:
+- Added timezone conversion (`astimezone(UTC)`) for non-UTC timestamps
+- Added input validation (zero stop distance, invalid prices) before leverage-first check
+- Documented 1H staleness window rationale (2x bar width for late triggers)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `crypto/config.py` | +LEVERAGE_FIRST_SIZING flag, +is_weekend_leverage_window() |
+| `crypto/scanning/daemon.py` | +_is_setup_stale(), +leverage-first sizing integration, +input validation |
+| `crypto/trading/sizing.py` | +calculate_position_size_leverage_first() |
+
+### Tests
+
+- 413 tests passed (strat + signal_automation)
+- Stale setup validation tested with fresh/stale signals
+- Weekend leverage window tested with various times
 
 ---
 
