@@ -1,13 +1,13 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 13, 2026 (Session EQUITY-59)
+**Last Updated:** January 13, 2026 (Session EQUITY-60)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Bug Fixes + Trade Quality
-**Status:** Crypto leverage-first sizing + stale setup validation complete
+**Phase:** Paper Trading - Dashboard + Bug Fixes
+**Status:** Dashboard Phase 4 complete, crypto fixes pending
 
 ---
 
-## Next Session: EQUITY-60
+## Next Session: EQUITY-61
 
 ### Priority 1: Port Remaining Crypto Fixes (HIGH)
 
@@ -26,12 +26,65 @@ Scanner missing 4H timeframe:
 - Base classes define: `['1M', '1W', '1D', '4H', '1H']` (5 timeframes)
 - Fix: Add '4H' to DEFAULT_TIMEFRAMES
 
-### Priority 3: Dashboard Enhancements (LOW)
+### Priority 3: Deploy Changes to VPS (MEDIUM)
 
-| Item | Status |
-|------|--------|
-| Add TFC column to open positions | Pending |
-| Style refinements | Pending |
+Changes need VPS deployment:
+- EQUITY-59: Crypto leverage-first sizing, weekend handling, stale setup
+- EQUITY-60: Dashboard Phase 4 (will auto-deploy to Railway)
+
+---
+
+## Session EQUITY-60: Dashboard Phase 4 - UI Polish (COMPLETE)
+
+**Date:** January 13, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Dashboard Phase 4 committed
+**Commit:** 69c030a
+
+### What Was Accomplished
+
+**1. Risk/Heat Threshold Consistency**
+
+Fixed threshold alignment between config and UI:
+- Heat gauge now shows 0-25% range (was 0-15%)
+- Green zone: <8% (portfolio heat limit)
+- Yellow zone: 8-15% (elevated)
+- Red zone: >15% (danger)
+- Config `position_size_limit`: 12% (keeps max at yellow, not red)
+
+**2. Table Pagination and Sticky Headers**
+
+Added to all tables in strat_analytics_panel.py:
+- Sticky headers (position: sticky, top: 0)
+- Max height with overflow scroll (~15 rows visible)
+- "Showing X of Y" row count indicator
+- Tables: trades, patterns, positions, pending signals
+
+**3. Strategy Performance Labels**
+
+- Dynamic equity curve title: shows selected strategy name instead of generic "Paper Trading Portfolio"
+- Example: "52-Week High Momentum - Live" instead of "Paper Trading Portfolio"
+
+**4. Header/Footer Cleanup**
+
+- Header: Uses FONTS config instead of hardcoded font families
+- Footer: Removed placeholder `#` links, added version and status info
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `dashboard/app.py` | +dynamic strategy title, +footer cleanup, +heat gauge thresholds |
+| `dashboard/config.py` | +position_size_limit 0.12 (was 0.05) |
+| `dashboard/components/header.py` | +FONTS import, consistent font families |
+| `dashboard/components/risk_panel.py` | +aligned alert text with config |
+| `dashboard/components/strat_analytics_panel.py` | +sticky headers, +table scroll, +row counts |
+
+### Code Review
+
+Ran feature-dev:code-reviewer, fixed 2 issues:
+1. Position size limit now 12% to stay below 15% danger threshold
+2. Header uses FONTS from config instead of hardcoded values
 
 ---
 
