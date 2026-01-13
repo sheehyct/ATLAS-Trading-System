@@ -499,11 +499,14 @@ class PositionMonitor:
             entry_bar_high = getattr(execution, 'entry_bar_high', 0.0)
             entry_bar_low = getattr(execution, 'entry_bar_low', 0.0)
 
-        # Session EQUITY-48: Initialize intrabar tracking with current underlying price
+        # Session EQUITY-48: Initialize intrabar tracking with actual underlying entry price
         # This enables real-time Type 3 detection (not just at bar close)
-        current_underlying = alpaca_pos.get('current_price', 0.0) or actual_entry_underlying
-        intrabar_high = current_underlying if current_underlying > 0 else 0.0
-        intrabar_low = current_underlying if current_underlying > 0 else float('inf')
+        # EQUITY-61 FIX: Use underlying price, NOT option price!
+        # BUG: alpaca_pos.get('current_price') returns OPTION price (e.g., $1.75),
+        # not underlying stock price (e.g., $29). This caused false Type 3 invalidations
+        # because intrabar_low was initialized to the option price.
+        intrabar_high = actual_entry_underlying if actual_entry_underlying > 0 else 0.0
+        intrabar_low = actual_entry_underlying if actual_entry_underlying > 0 else float('inf')
 
         # Session EQUITY-51: Use actual execution timestamp, not datetime.now()
         # This is critical for stale 1H position detection - if we use now(),
