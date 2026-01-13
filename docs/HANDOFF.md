@@ -1,36 +1,95 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 13, 2026 (Session EQUITY-60)
+**Last Updated:** January 13, 2026 (Session EQUITY-61)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Dashboard + Bug Fixes
-**Status:** Dashboard Phase 4 complete, crypto fixes pending
+**Phase:** Paper Trading - TFC Overhaul Required
+**Status:** Critical bug fixed, TFC architecture needs redesign
 
 ---
 
-## Next Session: EQUITY-61
+## Next Session: EQUITY-62
 
-### Priority 1: Port Remaining Crypto Fixes (HIGH)
+### Priority 1: TFC Architecture Overhaul (CRITICAL)
 
-Two fixes still missing from crypto pipeline:
+**Why trades are losing:** TFC is calculated but NOT used to filter signals. Trades enter against timeframe continuity.
 
-| Fix | Equity Location | Crypto Status | Session |
-|-----|-----------------|---------------|---------|
-| Stale Setup Validation | daemon.py:840-931 | DONE (EQUITY-59) | EQUITY-46 |
-| Type 3 Pattern Invalidation | position_monitor.py:1204+ | MISSING | EQUITY-44/48 |
-| TFC Re-evaluation at Entry | daemon.py:933-1056 | MISSING | EQUITY-49 |
+Four issues identified in EQUITY-61:
 
-### Priority 2: TFC Scanner 4H Timeframe Fix (MEDIUM)
+| Issue | File | Problem |
+|-------|------|---------|
+| 4H Missing | paper_signal_scanner.py:130 | `['1H', '1D', '1W', '1M']` missing 4H |
+| No TFC Filter | daemon.py:714-793 | `_passes_filters()` ignores TFC |
+| Weak Threshold | config.py:275 | `tfc_reeval_min_strength=2` (20%) too low |
+| Bad Default | daemon.py:959 | Missing TFC defaults to PASS |
 
-Scanner missing 4H timeframe:
-- `paper_signal_scanner.py` line 130: `DEFAULT_TIMEFRAMES = ['1H', '1D', '1W', '1M']`
-- Base classes define: `['1M', '1W', '1D', '4H', '1H']` (5 timeframes)
-- Fix: Add '4H' to DEFAULT_TIMEFRAMES
+**Implementation Plan:**
+1. Add 4H to DEFAULT_TIMEFRAMES
+2. Add TFC check to `_passes_filters()` with min_strength=3 (75%)
+3. Raise `tfc_reeval_min_strength` from 2 to 3
+4. Change None TFC default from True to False
 
-### Priority 3: Deploy Changes to VPS (MEDIUM)
+### Priority 2: Equity Prioritization by ATR + Volume (HIGH)
 
-Changes need VPS deployment:
-- EQUITY-59: Crypto leverage-first sizing, weekend handling, stale setup
-- EQUITY-60: Dashboard Phase 4 (will auto-deploy to Railway)
+When multiple signals fire, prioritize by:
+- Higher ATR% = faster moves = options gain value quickly
+- Higher volume = tighter spreads, better fills
+- Priority score: `ATR% * volume_ratio`
+
+### Priority 3: Deploy EQUITY-61 Fix to VPS (MEDIUM)
+
+Push intrabar_low bug fix (commit ee3771c):
+```bash
+ssh atlas@178.156.223.251
+cd ~/vectorbt-workspace && git pull
+sudo systemctl restart atlas-daemon
+```
+
+---
+
+## Session EQUITY-61: Critical Bug Fix + TFC Audit
+
+**Date:** January 13, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Critical bug fixed, TFC audit done
+**Commit:** ee3771c
+
+### Critical Bug Found: Intrabar Tracking Initialization
+
+**Root Cause:** `position_monitor.py:502-509` initialized `intrabar_low` using `alpaca_pos.get('current_price')` which returns the OPTION price, not underlying stock price.
+
+**Example:**
+- QBTS option price: $1.75 (used for intrabar_low)
+- QBTS stock price: $29 (should have been used)
+- False Type 3 check: `$1.75 < $27.52` = TRUE (false positive!)
+
+**Impact:**
+- False pattern invalidations on QBTS, ACHR trades
+- Exits triggered before EOD time (15:59)
+- PDT protection blocked exits
+- Positions held overnight, closed as STALE next day
+
+**Fix:** Changed initialization to use `actual_entry_underlying` instead of option price.
+
+### TFC Audit Findings
+
+Investigated why 1H trades failed. Found TFC is NOT being used effectively:
+
+1. **4H Missing:** Scanner only checks `['1H', '1D', '1W', '1M']`
+2. **No Filter:** Signals with 0/4 TFC pass through to entry monitoring
+3. **Weak Gate:** Re-eval threshold is 2 (20%) - too weak
+4. **Bad Default:** Missing TFC data defaults to PASS
+
+**Evidence from VPS logs:**
+```
+Original: 0/3 BULLISH (score=0, passes=True)  <- 0% alignment passes!
+TFC REEVAL REJECTED: TFC strength 0 < min threshold 2
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `position_monitor.py:502-509` | Fixed intrabar_low/high to use underlying price |
 
 ---
 
