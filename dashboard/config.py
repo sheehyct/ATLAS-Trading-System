@@ -372,7 +372,7 @@ PERFORMANCE_THRESHOLDS = {
     # Risk Limits
     'max_drawdown_limit': 0.25,      # 25% max drawdown
     'portfolio_heat_limit': 0.08,     # 8% portfolio heat (2R total risk)
-    'position_size_limit': 0.05,      # 5% max position size
+    'position_size_limit': 0.12,      # 12% max single position (below 15% danger threshold)
     'daily_loss_limit': 0.03,         # 3% daily loss limit
 
     # Win Rate

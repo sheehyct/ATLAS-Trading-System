@@ -436,16 +436,15 @@ app.layout = dbc.Container([
     # Tab Content Container
     html.Div(id='tab-content', className='mt-4'),
 
-    # Footer
+    # Footer - Dashboard Overhaul Phase 4: Cleaned up placeholder links
     dbc.Row([
         dbc.Col([
-            html.Hr(),
+            html.Hr(style={'borderColor': COLORS['border_subtle']}),
             html.P([
-                'ATLAS Trading Dashboard v1.0 | ',
-                html.A('Documentation', href='#', className='text-decoration-none'),
-                ' | ',
-                html.A('GitHub', href='#', className='text-decoration-none'),
-            ], className='text-center text-muted small')
+                'ATLAS Trading Dashboard v1.1 (EQUITY-60) | ',
+                html.Span('Paper Trading', style={'color': COLORS['accent_amber']}),
+                ' | Auto-refresh: 2min',
+            ], className='text-center small', style={'color': COLORS['text_tertiary']})
         ], width=12)
     ], className='mt-5'),
 
@@ -853,9 +852,10 @@ def update_equity_curve(strategy_name, start_date, end_date, n):
         # Create summary figure with portfolio metrics
         fig = go.Figure()
 
-        # Add portfolio summary as annotations
+        # Add portfolio summary as annotations - Dashboard Overhaul Phase 4: Dynamic title
+        strategy_display = AVAILABLE_STRATEGIES.get(strategy_name, {}).get('name', 'Portfolio')
         fig.add_annotation(
-            text=f"<b>Paper Trading Portfolio</b>",
+            text=f"<b>{strategy_display} - Live</b>",
             xref='paper', yref='paper',
             x=0.5, y=0.95,
             showarrow=False,
@@ -1502,27 +1502,31 @@ def update_risk_management(n):
             max_position_pct = 0
             position_count = 0
 
-        # Create heat gauge
+        # Create heat gauge - Uses max position concentration as heat proxy
+        # Thresholds aligned with config.PERFORMANCE_THRESHOLDS:
+        # - Green: <8% (normal, under heat limit)
+        # - Yellow: 8-15% (elevated, approaching max position limit)
+        # - Red: >15% (over limit, max_position_limit breached)
         heat_gauge = go.Figure(go.Indicator(
             mode="gauge+number+delta",
             value=portfolio_heat,
-            title={'text': "Portfolio Heat %", 'font': {'color': COLORS['text_primary']}},
-            delta={'reference': 5, 'increasing': {'color': COLORS['bear_primary']}, 'decreasing': {'color': COLORS['bull_primary']}},
+            title={'text': "Max Position %", 'font': {'color': COLORS['text_primary']}},
+            delta={'reference': 8, 'increasing': {'color': COLORS['bear_primary']}, 'decreasing': {'color': COLORS['bull_primary']}},
             gauge={
-                'axis': {'range': [0, 15], 'tickcolor': COLORS['text_secondary']},
-                'bar': {'color': COLORS['bull_primary'] if portfolio_heat < 5 else COLORS['warning'] if portfolio_heat < 8 else COLORS['bear_primary']},
+                'axis': {'range': [0, 25], 'tickcolor': COLORS['text_secondary']},
+                'bar': {'color': COLORS['bull_primary'] if portfolio_heat < 8 else COLORS['warning'] if portfolio_heat < 15 else COLORS['bear_primary']},
                 'bgcolor': COLORS['background_medium'],
                 'borderwidth': 2,
                 'bordercolor': COLORS['grid'],
                 'steps': [
-                    {'range': [0, 5], 'color': 'rgba(0, 200, 83, 0.2)'},
-                    {'range': [5, 8], 'color': 'rgba(255, 193, 7, 0.2)'},
-                    {'range': [8, 15], 'color': 'rgba(255, 82, 82, 0.2)'}
+                    {'range': [0, 8], 'color': 'rgba(0, 200, 83, 0.2)'},
+                    {'range': [8, 15], 'color': 'rgba(255, 193, 7, 0.2)'},
+                    {'range': [15, 25], 'color': 'rgba(255, 82, 82, 0.2)'}
                 ],
                 'threshold': {
                     'line': {'color': COLORS['danger'], 'width': 4},
                     'thickness': 0.75,
-                    'value': 8
+                    'value': 15
                 }
             }
         ))

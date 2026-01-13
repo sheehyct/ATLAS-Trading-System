@@ -75,13 +75,24 @@ def create_risk_panel():
             ], width=12)
         ], className='mb-4'),
 
-        # Risk Alerts
+        # Risk Alerts - Thresholds from config.PERFORMANCE_THRESHOLDS
         dbc.Row([
             dbc.Col([
                 dbc.Alert([
                     html.I(className='fas fa-exclamation-triangle me-2'),
-                    'Risk Limits: Portfolio Heat < 8%, Max Position < 5%, Daily Loss < 3%'
-                ], color='warning', className='mb-0')
+                    html.Span([
+                        html.Strong('Risk Limits: '),
+                        'Portfolio Heat < 8% (2R total) | ',
+                        'Max Position < 12% | ',
+                        'Daily Loss < 3%'
+                    ])
+                ], color='warning', className='mb-0'),
+                html.Small(
+                    'Note: Portfolio heat is approximated using max position concentration. '
+                    'True heat requires stop loss data from signal store.',
+                    className='text-muted d-block mt-1',
+                    style={'fontSize': '0.75rem'}
+                )
             ], width=12)
         ])
 

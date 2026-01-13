@@ -70,6 +70,16 @@ LIGHT_THEME = {
 # TFC threshold: >= 4 means "WITH TFC"
 TFC_THRESHOLD = 4
 
+# Dashboard Overhaul Phase 4: Table display settings
+MAX_TABLE_ROWS = 15  # Max rows before scroll
+TABLE_HEADER_STYLE = {
+    'position': 'sticky',
+    'top': '0',
+    'zIndex': '10',
+    'backgroundColor': '#f5f5f5',
+    'borderBottom': '2px solid #e5e5e5'
+}
+
 
 # ============================================
 # MAIN PANEL COMPONENT
@@ -560,9 +570,9 @@ def create_open_positions_tab(
         ], width=12)
     ], className='mb-3') if account_info and not account_info.get('error') else html.Div()
 
-    # Positions Table Section
+    # Positions Table Section - Dashboard Overhaul Phase 4: Sticky headers
     if positions:
-        positions_table = html.Table([
+        positions_table_content = html.Table([
             html.Thead([
                 html.Tr([
                     html.Th('Symbol', style={'padding': '12px 16px', 'fontWeight': '600'}),
@@ -572,7 +582,7 @@ def create_open_positions_tab(
                     html.Th('Current', style={'padding': '12px 16px', 'fontWeight': '600'}),
                     html.Th('P&L', style={'padding': '12px 16px', 'fontWeight': '600'}),
                     html.Th('%', style={'padding': '12px 16px', 'fontWeight': '600'}),
-                ], style={'backgroundColor': '#f5f5f5', 'borderBottom': '1px solid #e5e5e5'})
+                ], style=TABLE_HEADER_STYLE)
             ]),
             html.Tbody([
                 html.Tr([
@@ -625,6 +635,10 @@ def create_open_positions_tab(
             'width': '100%',
             'borderCollapse': 'collapse',
             'fontSize': '0.95rem'
+        })
+        positions_table = html.Div(positions_table_content, style={
+            'maxHeight': f'{MAX_TABLE_ROWS * 48}px',
+            'overflowY': 'auto'
         })
     else:
         positions_table = html.Div(
@@ -745,9 +759,12 @@ def create_patterns_tab(pattern_stats: Dict) -> html.Div:
     ])
 
 
-def _create_pattern_table(sorted_patterns: List[Tuple]) -> html.Table:
-    """Create pattern breakdown table."""
-    return html.Table([
+def _create_pattern_table(sorted_patterns: List[Tuple]) -> html.Div:
+    """Create pattern breakdown table with sticky headers.
+
+    Dashboard Overhaul Phase 4: Added sticky headers.
+    """
+    table = html.Table([
         html.Thead([
             html.Tr([
                 html.Th('Pattern', style={'padding': '12px 16px', 'fontWeight': '600'}),
@@ -755,7 +772,7 @@ def _create_pattern_table(sorted_patterns: List[Tuple]) -> html.Table:
                 html.Th('Win Rate', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('Avg P&L', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('Rank', style={'padding': '12px 16px', 'fontWeight': '600'}),
-            ], style={'backgroundColor': '#f5f5f5', 'borderBottom': '1px solid #e5e5e5'})
+            ], style=TABLE_HEADER_STYLE)
         ]),
         html.Tbody([
             html.Tr([
@@ -790,6 +807,11 @@ def _create_pattern_table(sorted_patterns: List[Tuple]) -> html.Table:
         'width': '100%',
         'borderCollapse': 'collapse',
         'fontSize': '0.95rem'
+    })
+
+    return html.Div(table, style={
+        'maxHeight': f'{MAX_TABLE_ROWS * 48}px',
+        'overflowY': 'auto'
     })
 
 
@@ -1027,8 +1049,11 @@ def create_closed_trades_tab(trades: List[Dict]) -> html.Div:
     ])
 
 
-def _create_trades_table(trades: List[Dict]) -> html.Table:
-    """Create closed trades table."""
+def _create_trades_table(trades: List[Dict]) -> html.Div:
+    """Create closed trades table with sticky headers and scroll.
+
+    Dashboard Overhaul Phase 4: Added sticky headers and max height scroll.
+    """
     if not trades:
         return html.Div('No closed trades found', style={
             'textAlign': 'center',
@@ -1036,7 +1061,10 @@ def _create_trades_table(trades: List[Dict]) -> html.Table:
             'color': LIGHT_THEME['text_secondary']
         })
 
-    return html.Table([
+    total_trades = len(trades)
+    display_trades = trades[:MAX_TABLE_ROWS * 2]  # Show up to 2 pages worth
+
+    table = html.Table([
         html.Thead([
             html.Tr([
                 html.Th('Symbol', style={'padding': '12px 16px', 'fontWeight': '600'}),
@@ -1046,16 +1074,36 @@ def _create_trades_table(trades: List[Dict]) -> html.Table:
                 html.Th('P&L', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('%', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('Continuity', style={'padding': '12px 16px', 'fontWeight': '600'}),
-            ], style={'backgroundColor': '#f5f5f5', 'borderBottom': '1px solid #e5e5e5'})
+            ], style=TABLE_HEADER_STYLE)
         ]),
         html.Tbody([
-            _create_trade_row(trade) for trade in trades
+            _create_trade_row(trade) for trade in display_trades
         ])
     ], style={
         'width': '100%',
         'borderCollapse': 'collapse',
         'fontSize': '0.95rem'
     })
+
+    # Wrap in scrollable container
+    return html.Div([
+        html.Div(table, style={
+            'maxHeight': f'{MAX_TABLE_ROWS * 48}px',  # ~48px per row
+            'overflowY': 'auto',
+            'overflowX': 'auto'
+        }),
+        # Row count indicator
+        html.Div(
+            f"Showing {len(display_trades)} of {total_trades} trades",
+            style={
+                'padding': '8px 16px',
+                'fontSize': '0.85rem',
+                'color': LIGHT_THEME['text_secondary'],
+                'borderTop': f'1px solid {LIGHT_THEME["border"]}',
+                'backgroundColor': '#fafafa'
+            }
+        ) if total_trades > MAX_TABLE_ROWS else None
+    ])
 
 
 def _create_trade_row(trade: Dict) -> html.Tr:
@@ -1144,8 +1192,11 @@ def create_pending_tab(signals: List[Dict]) -> html.Div:
     ])
 
 
-def _create_pending_table(signals: List[Dict]) -> html.Table:
-    """Create pending patterns table."""
+def _create_pending_table(signals: List[Dict]) -> html.Div:
+    """Create pending patterns table with sticky headers.
+
+    Dashboard Overhaul Phase 4: Added sticky headers and max height scroll.
+    """
     if not signals:
         return html.Div('No pending patterns', style={
             'textAlign': 'center',
@@ -1153,7 +1204,10 @@ def _create_pending_table(signals: List[Dict]) -> html.Table:
             'color': LIGHT_THEME['text_secondary']
         })
 
-    return html.Table([
+    total_signals = len(signals)
+    display_signals = signals[:MAX_TABLE_ROWS * 2]
+
+    table = html.Table([
         html.Thead([
             html.Tr([
                 html.Th('Symbol', style={'padding': '12px 16px', 'fontWeight': '600'}),
@@ -1163,16 +1217,34 @@ def _create_pending_table(signals: List[Dict]) -> html.Table:
                 html.Th('Target', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('Stop', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('Status', style={'padding': '12px 16px', 'fontWeight': '600'}),
-            ], style={'backgroundColor': '#f5f5f5', 'borderBottom': '1px solid #e5e5e5'})
+            ], style=TABLE_HEADER_STYLE)
         ]),
         html.Tbody([
-            _create_pending_row(signal) for signal in signals
+            _create_pending_row(signal) for signal in display_signals
         ])
     ], style={
         'width': '100%',
         'borderCollapse': 'collapse',
         'fontSize': '0.95rem'
     })
+
+    return html.Div([
+        html.Div(table, style={
+            'maxHeight': f'{MAX_TABLE_ROWS * 48}px',
+            'overflowY': 'auto',
+            'overflowX': 'auto'
+        }),
+        html.Div(
+            f"Showing {len(display_signals)} of {total_signals} signals",
+            style={
+                'padding': '8px 16px',
+                'fontSize': '0.85rem',
+                'color': LIGHT_THEME['text_secondary'],
+                'borderTop': f'1px solid {LIGHT_THEME["border"]}',
+                'backgroundColor': '#fafafa'
+            }
+        ) if total_signals > MAX_TABLE_ROWS else None
+    ])
 
 
 def _create_pending_row(signal: Dict) -> html.Tr:

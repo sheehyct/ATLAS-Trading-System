@@ -10,7 +10,7 @@ Minimalist navigation bar with:
 
 import dash_bootstrap_components as dbc
 from dash import html
-from dashboard.config import COLORS
+from dashboard.config import COLORS, FONTS
 
 
 def create_header():
@@ -47,11 +47,11 @@ def create_header():
                                 'marginRight': '0.75rem',
                             }
                         ),
-                        # Brand name - Display font
+                        # Brand name - Display font (using FONTS from config)
                         html.Span(
                             'ATLAS',
                             style={
-                                'fontFamily': '"Clash Display", sans-serif',
+                                'fontFamily': FONTS['display'],
                                 'fontWeight': '600',
                                 'fontSize': '1.375rem',
                                 'letterSpacing': '-0.02em',
@@ -62,7 +62,7 @@ def create_header():
                         html.Span(
                             'Trading',
                             style={
-                                'fontFamily': '"Satoshi", sans-serif',
+                                'fontFamily': FONTS['body'],
                                 'fontWeight': '400',
                                 'fontSize': '1.375rem',
                                 'letterSpacing': '-0.01em',
