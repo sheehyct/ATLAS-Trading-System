@@ -27,6 +27,29 @@ def create_equity_curve(
     Returns:
         Plotly figure with equity and drawdown
     """
+    # Handle empty or single-point data
+    if portfolio_value is None or len(portfolio_value) < 2:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Insufficient data for equity curve (need 2+ data points)",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(color=COLORS['text_secondary'], size=14)
+        )
+        fig.update_layout(
+            height=CHART_HEIGHT['equity_curve'],
+            template='plotly_dark',
+            paper_bgcolor=COLORS['background_dark'],
+            plot_bgcolor=COLORS['background_dark']
+        )
+        return fig
+
+    # Ensure datetime index for proper x-axis formatting
+    if not isinstance(portfolio_value.index, pd.DatetimeIndex):
+        try:
+            portfolio_value.index = pd.to_datetime(portfolio_value.index)
+        except Exception:
+            pass  # Keep original index if conversion fails
 
     # Calculate drawdown
     running_max = portfolio_value.cummax()
@@ -117,10 +140,18 @@ def create_equity_curve(
         gridcolor=COLORS['grid'],
         row=2, col=1
     )
+    # Explicit date formatting for both rows
+    fig.update_xaxes(
+        tickformat='%m/%d',
+        tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
+        gridcolor=COLORS['grid'],
+        row=1, col=1
+    )
     fig.update_xaxes(
         title_text='Date',
         title_font=dict(family=FONTS['body'], size=11, color=COLORS['text_secondary']),
         tickfont=dict(family=FONTS['mono'], size=10, color=COLORS['text_tertiary']),
+        tickformat='%m/%d',
         gridcolor=COLORS['grid'],
         row=2, col=1
     )

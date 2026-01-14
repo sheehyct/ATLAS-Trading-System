@@ -496,7 +496,7 @@ class OptionsDataLoader:
                 trade['exit_price'] = trade.get('sell_price', 0)
 
                 # Initialize pattern/TFC fields with defaults
-                trade['pattern'] = '-'
+                trade['pattern'] = 'Unclassified'
                 trade['timeframe'] = '-'
                 trade['tfc_score'] = None
                 trade['tfc_alignment'] = ''
@@ -519,7 +519,7 @@ class OptionsDataLoader:
                         trade['tfc_score'] = enriched.get('tfc_score')
                         trade['tfc_alignment'] = enriched.get('tfc_alignment', '')
                     # Use enriched pattern if signal store lookup failed
-                    if trade['pattern'] == '-' and enriched.get('pattern_type'):
+                    if trade['pattern'] == 'Unclassified' and enriched.get('pattern_type'):
                         trade['pattern'] = enriched['pattern_type']
                         trade['timeframe'] = enriched.get('timeframe', '1D')
 
@@ -539,7 +539,7 @@ class OptionsDataLoader:
                     trade['sell_time_display'] = ''
 
                 # Session EQUITY-52: Only use execution fallback if all other lookups failed
-                if trade['pattern'] == '-':
+                if trade['pattern'] == 'Unclassified':
                     fallback_pattern = self._get_pattern_for_trade(
                         trade.get('symbol', ''),
                         executions

@@ -952,7 +952,7 @@ def update_rolling_metrics(strategy_name, n):
                     text=[f"${pl:+,.0f}" for pl in pnls],
                     textposition='inside',
                     insidetextanchor='middle',
-                    textfont=dict(color='white', size=10),
+                    textfont=dict(color=COLORS['text_primary'], size=10),
                     hovertemplate='<b>%{x}</b><br>P&L: $%{y:+,.2f}<br>ROI: %{customdata:+.1f}%<extra></extra>',
                     customdata=rois
                 )
@@ -1006,7 +1006,7 @@ def update_rolling_metrics(strategy_name, n):
                 text=[f"${pl:+,.2f}" for pl in unrealized_pls],
                 textposition='inside',
                 insidetextanchor='middle',
-                textfont=dict(color='white', size=10),
+                textfont=dict(color=COLORS['text_primary'], size=10),
                 hovertemplate='<b>%{x}</b><br>P&L: $%{y:+,.2f}<br>Value: $%{customdata:,.2f}<extra></extra>',
                 customdata=market_values
             )
@@ -1174,7 +1174,7 @@ def update_trade_distribution(strategy_name, n):
                     values=[wins, losses],
                     marker_colors=[COLORS['bull_primary'], COLORS['danger']],
                     textinfo='label+percent',
-                    textfont=dict(size=14, color='white'),
+                    textfont=dict(size=14, color=COLORS['text_primary']),
                     hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percent: %{percent}<extra></extra>',
                     hole=0.4
                 )
@@ -1298,7 +1298,8 @@ def update_trade_distribution(strategy_name, n):
 @app.callback(
     [Output('portfolio-value-card', 'children'),
      Output('positions-table', 'data'),
-     Output('portfolio-heat-gauge', 'figure')],
+     Output('portfolio-heat-gauge', 'figure'),
+     Output('last-update-time', 'children')],
     Input('interval-component', 'n_intervals')
 )
 def update_live_portfolio(n):
@@ -1309,7 +1310,7 @@ def update_live_portfolio(n):
         n: Number of intervals elapsed
 
     Returns:
-        Tuple of (portfolio card, positions data, heat gauge figure)
+        Tuple of (portfolio card, positions data, heat gauge figure, timestamp)
     """
     try:
         if live_loader is None or live_loader.client is None:
@@ -1318,7 +1319,7 @@ def update_live_portfolio(n):
                 error_msg = f"Alpaca connection failed: {live_loader.init_error}"
             logger.warning(f"update_live_portfolio: {error_msg}")
             error_card = create_error_card(error_msg)
-            return error_card, [], create_error_figure(error_msg)
+            return error_card, [], create_error_figure(error_msg), "Error"
 
         # Get account status
         account = live_loader.get_account_status()
@@ -1358,12 +1359,16 @@ def update_live_portfolio(n):
         # Create heat gauge
         heat_gauge = create_portfolio_heat_gauge(current_heat)
 
-        return portfolio_card, positions_data, heat_gauge
+        # Get current timestamp for display
+        from datetime import datetime
+        update_time = datetime.now().strftime('%H:%M:%S')
+
+        return portfolio_card, positions_data, heat_gauge, update_time
 
     except Exception as e:
         logger.error(f"Error updating live portfolio: {e}")
         error_card = create_error_card(f"Error: {str(e)}")
-        return error_card, [], create_error_figure(f"Error: {str(e)}")
+        return error_card, [], create_error_figure(f"Error: {str(e)}"), "Error"
 
 
 # ============================================

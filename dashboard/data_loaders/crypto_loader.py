@@ -78,6 +78,28 @@ class CryptoDataLoader:
             raise Exception(f"API health check failed: {data}")
         return True
 
+    def _ensure_connected(self) -> bool:
+        """
+        Attempt reconnection if not connected.
+
+        Returns:
+            True if connected (or reconnection succeeded), False otherwise
+        """
+        if self._connected:
+            return True
+
+        # Retry connection
+        try:
+            self._test_connection()
+            self._connected = True
+            self.init_error = None
+            logger.info(f"CryptoDataLoader reconnected to {self.api_url}")
+            return True
+        except Exception as e:
+            self.init_error = str(e)
+            logger.debug(f"CryptoDataLoader reconnection failed: {e}")
+            return False
+
     def _fetch(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """
         Fetch data from API endpoint.
@@ -140,6 +162,10 @@ class CryptoDataLoader:
             realized_pnl, return_percent, open_trades, closed_trades.
             Empty dict on error.
         """
+        if not self._ensure_connected():
+            logger.warning("Crypto API not available - returning empty account summary")
+            return {}
+
         data = self._fetch('/performance')
         if data and 'account_summary' in data:
             return data['account_summary']
@@ -236,6 +262,10 @@ class CryptoDataLoader:
             timeframe, pattern_type, entry_time.
             Empty list on error.
         """
+        if not self._ensure_connected():
+            logger.warning("Crypto API not available - returning empty positions")
+            return []
+
         data = self._fetch('/positions')
         if isinstance(data, list):
             return data
@@ -257,6 +287,10 @@ class CryptoDataLoader:
             List of signal dicts normalized for dashboard display.
             Empty list on error.
         """
+        if not self._ensure_connected():
+            logger.warning("Crypto API not available - returning empty signals")
+            return []
+
         data = self._fetch('/signals')
         if not isinstance(data, list):
             return []
@@ -345,9 +379,8 @@ class CryptoDataLoader:
         # Crypto API returns: pattern_type, pnl_percent
         for trade in trades:
             # Map pattern_type -> pattern (dashboard field name)
-            trade['pattern'] = trade.get('pattern_type') or '-'
-            if not trade['pattern']:
-                trade['pattern'] = '-'
+            pattern_raw = trade.get('pattern_type') or trade.get('pattern') or ''
+            trade['pattern'] = pattern_raw if pattern_raw and pattern_raw not in ['-', 'None'] else 'Unclassified'
 
             # Map pnl_percent -> pnl_pct (dashboard field name)
             trade['pnl_pct'] = trade.get('pnl_percent', 0) or 0
