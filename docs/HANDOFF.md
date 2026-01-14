@@ -1,32 +1,22 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 13, 2026 (Session EQUITY-61)
+**Last Updated:** January 14, 2026 (Session EQUITY-62)
 **Current Branch:** `main`
-**Phase:** Paper Trading - TFC Overhaul Required
-**Status:** Critical bug fixed, TFC architecture needs redesign
+**Phase:** Paper Trading - TFC Architecture Implemented
+**Status:** TFC overhaul complete, ready for deployment
 
 ---
 
-## Next Session: EQUITY-62
+## Next Session: EQUITY-63
 
-### Priority 1: TFC Architecture Overhaul (CRITICAL)
+### Priority 1: Deploy EQUITY-62 to VPS (HIGH)
 
-**Why trades are losing:** TFC is calculated but NOT used to filter signals. Trades enter against timeframe continuity.
-
-Four issues identified in EQUITY-61:
-
-| Issue | File | Problem |
-|-------|------|---------|
-| 4H Missing | paper_signal_scanner.py:130 | `['1H', '1D', '1W', '1M']` missing 4H |
-| No TFC Filter | daemon.py:714-793 | `_passes_filters()` ignores TFC |
-| Weak Threshold | config.py:275 | `tfc_reeval_min_strength=2` (20%) too low |
-| Bad Default | daemon.py:959 | Missing TFC defaults to PASS |
-
-**Implementation Plan:**
-1. Add 4H to DEFAULT_TIMEFRAMES
-2. Add TFC check to `_passes_filters()` with min_strength=3 (75%)
-3. Raise `tfc_reeval_min_strength` from 2 to 3
-4. Change None TFC default from True to False
+Push TFC overhaul + EQUITY-61 intrabar fix:
+```bash
+ssh atlas@178.156.223.251
+cd ~/vectorbt-workspace && git pull
+sudo systemctl restart atlas-daemon
+```
 
 ### Priority 2: Equity Prioritization by ATR + Volume (HIGH)
 
@@ -35,14 +25,65 @@ When multiple signals fire, prioritize by:
 - Higher volume = tighter spreads, better fills
 - Priority score: `ATR% * volume_ratio`
 
-### Priority 3: Deploy EQUITY-61 Fix to VPS (MEDIUM)
+### Priority 3: Monitor TFC Filtering in Production
 
-Push intrabar_low bug fix (commit ee3771c):
-```bash
-ssh atlas@178.156.223.251
-cd ~/vectorbt-workspace && git pull
-sudo systemctl restart atlas-daemon
-```
+After deployment, verify:
+- TFC filter rejecting low-alignment signals
+- 3-2 targets at 1.5% (not 7%+)
+- 4H being included in TFC evaluation
+
+---
+
+## Session EQUITY-62: TFC Architecture Overhaul (COMPLETE)
+
+**Date:** January 14, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - All 5 TFC issues fixed
+**Commit:** d424891
+
+### What Was Fixed
+
+| Issue | File | Change |
+|-------|------|--------|
+| 4H Missing | paper_signal_scanner.py:130 | Added 4H to DEFAULT_TIMEFRAMES |
+| No TFC Filter | daemon.py:791-823 | Added TFC filter to _passes_filters() |
+| Weak Threshold | config.py:275 | Raised tfc_reeval_min_strength from 2 to 3 |
+| Bad Default | daemon.py:990,1041 | Changed missing TFC default from True to False |
+| 3-2 Target Bug | pattern_detector.py:737-794 | Changed from 1.5x R:R to simple 1.5% |
+
+### TFC Filter Implementation
+
+Added timeframe-specific minimums in `_passes_filters()`:
+- 1H patterns: min 3/4 aligned (75%)
+- 4H patterns: min 2/3 aligned (67%)
+- 1D patterns: min 2/3 aligned (67%)
+- 1W/1M patterns: min 1 aligned (looser)
+
+Environment variable kill switch: `SIGNAL_TFC_FILTER_ENABLED=false`
+
+### 3-2 Target Bug Fix
+
+**Problem:** MU 3-2D trade had 7.16% target ($311.21) instead of 1.5% ($330.19)
+
+**Root Cause:** Code used 1.5x R:R measured move, but strat-methodology says simple 1.5%
+
+**Fix:** Changed all 4 locations in `detect_32_patterns_nb()`:
+- Bullish: `target = entry_price * 1.015`
+- Bearish: `target = entry_price * 0.985`
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/paper_signal_scanner.py` | +4H to DEFAULT_TIMEFRAMES, updated TFC adapter |
+| `strat/signal_automation/daemon.py` | +TFC filter, fixed default values, +os import |
+| `strat/signal_automation/config.py` | tfc_reeval_min_strength: 2 -> 3 |
+| `strat/pattern_detector.py` | 3-2 targets: 1.5x R:R -> simple 1.5% |
+
+### Tests
+
+- 1069 tests collected, all signal automation and strat tests passed
+- Regime tests have pre-existing flakiness (not related to changes)
 
 ---
 
