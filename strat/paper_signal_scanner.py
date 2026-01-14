@@ -375,6 +375,7 @@ class PaperSignalScanner:
         # '1h' with offset='30min' creates bars at 9:30, 10:30, 11:30, etc.
         freq_map = {
             '1H': ('1h', '30min'),   # Hourly, offset by 30 min for market alignment
+            '4H': ('4h', '30min'),   # 4-Hour, offset by 30 min for market alignment (Session EQUITY-62)
             '1D': ('1D', None),       # Daily
             '1W': ('W-FRI', None),    # Weekly (Friday close)
             '1M': ('ME', None),       # Month end
