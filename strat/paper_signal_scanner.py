@@ -127,7 +127,8 @@ class PaperSignalScanner:
     DEFAULT_SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA', 'AAPL']
 
     # All timeframes to scan
-    DEFAULT_TIMEFRAMES = ['1H', '1D', '1W', '1M']
+    # Session EQUITY-62: Added 4H for proper TFC evaluation (5 timeframes)
+    DEFAULT_TIMEFRAMES = ['1H', '4H', '1D', '1W', '1M']
 
     # All pattern types to detect
     ALL_PATTERNS = ['2-2', '3-2', '3-2-2', '2-1-2', '3-1-2']
@@ -145,7 +146,8 @@ class PaperSignalScanner:
         self._vbt = None
         self._thetadata = None
         self._tiingo = None
-        self._tfc_adapter = TimeframeContinuityAdapter(timeframes=self.DEFAULT_TIMEFRAMES)
+        # Session EQUITY-62: TFC adapter needs timeframes in descending order for proper continuity checking
+        self._tfc_adapter = TimeframeContinuityAdapter(timeframes=['1M', '1W', '1D', '4H', '1H'])
 
     def _get_tiingo(self):
         """Lazy load Tiingo fetcher."""

@@ -665,12 +665,11 @@ def detect_32_patterns_nb(classifications, high, low):
     3D-2U / 3-2U: Outside bar down → Bullish reversal (bearish rejection)
     3U-2D / 3-2D: Outside bar up → Bearish reversal (bullish rejection)
 
-    Magnitude Calculation (Option C - 1.5x Measured Move):
-        - Always uses 1.5x risk/reward ratio (Session 83K-62 winner)
-        - Target = Entry +/- 1.5 * abs(Entry - Stop)
-        - For bullish (3D-2U/3-2U): Target = Entry + 1.5 * (Entry - Stop)
-        - For bearish (3U-2D/3-2D): Target = Entry - 1.5 * (Stop - Entry)
-        - Outperforms previous outside bar lookback in OOS testing
+    Magnitude Calculation (Session EQUITY-62 - Simple 1.5%):
+        - Target = Entry +/- 1.5% of entry price (per strat-methodology)
+        - For bullish (3D-2U/3-2U): Target = Entry * 1.015 (1.5% above)
+        - For bearish (3U-2D/3-2D): Target = Entry * 0.985 (1.5% below)
+        - Quick, consistent profit taking regardless of pattern size
 
     Parameters:
     -----------
@@ -697,7 +696,7 @@ def detect_32_patterns_nb(classifications, high, low):
 
         Entry: 105 (3D bar high, level that broke to create 2U)
         Stop: 95 (3D bar low)
-        Target: 105 + 1.5 * (105 - 95) = 120 (1.5x measured move)
+        Target: 105 * 1.015 = 106.58 (1.5% above entry)
         Direction: 1 (bullish)
 
     3U-2D Bearish Reversal (outside bar rejection):
@@ -706,7 +705,7 @@ def detect_32_patterns_nb(classifications, high, low):
 
         Entry: 100 (3U bar low, level that broke to create 2D)
         Stop: 110 (3U bar high)
-        Target: 100 - 1.5 * (110 - 100) = 85 (1.5x measured move)
+        Target: 100 * 0.985 = 98.50 (1.5% below entry)
         Direction: -1 (bearish)
     """
     # Handle both 1D and 2D arrays from VBT
@@ -735,9 +734,9 @@ def detect_32_patterns_nb(classifications, high, low):
                 entry_price = high[i-1]  # Outside bar high
                 stops[i] = low[i-1]      # Outside bar low
 
-                # Option C: 1.5x measured move (Session 83K-62 winner)
-                # Target = Entry + 1.5 * (Entry - Stop)
-                targets[i] = calculate_measured_move_nb(entry_price, stops[i], 1, 1.5)
+                # Session EQUITY-62: Simple 1.5% target per strat-methodology
+                # Bullish: Entry * 1.015 (1.5% above entry)
+                targets[i] = entry_price * 1.015
 
             # 3U-2D or 3-2D: Outside bar up → Bearish reversal
             # Accept both 3 (outside bar up) and -3 or neutral outside bar
@@ -751,9 +750,9 @@ def detect_32_patterns_nb(classifications, high, low):
                 entry_price = low[i-1]   # Outside bar low
                 stops[i] = high[i-1]     # Outside bar high
 
-                # Option C: 1.5x measured move (Session 83K-62 winner)
-                # Target = Entry - 1.5 * (Stop - Entry)
-                targets[i] = calculate_measured_move_nb(entry_price, stops[i], -1, 1.5)
+                # Session EQUITY-62: Simple 1.5% target per strat-methodology
+                # Bearish: Entry * 0.985 (1.5% below entry)
+                targets[i] = entry_price * 0.985
 
     else:  # 2D array (multi-column from VBT)
         n = classifications.shape[0]
@@ -779,8 +778,8 @@ def detect_32_patterns_nb(classifications, high, low):
                     entry_price = high[i-1, col]
                     stops[i, col] = low[i-1, col]
 
-                    # Option C: 1.5x measured move (Session 83K-62 winner)
-                    targets[i, col] = calculate_measured_move_nb(entry_price, stops[i, col], 1, 1.5)
+                    # Session EQUITY-62: Simple 1.5% target per strat-methodology
+                    targets[i, col] = entry_price * 1.015
 
                 # 3U-2D or 3-2D: Outside bar up → Bearish reversal
                 elif (bar1_class == 3 or abs(bar1_class) == 3) and bar2_class == -2:
@@ -790,8 +789,8 @@ def detect_32_patterns_nb(classifications, high, low):
                     entry_price = low[i-1, col]
                     stops[i, col] = high[i-1, col]
 
-                    # Option C: 1.5x measured move (Session 83K-62 winner)
-                    targets[i, col] = calculate_measured_move_nb(entry_price, stops[i, col], -1, 1.5)
+                    # Session EQUITY-62: Simple 1.5% target per strat-methodology
+                    targets[i, col] = entry_price * 0.985
 
     return (entries, stops, targets, directions)
 

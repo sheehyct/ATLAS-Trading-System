@@ -272,7 +272,8 @@ class ExecutionConfig:
     # TFC can change between pattern detection and entry trigger (hours/days later).
     # Re-evaluate TFC at entry time and optionally block if alignment degraded.
     tfc_reeval_enabled: bool = True           # Enable TFC re-evaluation at entry
-    tfc_reeval_min_strength: int = 2          # Block entry if TFC strength drops below this
+    # Session EQUITY-62: Raised from 2 to 3 (60% minimum alignment)
+    tfc_reeval_min_strength: int = 3          # Block entry if TFC strength drops below this
     tfc_reeval_block_on_flip: bool = True     # Block entry if TFC direction flipped
     tfc_reeval_log_always: bool = True        # Log TFC comparison even when not blocking
 

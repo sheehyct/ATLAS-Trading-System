@@ -18,6 +18,7 @@ Designed for autonomous operation with:
 - Automatic position monitoring with target/stop exits
 """
 
+import os
 import signal
 import sys
 import time
@@ -790,6 +791,36 @@ class SignalDaemon:
                 )
                 return False
 
+        # =================================================================
+        # Session EQUITY-62: TFC Filtering
+        # Reject signals that lack timeframe continuity alignment.
+        # Per STRAT methodology: Trade WITH the higher timeframes, not against.
+        # =================================================================
+        tfc_score = getattr(signal.context, 'tfc_score', 0) if signal.context else 0
+        tfc_alignment = getattr(signal.context, 'tfc_alignment', '') if signal.context else ''
+
+        # Minimum TFC requirements by detection timeframe
+        # 1H: 3/4 (75%), 1D: 2/3 (67%), 1W/1M: looser
+        timeframe_tfc_minimums = {
+            '1H': 3,  # 3 out of 4 aligned
+            '4H': 2,  # 2 out of 3 aligned (same as Daily)
+            '1D': 2,  # 2 out of 3 aligned
+            '1W': 1,  # 1 out of 2 aligned
+            '1M': 1,  # 1 out of 1 aligned
+        }
+
+        min_aligned = timeframe_tfc_minimums.get(signal.timeframe, 2)
+
+        # Environment variable kill switch for testing
+        tfc_filter_enabled = os.environ.get('SIGNAL_TFC_FILTER_ENABLED', 'true').lower() == 'true'
+
+        if tfc_filter_enabled and tfc_score < min_aligned:
+            logger.info(
+                f"FILTER REJECTED (TFC): {signal_key} - "
+                f"TFC score {tfc_score} < min {min_aligned} ({tfc_alignment or 'N/A'})"
+            )
+            return False
+
         return True
 
     def _is_market_hours(self) -> bool:
@@ -956,7 +987,8 @@ class SignalDaemon:
         # Get original TFC data from signal with defensive validation (Issue #2 fix)
         original_strength = signal.tfc_score if signal.tfc_score is not None else 0
         original_alignment = signal.tfc_alignment or ""  # Handle None
-        original_passes = signal.passes_flexible if signal.passes_flexible is not None else True
+        # Session EQUITY-62: Default to False (fail-closed, not fail-open)
+        original_passes = signal.passes_flexible if signal.passes_flexible is not None else False
 
         # Determine original direction from alignment string
         original_tfc_direction = ""
@@ -1006,7 +1038,8 @@ class SignalDaemon:
 
         current_strength = current_tfc.strength if current_tfc.strength is not None else 0
         current_alignment = current_tfc.alignment_label() if hasattr(current_tfc, 'alignment_label') else f"{current_strength}/?"
-        current_passes = getattr(current_tfc, 'passes_flexible', True)
+        # Session EQUITY-62: Default to False for safety (fail-closed)
+        current_passes = getattr(current_tfc, 'passes_flexible', False)
         current_direction = getattr(current_tfc, 'direction', '') or ""
 
         # Calculate strength change
