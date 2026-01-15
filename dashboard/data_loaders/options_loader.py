@@ -509,6 +509,8 @@ class OptionsDataLoader:
                         trade['timeframe'] = signal.timeframe
                         trade['tfc_score'] = signal.tfc_score
                         trade['tfc_alignment'] = signal.tfc_alignment
+                        # Session EQUITY-63: Persist pattern for future lookups
+                        self._persist_trade_pattern(osi_symbol, signal.pattern_type, trade)
 
                 # Session EQUITY-55: Priority 2: Merge enriched TFC data if available
                 # This provides retroactive TFC for trades where signals had tfc_score=0
@@ -614,6 +616,60 @@ class OptionsDataLoader:
         except Exception as e:
             logger.debug(f"Could not load enriched TFC data: {e}")
             return {}
+
+    def _persist_trade_pattern(self, osi_symbol: str, pattern: str, trade: Dict) -> None:
+        """
+        Persist pattern to enriched_trades.json for future lookups.
+
+        Session EQUITY-63: When a signal lookup succeeds, we persist the pattern
+        to the enriched file so that future dashboard loads will have the pattern
+        data even after the signal expires from the signal store.
+
+        Args:
+            osi_symbol: OCC option symbol
+            pattern: STRAT pattern type (e.g., '3-2U-2D')
+            trade: Full trade dictionary for additional metadata
+        """
+        import json
+
+        enriched_file = _PROJECT_ROOT / 'data' / 'enriched_trades.json'
+        try:
+            # Load existing data
+            if enriched_file.exists():
+                with open(enriched_file, 'r') as f:
+                    data = json.load(f)
+            else:
+                data = {'trades': [], 'last_updated': None}
+
+            # Check if this symbol is already persisted
+            existing_symbols = {t.get('osi_symbol') for t in data.get('trades', [])}
+            if osi_symbol in existing_symbols:
+                return  # Already persisted
+
+            # Add new trade pattern
+            new_entry = {
+                'osi_symbol': osi_symbol,
+                'pattern_type': pattern,
+                'timeframe': trade.get('timeframe', '1D'),
+                'tfc_score': trade.get('tfc_score'),
+                'tfc_alignment': trade.get('tfc_alignment', ''),
+                'tfc_passes': (trade.get('tfc_score') or 0) >= 4,
+                'entry_date': trade.get('buy_time_display', ''),
+                'exit_date': trade.get('sell_time_display', ''),
+                'persisted_at': datetime.now().isoformat()
+            }
+            data['trades'].append(new_entry)
+            data['last_updated'] = datetime.now().isoformat()
+
+            # Write back
+            enriched_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(enriched_file, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            logger.debug(f"Persisted pattern {pattern} for {osi_symbol}")
+
+        except Exception as e:
+            logger.warning(f"Failed to persist trade pattern for {osi_symbol}: {e}")
 
     def _get_pattern_for_trade(self, osi_symbol: str, executions: Dict) -> str:
         """

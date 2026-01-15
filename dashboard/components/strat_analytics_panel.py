@@ -588,7 +588,7 @@ def create_open_positions_tab(
             html.Tbody([
                 html.Tr([
                     html.Td(
-                        html.Strong(pos.get('symbol', '-')[:15]),
+                        html.Strong((pos.get('display_contract') or pos.get('symbol', '-'))[:20]),
                         style={'padding': '12px 16px'}
                     ),
                     html.Td(
@@ -977,7 +977,9 @@ def _create_tfc_comparison_chart(with_val: float, without_val: float,
         fig.update_layout(
             height=300,
             plot_bgcolor=DARK_THEME['background'],
-            paper_bgcolor=DARK_THEME['card_bg']
+            paper_bgcolor=DARK_THEME['card_bg'],
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False)
         )
         return fig
 
@@ -1017,7 +1019,9 @@ def _create_tfc_pnl_comparison_chart(with_pnl: float, without_pnl: float) -> go.
         fig.update_layout(
             height=300,
             plot_bgcolor=DARK_THEME['background'],
-            paper_bgcolor=DARK_THEME['card_bg']
+            paper_bgcolor=DARK_THEME['card_bg'],
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False)
         )
         return fig
 
@@ -1372,7 +1376,7 @@ def _create_equity_chart(history: List[Dict]) -> go.Figure:
         fig.update_layout(height=400)
         return fig
 
-    dates = [h.get('date', '') for h in history]
+    dates = [h.get('timestamp') or h.get('date', '') for h in history]
     balances = [h.get('equity', h.get('balance', 0)) for h in history]
 
     fig = go.Figure()
@@ -1390,7 +1394,7 @@ def _create_equity_chart(history: List[Dict]) -> go.Figure:
     fig.update_layout(
         margin=dict(l=50, r=30, t=30, b=50),
         height=400,
-        xaxis=dict(title=''),
+        xaxis=dict(title='Date', type='date', tickformat='%m/%d'),
         yaxis=dict(title='Balance ($)'),
         hovermode='x unified',
         plot_bgcolor=DARK_THEME['background'],
