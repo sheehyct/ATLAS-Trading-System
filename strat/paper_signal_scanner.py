@@ -221,9 +221,10 @@ class PaperSignalScanner:
             tf_alpaca = '30Min'
             tf_tiingo = None  # Tiingo doesn't support intraday
         elif timeframe == '1H':
-            days = lookback_bars // 7 + 30  # ~7 bars per day, add buffer
-            tf_alpaca = '1Hour'
-            tf_tiingo = None  # Tiingo doesn't support hourly
+            # Session EQUITY-64: Use market-aligned fetch for 1H
+            # This fetches 1Min data and resamples with offset='30min' to get
+            # bars at 9:30, 10:30, 11:30 instead of clock-aligned 10:00, 11:00, 12:00
+            return self._fetch_hourly_market_aligned(symbol, lookback_bars, include_forming_bar)
         elif timeframe == '1D':
             days = lookback_bars + 30
             tf_alpaca = '1Day'
@@ -249,7 +250,8 @@ class PaperSignalScanner:
             # Session EQUITY-18: Include 15m and 30m as intraday timeframes
             # Session EQUITY-63: include_forming_bar adds +1 day for daily/weekly/monthly
             # to include today's forming bar for TFC evaluation
-            is_intraday = timeframe in ('15m', '30m', '1H')
+            # Session EQUITY-64: 1H now uses _fetch_hourly_market_aligned() so excluded here
+            is_intraday = timeframe in ('15m', '30m')
             if is_intraday or include_forming_bar:
                 end_date = end + timedelta(days=1)
             else:
@@ -301,11 +303,14 @@ class PaperSignalScanner:
 
     def _align_hourly_bars(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Align hourly bars to market open (09:30, 10:30, 11:30, etc.).
+        Filter intraday bars to market hours (09:30-16:00 ET).
 
-        Session 83K-34: CRITICAL for correct pattern detection.
-        Alpaca returns clock-aligned bars (10:00, 11:00) but STRAT
-        requires market-open-aligned bars.
+        NOTE: For 1H timeframes, use _fetch_hourly_market_aligned() instead.
+        This function only FILTERS, it does NOT resample for market-open alignment.
+        It is appropriate for 15m/30m bars which are already market-aligned.
+
+        Session EQUITY-64: Renamed purpose - this is for filtering 15m/30m only.
+        1H now uses _fetch_hourly_market_aligned() which fetches 1Min and resamples.
         """
         if df.empty:
             return df
@@ -314,6 +319,100 @@ class PaperSignalScanner:
         df = df.between_time('09:30', '16:00')
 
         return df
+
+    def _fetch_hourly_market_aligned(
+        self,
+        symbol: str,
+        lookback_bars: int = 100,
+        include_forming_bar: bool = False
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch market-open-aligned hourly bars for STRAT pattern detection.
+
+        Session EQUITY-64: CRITICAL FIX for hourly bar alignment.
+
+        PROBLEM: Alpaca '1Hour' returns clock-aligned bars (10:00, 11:00, 12:00)
+        STRAT time rules (2-bar patterns at 10:30, 3-bar at 11:30) assume
+        market-open-aligned bars. Pattern detection on wrong bars = invalid signals.
+
+        SOLUTION: Fetch minute data, resample with offset='30min' to get:
+        - 09:30 = first bar (09:30-10:29) - market open
+        - 10:30 = second bar (10:30-11:29)
+        - 11:30 = third bar (11:30-12:29)
+        - etc.
+
+        This is the same fix from Session 83K-34 that transformed hourly
+        validation from -$46,299 to +$70,045.
+
+        Args:
+            symbol: Trading symbol
+            lookback_bars: Number of hourly bars to fetch (~7 per trading day)
+            include_forming_bar: If True, include today's forming bar
+
+        Returns:
+            DataFrame with market-open-aligned hourly bars
+        """
+        vbt = self._get_vbt()
+
+        # Calculate days needed (7 hourly bars per day, add buffer)
+        days = lookback_bars // 7 + 30
+
+        end = datetime.now()
+        start = end - timedelta(days=days)
+
+        # Session EQUITY-63: Add +1 day to include today's forming bar
+        if include_forming_bar:
+            end_date = end + timedelta(days=1)
+        else:
+            end_date = end
+
+        try:
+            # Fetch minute data - this is the raw data we need
+            # Session EQUITY-64: Use adjustment='split' per Session 83K-19 to match ThetaData
+            data = vbt.AlpacaData.pull(
+                symbols=symbol,  # Use explicit keyword parameter per VBT API
+                start=start.strftime('%Y-%m-%d'),
+                end=end_date.strftime('%Y-%m-%d'),
+                timeframe='1Min',
+                tz='America/New_York',
+                adjustment='split'  # Split-only adjusted prices match ThetaData
+            )
+
+            df = data.get()
+            if df is None or df.empty:
+                warnings.warn(f"No minute data returned for {symbol}")
+                return None
+
+            # Normalize column names to lowercase (consistent with validator)
+            df.columns = [c.lower() for c in df.columns]
+
+            # Resample to hourly with 30-minute offset for market-open alignment
+            # offset='30min' shifts the resampling window to start at :30 instead of :00
+            # This gives us bars at 09:30, 10:30, 11:30, etc.
+            ohlc_map = {
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+            }
+            if 'volume' in df.columns:
+                ohlc_map['volume'] = 'sum'
+
+            resampled = df.resample('1h', offset='30min').agg(ohlc_map).dropna()
+
+            # Filter to market hours only (09:30-16:00 ET)
+            # Market hours: 09:30-16:00 ET
+            # Valid hourly bars: 09:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30
+            resampled = resampled.between_time('09:30', '16:00')
+
+            # Re-capitalize column names to match rest of codebase (Open, High, Low, Close, Volume)
+            resampled.columns = [c.capitalize() for c in resampled.columns]
+
+            return resampled
+
+        except Exception as e:
+            warnings.warn(f"Failed to fetch market-aligned hourly data for {symbol}: {e}")
+            return None
 
     # =========================================================================
     # Session 83K-80: 15-Minute Base Resampling Methods
