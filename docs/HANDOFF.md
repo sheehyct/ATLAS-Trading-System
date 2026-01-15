@@ -1,36 +1,83 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 14, 2026 (Session EQUITY-62)
+**Last Updated:** January 15, 2026 (Session EQUITY-63)
 **Current Branch:** `main`
-**Phase:** Paper Trading - TFC Architecture Implemented
-**Status:** TFC overhaul complete, ready for deployment
+**Phase:** Paper Trading - TFC Forming Bar Fix Deployed
+**Status:** TFC now uses forming bars for accurate market direction
 
 ---
 
-## Next Session: EQUITY-63
+## Next Session: EQUITY-64
 
-### Priority 1: Deploy EQUITY-62 to VPS (HIGH)
-
-Push TFC overhaul + EQUITY-61 intrabar fix:
-```bash
-ssh atlas@178.156.223.251
-cd ~/vectorbt-workspace && git pull
-sudo systemctl restart atlas-daemon
-```
-
-### Priority 2: Equity Prioritization by ATR + Volume (HIGH)
+### Priority 1: Equity Prioritization by ATR + Volume (HIGH)
 
 When multiple signals fire, prioritize by:
 - Higher ATR% = faster moves = options gain value quickly
 - Higher volume = tighter spreads, better fills
 - Priority score: `ATR% * volume_ratio`
 
-### Priority 3: Monitor TFC Filtering in Production
+### Priority 2: Stale Setup Filter Fix for 3-? Patterns (MEDIUM)
 
-After deployment, verify:
-- TFC filter rejecting low-alignment signals
-- 3-2 targets at 1.5% (not 7%+)
-- 4H being included in TFC evaluation
+From EQUITY-62 investigation: 3-? patterns have entry AFTER setup bar closes.
+Stale filter rejected valid 10:47 trigger as "stale" (setup bar was 9:30).
+Fix: Account for pattern type in stale window calculation.
+
+### Priority 3: Discord Alert Delay Investigation (LOW)
+
+From EQUITY-62: Discord alerts delayed ~1 hour. Investigate cause.
+
+---
+
+## Session EQUITY-63: TFC Forming Bar Fix (COMPLETE)
+
+**Date:** January 15, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Deployed and verified on VPS
+**Commit:** 52176a1
+
+### Problem
+
+TFC evaluation was using **closed bars only** for daily/weekly/monthly timeframes,
+missing the forming bar's classification. Example: SPY's Jan 14 daily bar had
+broken below Jan 13's low (Type 2D), but TFC was using Jan 13's Type 1.
+
+### Root Cause
+
+`_fetch_data()` only added +1 day to end_date for intraday timeframes:
+```python
+is_intraday = timeframe in ('15m', '30m', '1H')
+end_date = end + timedelta(days=1) if is_intraday else end
+```
+
+For daily/weekly/monthly, Alpaca's exclusive end date excluded today's forming bar.
+
+### Fix
+
+1. Added `include_forming_bar` parameter to `_fetch_data()` (default False)
+2. When `include_forming_bar=True`, add +1 day for all timeframes
+3. Updated `evaluate_tfc()` to use `include_forming_bar=True`
+4. Pattern detection unchanged (needs closed bars for fixed setup levels)
+
+### Verification
+
+```
+=== SPY TFC Evaluation (Jan 15) ===
+BULLISH: TFC 3/4, passes=True
+BEARISH: TFC 0/4, passes=False
+
+Today's Higher TF Classifications:
+  1D: Type 2U (GREEN) - Bullish aligned
+  1W: Type 3 (GREEN) - Bullish aligned
+  1M: Type 2U (GREEN) - Bullish aligned
+```
+
+TFC now correctly sees today's market direction instead of stale yesterday's data.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/paper_signal_scanner.py` | +include_forming_bar param, +TFC uses it |
 
 ---
 
