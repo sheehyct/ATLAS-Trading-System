@@ -190,7 +190,8 @@ class PaperSignalScanner:
         return self._vbt
 
     def _fetch_data(self, symbol: str, timeframe: str,
-                    lookback_bars: int = 100) -> Optional[pd.DataFrame]:
+                    lookback_bars: int = 100,
+                    include_forming_bar: bool = False) -> Optional[pd.DataFrame]:
         """
         Fetch OHLCV data for pattern detection.
 
@@ -201,6 +202,8 @@ class PaperSignalScanner:
             symbol: Stock symbol
             timeframe: '15m', '30m', '1H', '1D', '1W', '1M'
             lookback_bars: Number of bars to fetch
+            include_forming_bar: If True, include today's forming bar for daily/weekly/monthly.
+                                 Used by TFC evaluation to assess current market direction.
 
         Returns:
             DataFrame with OHLCV columns
@@ -244,8 +247,13 @@ class PaperSignalScanner:
             # Session 83K-72: For intraday timeframes, add 1 day to end date
             # to include today's bars (Alpaca end date is exclusive)
             # Session EQUITY-18: Include 15m and 30m as intraday timeframes
+            # Session EQUITY-63: include_forming_bar adds +1 day for daily/weekly/monthly
+            # to include today's forming bar for TFC evaluation
             is_intraday = timeframe in ('15m', '30m', '1H')
-            end_date = end + timedelta(days=1) if is_intraday else end
+            if is_intraday or include_forming_bar:
+                end_date = end + timedelta(days=1)
+            else:
+                end_date = end
 
             data = vbt.AlpacaData.pull(
                 symbol,
@@ -275,10 +283,12 @@ class PaperSignalScanner:
                 return None
 
             try:
+                # Session EQUITY-63: Use same end_date logic as Alpaca for forming bar support
+                tiingo_end = end + timedelta(days=1) if include_forming_bar else end
                 tiingo_data = tiingo.fetch(
                     symbol,
                     start_date=start.strftime('%Y-%m-%d'),
-                    end_date=end.strftime('%Y-%m-%d'),
+                    end_date=tiingo_end.strftime('%Y-%m-%d'),
                     timeframe=tf_tiingo,
                     use_cache=True
                 )
@@ -490,12 +500,19 @@ class PaperSignalScanner:
     def evaluate_tfc(
         self, symbol: str, detection_timeframe: str, direction: int
     ):
-        """Run timeframe continuity adapter and return assessment."""
+        """Run timeframe continuity adapter and return assessment.
+
+        Session EQUITY-63: Uses include_forming_bar=True to include today's
+        forming bar for daily/weekly/monthly timeframes. TFC evaluation needs
+        the current bar's classification (e.g., if today already broke below
+        yesterday's low, it's a 2D bar even though it's still forming).
+        """
 
         direction_label = "bullish" if direction == 1 else "bearish"
 
         def _fetch(tf: str):
-            return self._fetch_data(symbol, tf, lookback_bars=50)
+            # Session EQUITY-63: Include forming bar for TFC evaluation
+            return self._fetch_data(symbol, tf, lookback_bars=50, include_forming_bar=True)
 
         return self._tfc_adapter.evaluate(
             fetcher=_fetch,
