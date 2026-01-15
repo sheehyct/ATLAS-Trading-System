@@ -28,56 +28,53 @@ From EQUITY-62: Discord alerts delayed ~1 hour. Investigate cause.
 
 ---
 
-## Session EQUITY-63: TFC Forming Bar Fix (COMPLETE)
+## Session EQUITY-63: TFC Forming Bar + FTFC Fix (COMPLETE)
 
 **Date:** January 15, 2026
 **Environment:** Claude Code Desktop (Opus 4.5)
 **Status:** COMPLETE - Deployed and verified on VPS
-**Commit:** 52176a1
+**Commits:** 52176a1, 2c994ef
 
-### Problem
+### Fix 1: TFC Forming Bar
 
-TFC evaluation was using **closed bars only** for daily/weekly/monthly timeframes,
-missing the forming bar's classification. Example: SPY's Jan 14 daily bar had
-broken below Jan 13's low (Type 2D), but TFC was using Jan 13's Type 1.
+**Problem:** TFC evaluation used closed bars only for daily/weekly/monthly, missing
+today's forming bar classification.
 
-### Root Cause
+**Root Cause:** `_fetch_data()` only added +1 day for intraday timeframes.
 
-`_fetch_data()` only added +1 day to end_date for intraday timeframes:
-```python
-is_intraday = timeframe in ('15m', '30m', '1H')
-end_date = end + timedelta(days=1) if is_intraday else end
-```
-
-For daily/weekly/monthly, Alpaca's exclusive end date excluded today's forming bar.
-
-### Fix
-
+**Fix:**
 1. Added `include_forming_bar` parameter to `_fetch_data()` (default False)
-2. When `include_forming_bar=True`, add +1 day for all timeframes
-3. Updated `evaluate_tfc()` to use `include_forming_bar=True`
-4. Pattern detection unchanged (needs closed bars for fixed setup levels)
+2. `evaluate_tfc()` now uses `include_forming_bar=True`
+3. Pattern detection unchanged (needs closed bars for fixed setup levels)
+
+### Fix 2: Full Timeframe Continuity (FTFC) for 1H
+
+**Problem:** 1H patterns skipped Monthly timeframe (max 3/3), preventing 4/4 FTFC.
+
+**Root Cause:** `timeframe_requirements['1H']` was `['1W', '1D', '1H']` - intentionally
+skipping 1M as "too broad". But if all TFs are aligned, that's maximum confluence.
+
+**Fix:** Updated to `['1M', '1W', '1D', '1H']` - 1H patterns can now achieve 4/4 FTFC.
+Min strength stays at 3, so 3/4 required to pass filter.
 
 ### Verification
 
 ```
-=== SPY TFC Evaluation (Jan 15) ===
-BULLISH: TFC 3/4, passes=True
-BEARISH: TFC 0/4, passes=False
+=== SPY TFC (Jan 15, live) ===
+1M: Type 2U GREEN - Bullish
+1W: Type 3 GREEN  - Bullish
+1D: Type 2U RED   - Bullish (2U regardless of color)
+1H: Type 3 RED    - Bearish (3 RED = bearish)
 
-Today's Higher TF Classifications:
-  1D: Type 2U (GREEN) - Bullish aligned
-  1W: Type 3 (GREEN) - Bullish aligned
-  1M: Type 2U (GREEN) - Bullish aligned
+Result: 3/4 Bullish (1H not aligned due to forming bar turning bearish)
 ```
-
-TFC now correctly sees today's market direction instead of stale yesterday's data.
 
 ### Files Modified
 
 | File | Change |
 |------|--------|
 | `strat/paper_signal_scanner.py` | +include_forming_bar param, +TFC uses it |
+| `strat/timeframe_continuity.py` | 1H now includes 1M for FTFC possibility |
 
 ---
 
