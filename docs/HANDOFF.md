@@ -1,45 +1,99 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 15, 2026 (Session EQUITY-63)
+**Last Updated:** January 15, 2026 (Session EQUITY-64)
 **Current Branch:** `main`
-**Phase:** Paper Trading - TFC Fixes Deployed, Bar Alignment Bug Found
-**Status:** CRITICAL - 1H bar alignment issue discovered, needs plan mode investigation
+**Phase:** Paper Trading - 1H Bar Alignment Bug FIXED
+**Status:** DEPLOYED - Critical bar alignment fix deployed to VPS
 
 ---
 
-## Next Session: EQUITY-64 (PLAN MODE REQUIRED)
+## Next Session: EQUITY-65
 
-### Priority 1: 1H Bar Alignment Bug (CRITICAL)
-
-**Problem Discovered:** `_fetch_data()` for 1H returns clock-aligned bars (10:00, 11:00, 12:00)
-instead of market-open-aligned bars (9:30, 10:30, 11:30, 12:30).
-
-**Root Cause:** `_align_hourly_bars()` only FILTERS to market hours, doesn't RESAMPLE.
-The correct resampling code exists in `_resample_to_htf()` but isn't used by `_fetch_data()`.
-
-**User Observed:**
-- System: 10:00 2U GREEN, 11:00 2U GREEN, 12:00 3 RED
-- Reality: 9:30 2U RED, 10:30 3 GREEN, 11:30 2U RED, 12:30 2D GREEN
-
-**Scope:** Need plan mode to audit ALL pipelines:
-- Equity options (`_fetch_data`, `evaluate_tfc`, pattern detection)
-- Crypto pipeline (may have similar issues)
-- TFC evaluation (now using forming bars but may have alignment issues)
-- Resampled scans (appear to work correctly - use `_resample_to_htf`)
-
-**Key Files:**
-- `strat/paper_signal_scanner.py:302-316` - `_align_hourly_bars()` (broken)
-- `strat/paper_signal_scanner.py:363-424` - `_resample_to_htf()` (working)
-- `strat/paper_signal_scanner.py:247-270` - `_fetch_data()` 1H path
-
-### Priority 2: Stale Setup Filter Fix for 3-? Patterns (MEDIUM)
+### Priority 1: Stale Setup Filter Fix for 3-? Patterns (MEDIUM)
 
 From EQUITY-62 investigation: 3-? patterns have entry AFTER setup bar closes.
 Stale filter rejected valid 10:47 trigger as "stale" (setup bar was 9:30).
 
-### Priority 3: Discord Alert Delay Investigation (LOW)
+### Priority 2: Discord Alert Delay Investigation (LOW)
 
 From EQUITY-62: Discord alerts delayed ~1 hour. Investigate cause.
+
+### Priority 3: Monitor 1H Pattern Detection (VERIFICATION)
+
+Monitor live 1H pattern detection after EQUITY-64 fix to verify:
+- Bar timestamps show :30 (9:30, 10:30, 11:30)
+- Pattern classifications match TradingView
+- TFC scores are accurate
+
+---
+
+## Session EQUITY-64: 1H Bar Alignment Fix (COMPLETE)
+
+**Date:** January 15, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Deployed and verified on VPS
+**Commit:** 6eb9ef8
+
+### The Bug
+
+**Problem:** `_fetch_data()` for 1H returned clock-aligned bars (10:00, 11:00, 12:00)
+instead of market-open-aligned bars (9:30, 10:30, 11:30, 12:30).
+
+**Root Cause:** `_align_hourly_bars()` only FILTERED to market hours, did NOT resample.
+The correct resampling code existed in `_resample_to_htf()` but wasn't used.
+
+**Impact:** Pattern detection and TFC evaluation used incorrect bar data.
+User observed mismatch:
+- System: 10:00 2U GREEN, 11:00 2U GREEN, 12:00 3 RED
+- Reality: 9:30 2U RED, 10:30 3 GREEN, 11:30 2U RED, 12:30 2D GREEN
+
+### The Fix
+
+Added `_fetch_hourly_market_aligned()` method to `paper_signal_scanner.py`:
+1. Fetches 1Min data from Alpaca with `adjustment='split'`
+2. Resamples with `offset='30min'` for market-open alignment
+3. Filters to market hours (09:30-16:00 ET)
+4. Returns bars at 9:30, 10:30, 11:30, 12:30, 13:30, 14:30, 15:30
+
+Modified `_fetch_data()` for 1H case to use the new method instead of
+fetching `'1Hour'` directly and filtering.
+
+### Audit Results
+
+| Pipeline | Status | Notes |
+|----------|--------|-------|
+| Direct 1H fetch (`_fetch_data`) | FIXED | Now uses `_fetch_hourly_market_aligned()` |
+| TFC evaluation | FIXED | Uses `_fetch_data()` which is now correct |
+| Resampled scans | Already working | Uses `_resample_to_htf()` with offset |
+| Crypto pipeline | Not affected | Uses Coinbase API (UTC-aligned, correct for 24/7) |
+
+### Verification
+
+```
+Verification run: Jan 15, 2026
+
+1H Bar Alignment:
+- Total bars: 175
+- Market-open aligned (:30): 175
+- Clock aligned (:00): 0
+Result: PASS
+
+TFC Evaluation:
+- SPY 1H bullish: 4/4 aligned (1M, 1W, 1D, 1H)
+Result: PASS
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/paper_signal_scanner.py` | +`_fetch_hourly_market_aligned()`, modified `_fetch_data()` for 1H |
+| `scripts/verify_hourly_alignment.py` | NEW - Verification script |
+
+### Tests
+
+- 413 tests passed (no regressions)
+- Verification script confirms correct alignment
 
 ---
 
