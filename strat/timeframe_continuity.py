@@ -320,19 +320,18 @@ class TimeframeContinuityChecker:
             Same format as check_flexible_continuity()
         """
         # Define timeframe-appropriate continuity requirements
-        # Session 57: As user noted, hourly bars can throw off higher TF detection
-        # Higher timeframes need fewer aligned TFs (weekly doesn't need hourly alignment)
+        # Session EQUITY-63: Include 1M for 1H - if all aligned, that's FTFC (no conflict)
         timeframe_requirements = {
-            '1H': ['1W', '1D', '1H'],      # Hourly: Skip monthly (too broad), need 3/3
-            '1D': ['1M', '1W', '1D'],      # Daily: Month, Week, Day, need 2/3
-            '1W': ['1M', '1W'],            # Weekly: Just month+week, need 1/2
-            '1M': ['1M']                   # Monthly: Just itself, need 1/1
+            '1H': ['1M', '1W', '1D', '1H'],  # Hourly: All 4 TFs for Full TFC possibility
+            '1D': ['1M', '1W', '1D'],        # Daily: Month, Week, Day, need 2/3
+            '1W': ['1M', '1W'],              # Weekly: Just month+week, need 1/2
+            '1M': ['1M']                     # Monthly: Just itself, need 1/1
         }
 
-        # Timeframe-appropriate minimum strength (prevents impossible requirements)
-        # Session 57: Weekly needs 1/2 TFs, Monthly needs 1/1 TF (not 3/5)
+        # Timeframe-appropriate minimum strength
+        # Session EQUITY-63: 1H now checks 4 TFs, min 3 means 3/4 to pass
         timeframe_min_strength = {
-            '1H': 3,  # Need 3/3 (Week, Day, Hour - all aligned)
+            '1H': 3,  # Need 3/4 (any 3 of Month, Week, Day, Hour aligned)
             '1D': 2,  # Need 2/3 (any 2 of Month, Week, Day)
             '1W': 1,  # Need 1/2 (Month OR Week aligned)
             '1M': 1   # Need 1/1 (Monthly bar itself)
@@ -472,18 +471,18 @@ class TimeframeContinuityChecker:
         """
         # Define timeframe-appropriate continuity requirements
         # Key insight from Session 55: Don't check lower TFs for higher TF patterns
-        # Session 57: User noted hourly bars throw off higher TF detection
+        # Session EQUITY-63: Include 1M for 1H - if all aligned, that's FTFC (no conflict)
         timeframe_requirements = {
-            '1H': ['1W', '1D', '1H'],      # Hourly: Skip monthly (too broad), need 3/3
-            '1D': ['1M', '1W', '1D'],      # Daily: Month, Week, Day, need 2/3
-            '1W': ['1M', '1W'],            # Weekly: Just month+week, need 1/2
-            '1M': ['1M']                   # Monthly: Just itself, need 1/1
+            '1H': ['1M', '1W', '1D', '1H'],  # Hourly: All 4 TFs for Full TFC possibility
+            '1D': ['1M', '1W', '1D'],        # Daily: Month, Week, Day, need 2/3
+            '1W': ['1M', '1W'],              # Weekly: Just month+week, need 1/2
+            '1M': ['1M']                     # Monthly: Just itself, need 1/1
         }
 
-        # Timeframe-appropriate minimum strength (prevents impossible requirements)
-        # Session 57: Weekly needs 1/2 TFs, Monthly needs 1/1 TF (not 3/5)
+        # Timeframe-appropriate minimum strength
+        # Session EQUITY-63: 1H now checks 4 TFs, min 3 means 3/4 to pass
         timeframe_min_strength = {
-            '1H': 3,  # Need 3/3 (Week, Day, Hour - all aligned)
+            '1H': 3,  # Need 3/4 (any 3 of Month, Week, Day, Hour aligned)
             '1D': 2,  # Need 2/3 (any 2 of Month, Week, Day)
             '1W': 1,  # Need 1/2 (Month OR Week aligned)
             '1M': 1   # Need 1/1 (Monthly bar itself)
