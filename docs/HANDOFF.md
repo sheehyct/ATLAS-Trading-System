@@ -2,25 +2,40 @@
 
 **Last Updated:** January 15, 2026 (Session EQUITY-63)
 **Current Branch:** `main`
-**Phase:** Paper Trading - TFC Forming Bar Fix Deployed
-**Status:** TFC now uses forming bars for accurate market direction
+**Phase:** Paper Trading - TFC Fixes Deployed, Bar Alignment Bug Found
+**Status:** CRITICAL - 1H bar alignment issue discovered, needs plan mode investigation
 
 ---
 
-## Next Session: EQUITY-64
+## Next Session: EQUITY-64 (PLAN MODE REQUIRED)
 
-### Priority 1: Equity Prioritization by ATR + Volume (HIGH)
+### Priority 1: 1H Bar Alignment Bug (CRITICAL)
 
-When multiple signals fire, prioritize by:
-- Higher ATR% = faster moves = options gain value quickly
-- Higher volume = tighter spreads, better fills
-- Priority score: `ATR% * volume_ratio`
+**Problem Discovered:** `_fetch_data()` for 1H returns clock-aligned bars (10:00, 11:00, 12:00)
+instead of market-open-aligned bars (9:30, 10:30, 11:30, 12:30).
+
+**Root Cause:** `_align_hourly_bars()` only FILTERS to market hours, doesn't RESAMPLE.
+The correct resampling code exists in `_resample_to_htf()` but isn't used by `_fetch_data()`.
+
+**User Observed:**
+- System: 10:00 2U GREEN, 11:00 2U GREEN, 12:00 3 RED
+- Reality: 9:30 2U RED, 10:30 3 GREEN, 11:30 2U RED, 12:30 2D GREEN
+
+**Scope:** Need plan mode to audit ALL pipelines:
+- Equity options (`_fetch_data`, `evaluate_tfc`, pattern detection)
+- Crypto pipeline (may have similar issues)
+- TFC evaluation (now using forming bars but may have alignment issues)
+- Resampled scans (appear to work correctly - use `_resample_to_htf`)
+
+**Key Files:**
+- `strat/paper_signal_scanner.py:302-316` - `_align_hourly_bars()` (broken)
+- `strat/paper_signal_scanner.py:363-424` - `_resample_to_htf()` (working)
+- `strat/paper_signal_scanner.py:247-270` - `_fetch_data()` 1H path
 
 ### Priority 2: Stale Setup Filter Fix for 3-? Patterns (MEDIUM)
 
 From EQUITY-62 investigation: 3-? patterns have entry AFTER setup bar closes.
 Stale filter rejected valid 10:47 trigger as "stale" (setup bar was 9:30).
-Fix: Account for pattern type in stale window calculation.
 
 ### Priority 3: Discord Alert Delay Investigation (LOW)
 
