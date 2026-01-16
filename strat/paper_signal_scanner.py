@@ -66,6 +66,8 @@ class SignalContext:
     market_regime: str = ''
     tfc_score: int = 0
     tfc_alignment: str = ''
+    # Session EQUITY-65: Track which timeframes are aligned for 2/4+1D filter
+    aligned_timeframes: Optional[List[str]] = None  # e.g., ['1D', '1W'] for 2/4 alignment
     tfc_passes: bool = False
     risk_multiplier: float = 1.0
     priority_rank: int = 0
@@ -1352,6 +1354,8 @@ class PaperSignalScanner:
                         volume_ratio=base_context.volume_ratio,
                         tfc_score=tfc_assessment.strength,
                         tfc_alignment=tfc_alignment,
+                        # Session EQUITY-65: Track aligned timeframes for 2/4+1D filter
+                        aligned_timeframes=tfc_assessment.aligned_timeframes or [],
                         tfc_passes=tfc_assessment.passes_flexible,
                         risk_multiplier=tfc_assessment.risk_multiplier,
                         priority_rank=tfc_assessment.priority_rank,
@@ -1479,6 +1483,8 @@ class PaperSignalScanner:
                     volume_ratio=base_context.volume_ratio,
                     tfc_score=tfc_assessment.strength,
                     tfc_alignment=tfc_alignment,
+                    # Session EQUITY-65: Track aligned timeframes for 2/4+1D filter
+                    aligned_timeframes=tfc_assessment.aligned_timeframes or [],
                     tfc_passes=tfc_assessment.passes_flexible,
                     risk_multiplier=tfc_assessment.risk_multiplier,
                     priority_rank=tfc_assessment.priority_rank,
@@ -1602,6 +1608,8 @@ class PaperSignalScanner:
                             volume_ratio=base_context.volume_ratio,
                             tfc_score=tfc_assessment.strength,
                             tfc_alignment=tfc_alignment,
+                            # Session EQUITY-65: Track aligned timeframes for 2/4+1D filter
+                            aligned_timeframes=tfc_assessment.aligned_timeframes or [],
                             tfc_passes=tfc_assessment.passes_flexible,
                             risk_multiplier=tfc_assessment.risk_multiplier,
                             priority_rank=tfc_assessment.priority_rank,
@@ -1658,6 +1666,8 @@ class PaperSignalScanner:
                         volume_ratio=base_context.volume_ratio,
                         tfc_score=tfc_assessment.strength,
                         tfc_alignment=tfc_alignment,
+                        # Session EQUITY-65: Track aligned timeframes for 2/4+1D filter
+                        aligned_timeframes=tfc_assessment.aligned_timeframes or [],
                         tfc_passes=tfc_assessment.passes_flexible,
                         risk_multiplier=tfc_assessment.risk_multiplier,
                         priority_rank=tfc_assessment.priority_rank,

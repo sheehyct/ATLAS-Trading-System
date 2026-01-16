@@ -792,34 +792,61 @@ class SignalDaemon:
                 return False
 
         # =================================================================
-        # Session EQUITY-62: TFC Filtering
+        # Session EQUITY-62/65: TFC Filtering with 1D Alignment Requirement
         # Reject signals that lack timeframe continuity alignment.
         # Per STRAT methodology: Trade WITH the higher timeframes, not against.
+        #
+        # Session EQUITY-65 Enhancement: "Control" concept for 1H patterns
+        # - 1D represents "who is in control right now" for intraday trades
+        # - 2/4 TFC only passes if 1D is one of the aligned timeframes
+        # - Type 1 (inside) on 1D = "chop" = dangerous for options (theta decay)
         # =================================================================
         tfc_score = getattr(signal.context, 'tfc_score', 0) if signal.context else 0
         tfc_alignment = getattr(signal.context, 'tfc_alignment', '') if signal.context else ''
-
-        # Minimum TFC requirements by detection timeframe
-        # 1H: 3/4 (75%), 1D: 2/3 (67%), 1W/1M: looser
-        timeframe_tfc_minimums = {
-            '1H': 3,  # 3 out of 4 aligned
-            '4H': 2,  # 2 out of 3 aligned (same as Daily)
-            '1D': 2,  # 2 out of 3 aligned
-            '1W': 1,  # 1 out of 2 aligned
-            '1M': 1,  # 1 out of 1 aligned
-        }
-
-        min_aligned = timeframe_tfc_minimums.get(signal.timeframe, 2)
+        aligned_timeframes = getattr(signal.context, 'aligned_timeframes', []) if signal.context else []
 
         # Environment variable kill switch for testing
         tfc_filter_enabled = os.environ.get('SIGNAL_TFC_FILTER_ENABLED', 'true').lower() == 'true'
 
-        if tfc_filter_enabled and tfc_score < min_aligned:
-            logger.info(
-                f"FILTER REJECTED (TFC): {signal_key} - "
-                f"TFC score {tfc_score} < min {min_aligned} ({tfc_alignment or 'N/A'})"
-            )
-            return False
+        if tfc_filter_enabled:
+            timeframe = signal.timeframe
+
+            # Session EQUITY-65: Enhanced 1H TFC filter with 1D alignment requirement
+            if timeframe == '1H':
+                if tfc_score >= 3:
+                    # 3/4 or 4/4 always passes (strong alignment)
+                    pass
+                elif tfc_score == 2:
+                    # 2/4 only passes if 1D is aligned (daily "control" supports trade)
+                    if '1D' not in aligned_timeframes:
+                        logger.info(
+                            f"FILTER REJECTED (TFC): {signal_key} - "
+                            f"TFC 2/4 but 1D not aligned (aligned: {aligned_timeframes}, {tfc_alignment or 'N/A'})"
+                        )
+                        return False
+                else:
+                    # 0/4 or 1/4 fails (weak alignment)
+                    logger.info(
+                        f"FILTER REJECTED (TFC): {signal_key} - "
+                        f"TFC {tfc_score}/4 below minimum ({tfc_alignment or 'N/A'})"
+                    )
+                    return False
+            else:
+                # Non-1H patterns use existing minimums
+                timeframe_tfc_minimums = {
+                    '4H': 2,  # 2 out of 3 aligned (same as Daily)
+                    '1D': 2,  # 2 out of 3 aligned
+                    '1W': 1,  # 1 out of 2 aligned
+                    '1M': 1,  # 1 out of 1 aligned
+                }
+                min_aligned = timeframe_tfc_minimums.get(timeframe, 2)
+
+                if tfc_score < min_aligned:
+                    logger.info(
+                        f"FILTER REJECTED (TFC): {signal_key} - "
+                        f"TFC score {tfc_score} < min {min_aligned} ({tfc_alignment or 'N/A'})"
+                    )
+                    return False
 
         return True
 
@@ -911,11 +938,19 @@ class SignalDaemon:
         timeframe = signal.timeframe
 
         if timeframe == '1H':
-            # For hourly: setup is valid for 1 hour after setup_bar_timestamp
-            # (the forming bar period)
-            valid_until = setup_ts + timedelta(hours=1)
+            # Session EQUITY-65: Extended 1H staleness window
+            # Allow 1.5 hours: covers the forming bar plus 30min buffer
+            # for triggers detected early in the next bar
+            valid_until = setup_ts + timedelta(hours=1, minutes=30)
             if now > valid_until:
                 return True, f"Hourly setup expired: detected {setup_ts.strftime('%H:%M')}, now {now.strftime('%H:%M')}"
+
+        elif timeframe == '4H':
+            # Session EQUITY-65: Add 4H staleness handling
+            # For 4H: setup is valid for 4 hours after setup_bar_timestamp
+            valid_until = setup_ts + timedelta(hours=4)
+            if now > valid_until:
+                return True, f"4H setup expired: detected {setup_ts.strftime('%H:%M')}, now {now.strftime('%H:%M')}"
 
         elif timeframe == '1D':
             # For daily: setup is valid until end of NEXT trading day
