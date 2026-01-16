@@ -1,45 +1,94 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 16, 2026 (Session EQUITY-64 continued)
+**Last Updated:** January 16, 2026 (Session EQUITY-65)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Pipeline Debug Investigation Complete
-**Status:** Fixes deployed, root causes identified
+**Phase:** Paper Trading - Pipeline Fixes Deployed
+**Status:** EQUITY-65 COMPLETE - Trades should now execute
 
 ---
 
-## Next Session: EQUITY-65 (PLAN MODE REQUIRED)
+## Next Session: EQUITY-66 (MONITORING)
 
-### CRITICAL: Pipeline Not Executing Trades - Root Causes Identified
+### Monitor Trade Execution
 
-Investigation on Jan 16 found **6 potential causes** for no trade execution:
+EQUITY-65 fixed the pipeline blockages. Next session should:
 
-| Priority | Cause | Location | Quick Fix |
-|----------|-------|----------|-----------|
-| **CRITICAL** | `SIGNAL_EXECUTION_ENABLED` defaults to false | `config.py:250` | `export SIGNAL_EXECUTION_ENABLED=true` |
-| **HIGH** | TFC Filter (EQUITY-62) rejects TFC < 3 for 1H | `daemon.py:794-823` | `export SIGNAL_TFC_FILTER_ENABLED=false` |
-| **MEDIUM** | TFC Re-eval threshold raised from 2 to 3 | `config.py:276` | `export SIGNAL_TFC_REEVAL_MIN_STRENGTH=2` |
-| **MEDIUM** | 1H TFC now checks 4 TFs, needs 3/4 | `timeframe_continuity.py:320-341` | May need code adjustment |
-| **MEDIUM** | Stale setup filter rejects valid 3-? patterns | `daemon.py:871-962` | Known issue from EQUITY-62 |
-| **LOW** | Missing `os` import in scanner | `paper_signal_scanner.py` | FIXED (commit 1c664f8) |
+1. **Check VPS logs for trade execution:**
+   ```bash
+   ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon --since today | grep -E 'ENTRY TRIGGERED|ORDER SUBMITTED|FILTER REJECTED|1D not aligned'"
+   ```
 
-### VPS Debug Commands
+2. **Verify TFC filter working correctly:**
+   - 3/4 or 4/4 TFC signals should pass
+   - 2/4 TFC signals should pass ONLY if 1D is aligned
+   - 1/4 or 0/4 TFC signals should be rejected
+
+3. **Validate TFC accuracy for rejected signals:**
+   - Pull rejected signals from logs
+   - Cross-reference with live bar classifications
+   - Confirm 1D alignment status matches reality
+
+### Success Criteria
+- At least one trade executes when a valid signal triggers
+- TFC 2/4 + 1D aligned signals pass filter
+- TFC 2/4 without 1D aligned are rejected with clear log message
+
+---
+
+## Session EQUITY-65: Pipeline Fixes Deployed (COMPLETE)
+
+**Date:** January 16, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - All fixes deployed to VPS
+**Commit:** 9e173a4
+
+### What Was Fixed
+
+| Fix | Description | Location |
+|-----|-------------|----------|
+| **ENV VAR** | SIGNAL_EXECUTION_ENABLED=true | VPS .env |
+| **ENV VAR** | SIGNAL_TFC_REEVAL_MIN_STRENGTH=2 | VPS .env |
+| **TFC Filter** | 2/4 TFC now passes if 1D aligned | daemon.py:794-851 |
+| **4H Staleness** | Added 4H staleness handling (4 hours) | daemon.py:948-953 |
+| **1H Staleness** | Extended window from 1h to 1.5h | daemon.py:940-946 |
+| **SignalContext** | Added aligned_timeframes field | paper_signal_scanner.py:69-70 |
+
+### TFC Filter Logic (EQUITY-65 Enhancement)
+
+Per STRAT "Control" concept, 1D represents immediate control for 1H trades:
+
+| TFC Score | 1D Status | Result | Rationale |
+|-----------|-----------|--------|-----------|
+| 4/4 | Any | PASS | Full alignment |
+| 3/4 | Any | PASS | Strong alignment |
+| 2/4 | Aligned (2U/2D/3) | PASS | Daily "control" supports trade |
+| 2/4 | Not aligned or Type 1 | FAIL | Fighting daily or in chop |
+| 1/4 | Any | FAIL | Weak alignment |
+| 0/4 | Any | FAIL | No alignment |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/paper_signal_scanner.py` | +aligned_timeframes to SignalContext (+4 uses) |
+| `strat/signal_automation/daemon.py` | TFC 2/4+1D filter, 4H staleness, 1H 1.5h window |
+
+### Tests
+
+- 65 signal automation tests passed (no regressions)
+
+### Deployment Commands
 
 ```bash
-# Check environment
-echo "SIGNAL_EXECUTION_ENABLED=$SIGNAL_EXECUTION_ENABLED"
-echo "SIGNAL_TFC_FILTER_ENABLED=$SIGNAL_TFC_FILTER_ENABLED"
+# ENV vars added
+ssh atlas@178.156.223.251 "echo 'SIGNAL_EXECUTION_ENABLED=true' >> /home/atlas/vectorbt-workspace/.env"
+ssh atlas@178.156.223.251 "echo 'SIGNAL_TFC_REEVAL_MIN_STRENGTH=2' >> /home/atlas/vectorbt-workspace/.env"
 
-# Search filter rejections
-sudo journalctl -u atlas-daemon --since today | grep -E "FILTER REJECTED|REEVAL REJECTED|STALE SETUP"
-
-# Run diagnostic
-python3 scripts/diagnose_pipeline_simple.py
+# Code deployed
+git push origin main
+ssh atlas@178.156.223.251 "cd /home/atlas/vectorbt-workspace && git pull origin main"
+ssh atlas@178.156.223.251 "sudo systemctl restart atlas-daemon"
 ```
-
-### Resources Created
-
-- `PIPELINE_DEBUG_FINDINGS.md` - Full investigation (branch `claude/debug-pipeline-trade-execution-3pqLW`)
-- `scripts/diagnose_pipeline_simple.py` - VPS diagnostic script
 
 ---
 
