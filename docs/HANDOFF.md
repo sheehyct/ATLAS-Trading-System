@@ -1,29 +1,64 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 15, 2026 (Session EQUITY-64)
+**Last Updated:** January 16, 2026 (Session EQUITY-64 continued)
 **Current Branch:** `main`
-**Phase:** Paper Trading - 1H Bar Alignment Bug FIXED
-**Status:** DEPLOYED - Critical bar alignment fix deployed to VPS
+**Phase:** Paper Trading - Pipeline Debug Investigation Complete
+**Status:** Fixes deployed, root causes identified
 
 ---
 
-## Next Session: EQUITY-65
+## Next Session: EQUITY-65 (PLAN MODE REQUIRED)
 
-### Priority 1: Stale Setup Filter Fix for 3-? Patterns (MEDIUM)
+### CRITICAL: Pipeline Not Executing Trades - Root Causes Identified
 
-From EQUITY-62 investigation: 3-? patterns have entry AFTER setup bar closes.
-Stale filter rejected valid 10:47 trigger as "stale" (setup bar was 9:30).
+Investigation on Jan 16 found **6 potential causes** for no trade execution:
 
-### Priority 2: Discord Alert Delay Investigation (LOW)
+| Priority | Cause | Location | Quick Fix |
+|----------|-------|----------|-----------|
+| **CRITICAL** | `SIGNAL_EXECUTION_ENABLED` defaults to false | `config.py:250` | `export SIGNAL_EXECUTION_ENABLED=true` |
+| **HIGH** | TFC Filter (EQUITY-62) rejects TFC < 3 for 1H | `daemon.py:794-823` | `export SIGNAL_TFC_FILTER_ENABLED=false` |
+| **MEDIUM** | TFC Re-eval threshold raised from 2 to 3 | `config.py:276` | `export SIGNAL_TFC_REEVAL_MIN_STRENGTH=2` |
+| **MEDIUM** | 1H TFC now checks 4 TFs, needs 3/4 | `timeframe_continuity.py:320-341` | May need code adjustment |
+| **MEDIUM** | Stale setup filter rejects valid 3-? patterns | `daemon.py:871-962` | Known issue from EQUITY-62 |
+| **LOW** | Missing `os` import in scanner | `paper_signal_scanner.py` | FIXED (commit 1c664f8) |
 
-From EQUITY-62: Discord alerts delayed ~1 hour. Investigate cause.
+### VPS Debug Commands
 
-### Priority 3: Monitor 1H Pattern Detection (VERIFICATION)
+```bash
+# Check environment
+echo "SIGNAL_EXECUTION_ENABLED=$SIGNAL_EXECUTION_ENABLED"
+echo "SIGNAL_TFC_FILTER_ENABLED=$SIGNAL_TFC_FILTER_ENABLED"
 
-Monitor live 1H pattern detection after EQUITY-64 fix to verify:
-- Bar timestamps show :30 (9:30, 10:30, 11:30)
-- Pattern classifications match TradingView
-- TFC scores are accurate
+# Search filter rejections
+sudo journalctl -u atlas-daemon --since today | grep -E "FILTER REJECTED|REEVAL REJECTED|STALE SETUP"
+
+# Run diagnostic
+python3 scripts/diagnose_pipeline_simple.py
+```
+
+### Resources Created
+
+- `PIPELINE_DEBUG_FINDINGS.md` - Full investigation (branch `claude/debug-pipeline-trade-execution-3pqLW`)
+- `scripts/diagnose_pipeline_simple.py` - VPS diagnostic script
+
+---
+
+## Session EQUITY-64 (continued): Pipeline Debug (Jan 16, 2026)
+
+**Commits:** 1c664f8 (os import fix)
+
+### Bug Fixed
+
+**Missing `os` import** in `paper_signal_scanner.py` - pre-existing bug since Dec 10, 2025.
+Caused `Error scanning SPY (resampled): cannot access local variable 'os'`.
+
+### Log Analysis (Today's Patterns)
+
+- **IWM 1H 3-? CALL** - Only signal that passed filters, but:
+  - Direction changed (CALL → PUT on opposite break)
+  - Rejected as **STALE** (setup 13:30, trigger 14:32)
+
+- All other patterns rejected for: TFC < 3, magnitude < 0.1%, R:R < 0.3, or pattern not allowed (2-2-2)
 
 ---
 
