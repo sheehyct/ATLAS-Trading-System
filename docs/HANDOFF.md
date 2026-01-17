@@ -1,38 +1,95 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 16, 2026 (Session EQUITY-67)
+**Last Updated:** January 17, 2026 (Session EQUITY-68)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Phase 1 Remediation Complete
-**Status:** EQUITY-67 COMPLETE - Crypto pipeline parity with equity achieved
+**Phase:** Paper Trading - Phase 3 Test Coverage In Progress
+**Status:** EQUITY-68 COMPLETE - Crypto test coverage +48 tests
 
 ---
 
-## Next Session: EQUITY-68 (TESTING + DEPLOYMENT)
+## Next Session: EQUITY-69 (TEST COVERAGE CONTINUED)
 
-### Priority 1: Deploy EQUITY-67 Changes to VPS
+### Priority 1: Monitor VPS for TFC REEVAL Logs
 
+Market opens Monday - verify EQUITY-67 features work:
 ```bash
-# Pull and restart
-ssh atlas@178.156.223.251 "cd /home/atlas/vectorbt-workspace && git pull origin main"
-ssh atlas@178.156.223.251 "sudo systemctl restart atlas-daemon"
+# Check TFC re-evaluation logs
+ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon --since today | grep 'TFC REEVAL'"
 
-# Verify TFC re-eval logs appear
-ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon --since '5 minutes ago' | grep 'TFC REEVAL'"
-```
-
-### Priority 2: Verify Pattern Invalidation
-
-Monitor crypto daemon for Type 3 evolution:
-```bash
+# Check for pattern invalidation (if any trades are open)
 ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon | grep 'PATTERN INVALIDATED'"
 ```
 
-### Priority 3: Test Coverage Planning (Phase 2)
+### Priority 2: Continue Phase 3 Test Coverage
 
-Identify minimal test suites for:
-- Crypto daemon (1,344 lines, CRITICAL)
-- Paper signal scanner (1,600 lines, CRITICAL)
-- Options module (1,500 lines, CRITICAL)
+Remaining critical untested modules:
+- `strat/paper_signal_scanner.py` (1,600 lines, CRITICAL)
+- `strat/options_module.py` (1,500 lines, CRITICAL)
+- `crypto/scanning/signal_scanner.py` (1,296 lines, CRITICAL)
+
+### Priority 3: Address Remaining Crypto Gaps (MEDIUM)
+
+- TFC Direction Flip Detection - MISSING
+- Pattern Registry Usage - NOT IMPORTED
+
+---
+
+## Session EQUITY-68: Phase 3 Test Coverage (COMPLETE)
+
+**Date:** January 17, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 48 new tests for crypto module
+
+### What Was Accomplished
+
+1. **VPS Deployment Verified**
+   - EQUITY-67 deployed (commit df08107)
+   - Daemon starts successfully
+
+2. **Created tests/test_crypto/ Directory**
+   - `__init__.py` - Package init
+   - `conftest.py` - Shared fixtures for mocking
+   - `test_position_monitor.py` - 25 tests
+   - `test_daemon_tfc_reeval.py` - 23 tests
+
+### Test Coverage Summary
+
+| File | Test File | Tests | Coverage Focus |
+|------|-----------|-------|----------------|
+| `crypto/simulation/position_monitor.py` | `test_position_monitor.py` | 25 | Pattern invalidation, exit priority, intrabar tracking |
+| `crypto/scanning/daemon.py` | `test_daemon_tfc_reeval.py` | 23 | TFC re-evaluation at entry |
+
+### Position Monitor Tests (25 tests)
+
+- **TestPatternInvalidationDetection** (9 tests): 2U/2D to Type 3, partial breaks, edge cases
+- **TestIntrabarTracking** (4 tests): High/low updates, accumulation
+- **TestExitPriority** (4 tests): Target > Pattern > Stop ordering
+- **TestExitExecution** (2 tests): Trade closure, exit reason
+- **TestCheckExitsIntegration** (3 tests): Multiple trades, empty trades
+- **TestSellSideExits** (3 tests): SELL position handling
+
+### Daemon TFC Re-eval Tests (23 tests)
+
+- **TestTFCReevalNoChange** (2 tests): Unchanged/improved TFC
+- **TestTFCReevalDegraded** (3 tests): Above/below threshold
+- **TestTFCReevalDirectionFlip** (4 tests): Bullish/bearish flip detection
+- **TestTFCReevalErrorHandling** (6 tests): Fail-open behavior
+- **TestTFCReevalConfigControl** (1 test): Disabled state
+- **TestTFCReevalEdgeCases** (6 tests): Missing data, boundary conditions
+- **TestTFCReevalFlipPriority** (1 test): Flip blocks despite good strength
+
+### Test Results
+
+```
+tests/test_crypto/ - 48 passed in 0.07s
+tests/test_strat/ tests/test_signal_automation/ - 413 passed, 2 skipped
+```
+
+### Technical Debt Plan Updated
+
+`C:\Users\sheeh\.claude\plans\sharded-foraging-puppy.md`:
+- Test Coverage Gaps: 42 -> 40 modules (2 now tested)
+- Phase 3 marked IN PROGRESS with EQUITY-68 progress notes
 
 ---
 
