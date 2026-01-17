@@ -1013,6 +1013,7 @@ class CryptoSignalScanner:
                         tfc_passes=tfc_assessment.passes_flexible,
                         risk_multiplier=tfc_assessment.risk_multiplier,
                         priority_rank=tfc_assessment.priority_rank,
+                        aligned_timeframes=tfc_assessment.aligned_timeframes or [],
                     )
 
                     signal = CryptoDetectedSignal(
@@ -1120,6 +1121,7 @@ class CryptoSignalScanner:
                     tfc_passes=tfc_assessment.passes_flexible,
                     risk_multiplier=tfc_assessment.risk_multiplier,
                     priority_rank=tfc_assessment.priority_rank,
+                    aligned_timeframes=tfc_assessment.aligned_timeframes or [],
                 )
 
                 signal = CryptoDetectedSignal(

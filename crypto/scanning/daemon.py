@@ -122,6 +122,12 @@ class CryptoDaemonConfig:
     api_host: str = '0.0.0.0'
     api_port: int = 8080
 
+    # TFC Re-evaluation at Entry (Session EQUITY-67 port from EQUITY-49)
+    tfc_reeval_enabled: bool = True
+    tfc_reeval_min_strength: int = 3  # Block entry if TFC drops below this
+    tfc_reeval_block_on_flip: bool = True  # Block if TFC direction flipped
+    tfc_reeval_log_always: bool = True  # Log comparison even when not blocking
+
 
 class CryptoSignalDaemon:
     """
@@ -331,6 +337,12 @@ class CryptoSignalDaemon:
             logger.warning(f"STALE SETUP REJECTED: {stale_reason}")
             return
 
+        # Session EQUITY-67: TFC re-evaluation at entry (ported from equity daemon)
+        should_block, block_reason = self._reevaluate_tfc_at_entry(signal)
+        if should_block:
+            logger.warning(f"TFC REEVAL BLOCKED: {signal.symbol} {signal.pattern_type} - {block_reason}")
+            return
+
         # Execute via paper trader if available
         if self.paper_trader is not None:
             try:
@@ -441,6 +453,144 @@ class CryptoSignalDaemon:
             )
 
         return False, ""
+
+    def _reevaluate_tfc_at_entry(
+        self, signal: CryptoDetectedSignal
+    ) -> tuple[bool, str]:
+        """
+        Re-evaluate TFC alignment at entry time and check if entry should be blocked.
+
+        Session EQUITY-67: Port of EQUITY-49 TFC re-evaluation for crypto.
+
+        TFC can change between pattern detection and entry trigger (hours/days later).
+        This method:
+        1. Re-evaluates TFC using current market data
+        2. Compares with original TFC at detection time
+        3. Logs the comparison for audit trail
+        4. Optionally blocks entry if TFC degraded significantly or flipped direction
+
+        Args:
+            signal: The detected signal about to be executed
+
+        Returns:
+            Tuple of (should_block: bool, reason: str)
+        """
+        # Check if TFC re-evaluation is enabled
+        if not self.config.tfc_reeval_enabled:
+            return False, ""
+
+        # Get original TFC data from signal context
+        original_strength = 0
+        original_alignment = ""
+        original_passes = False
+
+        if signal.context:
+            original_strength = signal.context.tfc_score or 0
+            original_alignment = signal.context.tfc_alignment or ""
+            original_passes = signal.context.tfc_passes or False
+
+        # Determine original direction from alignment string
+        original_tfc_direction = ""
+        if original_alignment and "BULLISH" in original_alignment.upper():
+            original_tfc_direction = "bullish"
+        elif original_alignment and "BEARISH" in original_alignment.upper():
+            original_tfc_direction = "bearish"
+        elif not original_alignment:
+            logger.debug(
+                f"TFC REEVAL: {signal.symbol} {signal.pattern_type} has no original TFC alignment - "
+                f"direction flip detection will be skipped"
+            )
+
+        # Re-evaluate TFC using current market data
+        # LONG = 1 (want 2U bars), SHORT = -1 (want 2D bars)
+        direction_int = 1 if signal.direction == "LONG" else -1
+
+        try:
+            current_tfc = self.scanner.evaluate_tfc(
+                symbol=signal.symbol,
+                detection_timeframe=signal.timeframe,
+                direction=direction_int,
+            )
+        except (ConnectionError, TimeoutError, ValueError) as e:
+            # Expected errors: network issues, data issues - log and proceed
+            logger.warning(
+                f"TFC REEVAL ERROR (recoverable): {signal.symbol} {signal.pattern_type} - "
+                f"{type(e).__name__}: {e} (proceeding with entry)"
+            )
+            self._error_count += 1
+            return False, ""
+        except Exception as e:
+            # Unexpected error - log as error, increment counter, but still proceed
+            # (fail-open to avoid blocking all entries on system errors)
+            logger.error(
+                f"TFC REEVAL UNEXPECTED ERROR: {signal.symbol} {signal.pattern_type} - "
+                f"{type(e).__name__}: {e} (proceeding with entry)"
+            )
+            self._error_count += 1
+            return False, ""
+
+        # Validate returned assessment
+        if current_tfc is None or not hasattr(current_tfc, "strength"):
+            logger.error(
+                f"TFC REEVAL: Invalid assessment returned for {signal.symbol} - proceeding with entry"
+            )
+            self._error_count += 1
+            return False, ""
+
+        current_strength = current_tfc.strength if current_tfc.strength is not None else 0
+        current_alignment = (
+            current_tfc.alignment_label()
+            if hasattr(current_tfc, "alignment_label")
+            else f"{current_strength}/?"
+        )
+        current_passes = getattr(current_tfc, "passes_flexible", False)
+        current_direction = getattr(current_tfc, "direction", "") or ""
+
+        # Calculate strength change
+        strength_delta = current_strength - original_strength
+
+        # Detect direction flip (e.g., bullish -> bearish)
+        direction_flipped = False
+        if original_tfc_direction and current_direction:
+            direction_flipped = original_tfc_direction != current_direction
+        elif not original_tfc_direction and current_direction:
+            # Can't detect flip without original direction - log at debug level
+            logger.debug(
+                f"TFC REEVAL: {signal.symbol} {signal.pattern_type} - direction flip detection skipped "
+                f"(no original TFC direction in signal)"
+            )
+
+        # Build comparison log message
+        comparison = (
+            f"TFC REEVAL: {signal.symbol} {signal.pattern_type} {signal.direction} | "
+            f"Original: {original_alignment or 'N/A'} (score={original_strength}, passes={original_passes}) | "
+            f"Current: {current_alignment} (score={current_strength}, passes={current_passes}) | "
+            f"Delta: {strength_delta:+d} | "
+            f"Flipped: {direction_flipped}"
+        )
+
+        # Always log if configured
+        if self.config.tfc_reeval_log_always:
+            if strength_delta < 0 or direction_flipped:
+                logger.warning(comparison)
+            else:
+                logger.info(comparison)
+
+        # Determine if entry should be blocked
+        should_block = False
+        block_reason = ""
+
+        # Block if direction flipped (most severe)
+        if direction_flipped and self.config.tfc_reeval_block_on_flip:
+            should_block = True
+            block_reason = f"TFC direction flipped from {original_tfc_direction} to {current_direction}"
+
+        # Block if strength dropped below minimum threshold
+        elif current_strength < self.config.tfc_reeval_min_strength:
+            should_block = True
+            block_reason = f"TFC strength {current_strength} < min threshold {self.config.tfc_reeval_min_strength}"
+
+        return should_block, block_reason
 
     def _execute_trade(self, event: CryptoTriggerEvent) -> None:
         """
@@ -575,6 +725,9 @@ class CryptoSignalDaemon:
             )
 
         # Execute via paper trader with stop/target for position monitoring
+        # Session EQUITY-67: Determine entry bar type from direction for pattern invalidation
+        entry_bar_type = "2U" if direction == "LONG" else "2D"
+
         try:
             trade = self.paper_trader.open_trade(
                 symbol=signal.symbol,
@@ -588,6 +741,10 @@ class CryptoSignalDaemon:
                 tfc_score=signal.context.tfc_score,  # Session CRYPTO-9
                 risk_multiplier=risk_multiplier,
                 leverage=implied_leverage,  # Session EQUITY-34: margin tracking
+                # Session EQUITY-67: Pattern invalidation tracking
+                entry_bar_type=entry_bar_type,
+                entry_bar_high=signal.setup_bar_high,
+                entry_bar_low=signal.setup_bar_low,
             )
 
             # Session EQUITY-34: Check if trade was rejected due to insufficient margin

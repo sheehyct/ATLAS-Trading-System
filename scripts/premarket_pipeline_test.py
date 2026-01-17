@@ -46,7 +46,7 @@ import pytz
 try:
     from dotenv import load_dotenv
     load_dotenv()
-except:
+except (ImportError, OSError):
     # Load manually if dotenv fails
     if os.path.exists('.env'):
         with open('.env', 'r') as f:

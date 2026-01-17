@@ -113,6 +113,11 @@ class CryptoPositionMonitor:
         """
         Check if a trade should be exited.
 
+        Exit Priority (per STRAT methodology - Session EQUITY-67):
+        1. Target Hit (highest priority)
+        2. Pattern Invalidated (Type 3 evolution)
+        3. Stop Hit (lowest priority)
+
         Args:
             trade: Trade to check
             current_price: Current market price
@@ -120,11 +125,7 @@ class CryptoPositionMonitor:
         Returns:
             ExitSignal if exit condition met, None otherwise
         """
-        if not trade.stop_price and not trade.target_price:
-            # No stop/target set, nothing to monitor
-            return None
-
-        # Calculate unrealized P&L
+        # Calculate unrealized P&L (needed for all exit types)
         if trade.side == "BUY":
             unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
         else:
@@ -134,7 +135,34 @@ class CryptoPositionMonitor:
             unrealized_pnl / (trade.entry_price * trade.quantity)
         ) * 100
 
-        # Check stop loss
+        # Priority 1: Check target (highest priority exit)
+        if trade.target_price:
+            target_hit = False
+            if trade.side == "BUY" and current_price >= trade.target_price:
+                target_hit = True
+            elif trade.side == "SELL" and current_price <= trade.target_price:
+                target_hit = True
+
+            if target_hit:
+                logger.info(
+                    f"TARGET HIT: {trade.trade_id} {trade.symbol} @ {current_price:.2f} "
+                    f"(target: {trade.target_price:.2f}, P&L: ${unrealized_pnl:.2f})"
+                )
+                return ExitSignal(
+                    trade=trade,
+                    reason="TARGET",
+                    current_price=current_price,
+                    trigger_price=trade.target_price,
+                    unrealized_pnl=unrealized_pnl,
+                    unrealized_pnl_percent=unrealized_pnl_percent,
+                )
+
+        # Priority 2: Check pattern invalidation (Type 3 evolution)
+        invalidation_signal = self._check_pattern_invalidation(trade, current_price)
+        if invalidation_signal:
+            return invalidation_signal
+
+        # Priority 3: Check stop loss (lowest priority)
         if trade.stop_price:
             stop_hit = False
             if trade.side == "BUY" and current_price <= trade.stop_price:
@@ -156,27 +184,68 @@ class CryptoPositionMonitor:
                     unrealized_pnl_percent=unrealized_pnl_percent,
                 )
 
-        # Check target
-        if trade.target_price:
-            target_hit = False
-            if trade.side == "BUY" and current_price >= trade.target_price:
-                target_hit = True
-            elif trade.side == "SELL" and current_price <= trade.target_price:
-                target_hit = True
+        return None
 
-            if target_hit:
-                logger.info(
-                    f"TARGET HIT: {trade.trade_id} {trade.symbol} @ {current_price:.2f} "
-                    f"(target: {trade.target_price:.2f}, P&L: ${unrealized_pnl:.2f})"
-                )
-                return ExitSignal(
-                    trade=trade,
-                    reason="TARGET",
-                    current_price=current_price,
-                    trigger_price=trade.target_price,
-                    unrealized_pnl=unrealized_pnl,
-                    unrealized_pnl_percent=unrealized_pnl_percent,
-                )
+    def _check_pattern_invalidation(
+        self, trade: SimulatedTrade, current_price: float
+    ) -> Optional[ExitSignal]:
+        """
+        Check if entry bar evolved to Type 3 (pattern invalidation).
+
+        Session EQUITY-67: Ported from equity position monitor (EQUITY-44/48).
+
+        Per STRAT methodology, if entry bar breaks BOTH high AND low,
+        the pattern premise is invalidated - exit immediately.
+
+        Args:
+            trade: Trade to check
+            current_price: Current market price
+
+        Returns:
+            ExitSignal if pattern invalidated, None otherwise
+        """
+        # Skip if not a Type 2 entry or missing setup bar data
+        if trade.entry_bar_type not in ("2U", "2D"):
+            return None
+
+        if trade.entry_bar_high <= 0 or trade.entry_bar_low <= 0:
+            return None
+
+        # Update intrabar extremes
+        if current_price > trade.intrabar_high:
+            trade.intrabar_high = current_price
+        if current_price < trade.intrabar_low:
+            trade.intrabar_low = current_price
+
+        # Check for Type 3 evolution: broke BOTH setup bar high AND low
+        broke_high = trade.intrabar_high > trade.entry_bar_high
+        broke_low = trade.intrabar_low < trade.entry_bar_low
+
+        if broke_high and broke_low:
+            # Pattern invalidated! Entry bar evolved to Type 3
+            if trade.side == "BUY":
+                unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
+            else:
+                unrealized_pnl = (trade.entry_price - current_price) * trade.quantity
+
+            unrealized_pnl_percent = (
+                unrealized_pnl / (trade.entry_price * trade.quantity)
+            ) * 100
+
+            logger.warning(
+                f"PATTERN INVALIDATED: {trade.trade_id} {trade.symbol} - "
+                f"Entry bar evolved to Type 3: Setup H=${trade.entry_bar_high:.2f} L=${trade.entry_bar_low:.2f}, "
+                f"Intrabar H=${trade.intrabar_high:.2f} L=${trade.intrabar_low:.2f}"
+            )
+
+            return ExitSignal(
+                trade=trade,
+                reason="PATTERN",  # Pattern invalidated
+                current_price=current_price,
+                trigger_price=0.0,  # Not applicable for pattern invalidation
+                unrealized_pnl=unrealized_pnl,
+                unrealized_pnl_percent=unrealized_pnl_percent,
+            )
 
         return None
 

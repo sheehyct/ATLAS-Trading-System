@@ -6,7 +6,7 @@ Adapted from strat/paper_signal_scanner.py for crypto perpetual futures.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 
 @dataclass
@@ -29,6 +29,7 @@ class CryptoSignalContext:
     tfc_passes: bool = False
     risk_multiplier: float = 1.0
     priority_rank: int = 0
+    aligned_timeframes: Optional[List[str]] = None  # e.g., ['1d', '1w'] for 2/4+1D filter
 
 
 @dataclass
@@ -105,5 +106,6 @@ class CryptoDetectedSignal:
                 "tfc_passes": self.context.tfc_passes,
                 "risk_multiplier": self.context.risk_multiplier,
                 "priority_rank": self.context.priority_rank,
+                "aligned_timeframes": self.context.aligned_timeframes or [],
             },
         }

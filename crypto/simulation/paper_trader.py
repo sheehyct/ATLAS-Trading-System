@@ -41,6 +41,12 @@ class SimulatedTrade:
     priority_rank: int = 0  # Session EQUITY-40: Priority for trade queueing
     # Session EQUITY-34: Margin tracking
     margin_reserved: float = 0.0  # Margin reserved for this position
+    # Session EQUITY-67: Pattern invalidation tracking (ported from equity)
+    entry_bar_type: str = ""  # '2U', '2D', or '3' - entry bar classification
+    entry_bar_high: float = 0.0  # Setup bar high for Type 3 detection
+    entry_bar_low: float = 0.0  # Setup bar low for Type 3 detection
+    intrabar_high: float = 0.0  # Highest price since entry
+    intrabar_low: float = float("inf")  # Lowest price since entry
 
     def close(self, exit_price: float, exit_time: Optional[datetime] = None) -> None:
         """
@@ -85,6 +91,12 @@ class SimulatedTrade:
             "risk_multiplier": self.risk_multiplier,
             "priority_rank": self.priority_rank,  # Session EQUITY-40
             "margin_reserved": self.margin_reserved,  # Session EQUITY-34
+            # Session EQUITY-67: Pattern invalidation tracking
+            "entry_bar_type": self.entry_bar_type,
+            "entry_bar_high": self.entry_bar_high,
+            "entry_bar_low": self.entry_bar_low,
+            "intrabar_high": self.intrabar_high,
+            "intrabar_low": self.intrabar_low if self.intrabar_low != float("inf") else 0.0,
         }
 
     @classmethod
@@ -107,6 +119,12 @@ class SimulatedTrade:
             risk_multiplier=data.get("risk_multiplier", 1.0),
             priority_rank=data.get("priority_rank", 0),  # Session EQUITY-40
             margin_reserved=data.get("margin_reserved", 0.0),  # Session EQUITY-34
+            # Session EQUITY-67: Pattern invalidation tracking
+            entry_bar_type=data.get("entry_bar_type", ""),
+            entry_bar_high=data.get("entry_bar_high", 0.0),
+            entry_bar_low=data.get("entry_bar_low", 0.0),
+            intrabar_high=data.get("intrabar_high", 0.0),
+            intrabar_low=data.get("intrabar_low") if data.get("intrabar_low", 0.0) > 0 else float("inf"),
         )
         if data.get("exit_price"):
             trade.exit_price = data["exit_price"]
@@ -194,6 +212,10 @@ class PaperTrader:
         risk_multiplier: float = 1.0,
         priority_rank: int = 0,
         leverage: float = 4.0,
+        # Session EQUITY-67: Pattern invalidation tracking
+        entry_bar_type: str = "",
+        entry_bar_high: float = 0.0,
+        entry_bar_low: float = 0.0,
     ) -> Optional[SimulatedTrade]:
         """
         Open a new simulated trade with margin reservation.
@@ -260,6 +282,12 @@ class PaperTrader:
             risk_multiplier=risk_multiplier,
             priority_rank=priority_rank,
             margin_reserved=margin_required,
+            # Session EQUITY-67: Pattern invalidation tracking
+            entry_bar_type=entry_bar_type,
+            entry_bar_high=entry_bar_high,
+            entry_bar_low=entry_bar_low,
+            intrabar_high=entry_price,  # Initialize with entry price
+            intrabar_low=entry_price,  # Initialize with entry price
         )
 
         # Reserve margin (Session EQUITY-34)
