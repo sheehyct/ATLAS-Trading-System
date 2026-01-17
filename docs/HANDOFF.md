@@ -1,37 +1,152 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 16, 2026 (Session EQUITY-65)
+**Last Updated:** January 16, 2026 (Session EQUITY-67)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Pipeline Fixes Deployed
-**Status:** EQUITY-65 COMPLETE - Trades should now execute
+**Phase:** Paper Trading - Phase 1 Remediation Complete
+**Status:** EQUITY-67 COMPLETE - Crypto pipeline parity with equity achieved
 
 ---
 
-## Next Session: EQUITY-66 (MONITORING)
+## Next Session: EQUITY-68 (TESTING + DEPLOYMENT)
 
-### Monitor Trade Execution
+### Priority 1: Deploy EQUITY-67 Changes to VPS
 
-EQUITY-65 fixed the pipeline blockages. Next session should:
+```bash
+# Pull and restart
+ssh atlas@178.156.223.251 "cd /home/atlas/vectorbt-workspace && git pull origin main"
+ssh atlas@178.156.223.251 "sudo systemctl restart atlas-daemon"
 
-1. **Check VPS logs for trade execution:**
-   ```bash
-   ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon --since today | grep -E 'ENTRY TRIGGERED|ORDER SUBMITTED|FILTER REJECTED|1D not aligned'"
-   ```
+# Verify TFC re-eval logs appear
+ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon --since '5 minutes ago' | grep 'TFC REEVAL'"
+```
 
-2. **Verify TFC filter working correctly:**
-   - 3/4 or 4/4 TFC signals should pass
-   - 2/4 TFC signals should pass ONLY if 1D is aligned
-   - 1/4 or 0/4 TFC signals should be rejected
+### Priority 2: Verify Pattern Invalidation
 
-3. **Validate TFC accuracy for rejected signals:**
-   - Pull rejected signals from logs
-   - Cross-reference with live bar classifications
-   - Confirm 1D alignment status matches reality
+Monitor crypto daemon for Type 3 evolution:
+```bash
+ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon | grep 'PATTERN INVALIDATED'"
+```
 
-### Success Criteria
-- At least one trade executes when a valid signal triggers
-- TFC 2/4 + 1D aligned signals pass filter
-- TFC 2/4 without 1D aligned are rejected with clear log message
+### Priority 3: Test Coverage Planning (Phase 2)
+
+Identify minimal test suites for:
+- Crypto daemon (1,344 lines, CRITICAL)
+- Paper signal scanner (1,600 lines, CRITICAL)
+- Options module (1,500 lines, CRITICAL)
+
+---
+
+## Session EQUITY-67: Crypto Pipeline Remediation (COMPLETE)
+
+**Date:** January 16, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 5 crypto pipeline gaps fixed
+**Commit:** 3d138c2
+
+### What Was Fixed
+
+| Fix | Description | Location |
+|-----|-------------|----------|
+| **Bare Except** | `except:` to `except (ImportError, OSError):` | `scripts/premarket_pipeline_test.py:49` |
+| **aligned_timeframes** | Added field to CryptoSignalContext | `crypto/scanning/models.py:32` |
+| **TFC Re-evaluation** | Ported from equity daemon (EQUITY-49) | `crypto/scanning/daemon.py:454-597` |
+| **Pattern Invalidation** | Type 3 evolution detection for crypto | `crypto/simulation/position_monitor.py:189-248` |
+| **Exit Priority** | Target > Pattern > Stop per STRAT | `crypto/simulation/position_monitor.py:110-186` |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `scripts/premarket_pipeline_test.py` | Bare except fix |
+| `crypto/scanning/models.py` | +aligned_timeframes field, +to_dict |
+| `crypto/scanning/signal_scanner.py` | +aligned_timeframes in context creation |
+| `crypto/scanning/daemon.py` | +TFC re-eval config, +_reevaluate_tfc_at_entry(), +entry bar data |
+| `crypto/simulation/paper_trader.py` | +5 entry bar tracking fields |
+| `crypto/simulation/position_monitor.py` | +_check_pattern_invalidation(), +exit priority |
+
+### TFC Re-evaluation Config (New)
+
+```python
+# TFC Re-evaluation at Entry (Session EQUITY-67)
+tfc_reeval_enabled: bool = True
+tfc_reeval_min_strength: int = 3
+tfc_reeval_block_on_flip: bool = True
+tfc_reeval_log_always: bool = True
+```
+
+### Pattern Invalidation Logic
+
+Per STRAT methodology, if entry bar breaks BOTH high AND low (evolves to Type 3), exit immediately:
+
+```
+Exit Priority:
+1. TARGET HIT (highest) - take profits first
+2. PATTERN INVALIDATED - Type 3 evolution
+3. STOP HIT (lowest) - normal stop loss
+```
+
+### Tests
+
+- 413 tests passed (no regressions)
+
+---
+
+## Session EQUITY-66: Technical Debt Audit (COMPLETE)
+
+**Date:** January 16, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Comprehensive audit created
+**Plan File:** `sharded-foraging-puppy.md`
+
+### What Was Accomplished
+
+Comprehensive technical debt inventory across entire codebase:
+
+| Category | Findings |
+|----------|----------|
+| TODO/FIXME Markers | 2 (MEDIUM) |
+| Crypto Pipeline Gaps | 5 (3 HIGH, 2 MEDIUM) |
+| Test Coverage Gaps | 42 modules with ZERO tests |
+| God Classes | 7 files >1000 lines |
+| Long Functions | 8+ functions >100 lines |
+| Duplicate Code | 4 major patterns (crypto/equity) |
+| Missing Abstractions | 4 base classes needed |
+| Hardcoded Values | 20+ magic numbers |
+| Broad Exceptions | 17 (mostly LOW with fallbacks) |
+| Bare Except Blocks | 1 (HIGH) |
+| STRAT Compliance | 5 items to verify |
+
+### Critical Findings
+
+**1. Crypto Pipeline Gaps (HIGH):**
+- Type 3 pattern invalidation - MISSING (crypto holds invalid patterns)
+- TFC re-evaluation at entry - MISSING (crypto enters on stale TFC)
+- aligned_timeframes field - MISSING from CryptoSignalContext
+
+**2. Test Coverage (CRITICAL):**
+- Crypto module: 100% untested (13 modules, 6,000+ lines)
+- Dashboard module: 100% untested (21 modules, 11,000+ lines)
+- Estimated overall coverage: <30%
+
+**3. Architecture Debt (HIGH):**
+- SignalDaemon: 2,040 lines (god class)
+- No shared base classes for entry/position monitors
+- 60% code duplication between crypto and equity pipelines
+
+### Remediation Plan (4 Phases)
+
+| Phase | Focus | Timeframe |
+|-------|-------|-----------|
+| 1 | Critical crypto gaps + bare except | Week 1-2 |
+| 2 | Architecture stabilization (base classes) | Week 3-4 |
+| 3 | Test coverage (crypto, scanner, options) | Week 5-8 |
+| 4 | Code quality (split god classes) | Ongoing |
+
+### Files Created
+
+| File | Description |
+|------|-------------|
+| `C:\Users\sheeh\.claude\plans\sharded-foraging-puppy.md` | Full technical debt inventory |
 
 ---
 
