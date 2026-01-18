@@ -1,28 +1,113 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 18, 2026 (Session EQUITY-71)
+**Last Updated:** January 18, 2026 (Session EQUITY-72)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 3 Test Coverage In Progress
-**Status:** EQUITY-71 COMPLETE - +168 tests (executor + signal_store + tiingo)
+**Status:** EQUITY-72 COMPLETE - +205 tests (entry_monitor + coinbase_client + paper_trader)
 
 ---
 
-## Next Session: EQUITY-72 (TEST COVERAGE CONTINUED)
+## Next Session: EQUITY-73 (TEST COVERAGE CONTINUED)
 
-### Priority 1: Continue Phase 3 Test Coverage
-
-Remaining high-priority untested modules:
-- `crypto/scanning/entry_monitor.py` (617 lines)
-- `crypto/exchange/coinbase_client.py` (793 lines)
-- `crypto/simulation/paper_trader.py` (599 lines)
-
-### Priority 2: Dashboard Functional Tests
+### Priority 1: Dashboard Functional Tests
 
 Move beyond smoke tests to actual functionality testing.
 
-### Priority 3: God Class Refactoring Prep (Phase 4)
+### Priority 2: God Class Refactoring Prep (Phase 4)
 
 When test coverage sufficient - signal_scanner.py, daemon.py
+
+### Priority 3: Additional Test Coverage
+
+Consider remaining modules:
+- `strat/paper_signal_scanner.py` - deeper functional tests
+- `crypto/daemon.py` - daemon lifecycle tests
+
+---
+
+## Session EQUITY-72: Phase 3 Test Coverage (COMPLETE)
+
+**Date:** January 18, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 205 new tests for entry_monitor, coinbase_client, paper_trader
+
+### What Was Accomplished
+
+1. **Created tests/test_crypto/test_entry_monitor.py (72 tests)**
+   - TIMEFRAME_PRIORITY constant tests (2 tests)
+   - CryptoTriggerEvent dataclass tests (6 tests)
+   - CryptoEntryMonitorConfig tests (2 tests)
+   - Initialization tests (4 tests)
+   - Maintenance window tests (7 tests)
+   - Signal management tests (10 tests)
+   - Get pending signals tests (3 tests)
+   - Expired signal tests (3 tests)
+   - Price fetching tests (5 tests)
+   - Trigger detection tests - LONG/SHORT/opposite/no trigger (14 tests)
+   - Background monitoring tests (5 tests)
+   - Monitor loop tests (5 tests)
+   - Statistics and status tests (4 tests)
+   - Thread safety tests (2 tests)
+   - Pattern resolution tests (3 tests)
+
+2. **Created tests/test_crypto/test_coinbase_client.py (69 tests)**
+   - Initialization tests (5 tests)
+   - Granularity mapping tests (6 tests)
+   - DataFrame building tests (3 tests)
+   - Resample OHLCV tests (2 tests)
+   - Parse candles response tests (3 tests)
+   - Get current price tests (4 tests)
+   - Get historical OHLCV tests (3 tests)
+   - Account info tests (3 tests)
+   - Create order tests (5 tests)
+   - Build order config tests (6 tests)
+   - Cancel order tests (2 tests)
+   - Get open orders tests (3 tests)
+   - Update mock position tests (5 tests)
+   - Get position tests (3 tests)
+   - Paper trading utilities tests (4 tests)
+   - Object conversion tests (6 tests)
+   - Edge cases tests (5 tests)
+
+3. **Created tests/test_crypto/test_paper_trader.py (64 tests)**
+   - SimulatedTrade creation tests (3 tests)
+   - SimulatedTrade close tests (6 tests)
+   - SimulatedTrade serialization tests (5 tests)
+   - PaperTradingAccount tests (2 tests)
+   - PaperTrader initialization tests (5 tests)
+   - Open trade tests (7 tests)
+   - Close trade tests (4 tests)
+   - Close all trades tests (3 tests)
+   - Get available balance tests (2 tests)
+   - Get open position tests (4 tests)
+   - Get account summary tests (2 tests)
+   - Performance metrics tests (4 tests)
+   - Trade history tests (3 tests)
+   - Persistence tests (4 tests)
+   - Reset tests (5 tests)
+   - Edge cases tests (5 tests)
+
+### Test Results
+
+- 205 new tests (72 + 69 + 64)
+- 1,779 total tests passing (up from 1,574)
+- No regressions
+- 9 pre-existing flaky regime tests unchanged
+
+### Phase 3 Running Total
+
+- EQUITY-68: 48 tests (daemon TFC, position monitor)
+- EQUITY-69: 91 tests (paper_signal_scanner, options_module)
+- EQUITY-70: 212 tests (crypto signal_scanner + sizing + state + dashboard smoke)
+- EQUITY-71: 168 tests (executor + signal_store + tiingo_data_fetcher)
+- EQUITY-72: 205 tests (entry_monitor + coinbase_client + paper_trader)
+- **Total: 724 new tests**
+
+### Files Created
+
+- `tests/test_crypto/test_entry_monitor.py` (72 tests)
+- `tests/test_crypto/test_coinbase_client.py` (69 tests)
+- `tests/test_crypto/test_paper_trader.py` (64 tests)
 
 ---
 
