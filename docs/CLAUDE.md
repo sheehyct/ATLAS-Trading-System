@@ -18,8 +18,9 @@
 |-------|----------|-------------|
 | `strat-methodology` | `C:/Users/sheeh/.claude/skills/strat-methodology/` | ANY STRAT pattern detection, bar classification, options entry/exit, timeframe analysis |
 | `thetadata-api` | `C:/Users/sheeh/.claude/skills/thetadata-api/` | ANY ThetaData API call, debugging 472/500 errors, Greeks endpoints, options data fetching |
+| `backtesting-validation` | `C:/Users/sheeh/.claude/skills/backtesting-validation/` | ANY VPS deployment, new strategy implementation, backtest evaluation, signal detection changes |
 
-**Why mandatory:** Previous sessions repeatedly made the same mistakes (wrong endpoints, wrong formats, wrong error handling) that these skills prevent. Skipping skill invocation = bugs that waste hours to debug.
+**Why mandatory:** Previous sessions repeatedly made the same mistakes (wrong endpoints, wrong formats, wrong error handling, timezone bugs, live bar detection errors) that these skills prevent. Skipping skill invocation = bugs that waste hours to debug.
 
 **How to invoke:** Use the Skill tool with skill name (e.g., `Skill: strat-methodology`)
 

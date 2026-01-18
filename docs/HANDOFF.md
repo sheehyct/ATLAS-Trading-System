@@ -1,34 +1,108 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 18, 2026 (Session EQUITY-70)
+**Last Updated:** January 18, 2026 (Session EQUITY-71)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 3 Test Coverage In Progress
-**Status:** EQUITY-70 IN PROGRESS - +212 tests (156 crypto + 56 dashboard smoke)
+**Status:** EQUITY-71 COMPLETE - +168 tests (executor + signal_store + tiingo)
 
 ---
 
-## Next Session: EQUITY-71 (TEST COVERAGE CONTINUED)
+## Next Session: EQUITY-72 (TEST COVERAGE CONTINUED)
 
-### Priority 1: Dashboard Smoke Tests
+### Priority 1: Continue Phase 3 Test Coverage
 
-21 untested dashboard modules (~11,000 lines):
-- Start with core components: `app.py`, `config.py`
-- Then panels: `strat_analytics_panel.py`, `risk_panel.py`
-- Finally data loaders: `options_loader.py`, `live_loader.py`
+Remaining high-priority untested modules:
+- `crypto/scanning/entry_monitor.py` (617 lines)
+- `crypto/exchange/coinbase_client.py` (793 lines)
+- `crypto/simulation/paper_trader.py` (599 lines)
 
-### Priority 2: Monitor VPS at Market Open
+### Priority 2: Dashboard Functional Tests
 
-TFC REEVAL working correctly (verified EQUITY-69):
-- QBTS, PLTR entries rejected with TFC 2/3 < threshold 3
-- No PATTERN INVALIDATED events (no active trades)
+Move beyond smoke tests to actual functionality testing.
+
+### Priority 3: God Class Refactoring Prep (Phase 4)
+
+When test coverage sufficient - signal_scanner.py, daemon.py
 
 ---
 
-## Session EQUITY-70: Phase 3 Test Coverage (IN PROGRESS)
+## Session EQUITY-71: Phase 3 Test Coverage (COMPLETE)
 
 **Date:** January 18, 2026
 **Environment:** Claude Code Desktop (Opus 4.5)
-**Status:** IN PROGRESS - 212 new tests (156 crypto + 56 dashboard smoke)
+**Status:** COMPLETE - 168 new tests for executor, signal_store, tiingo_data_fetcher
+
+### What Was Accomplished
+
+1. **Created tests/test_signal_automation/test_executor.py (65 tests)**
+   - ExecutionState enum tests (2 tests)
+   - ExecutionResult serialization tests (7 tests)
+   - ExecutorConfig tests (2 tests)
+   - SignalExecutor initialization tests (4 tests)
+   - Connection tests (3 tests)
+   - Persistence tests (4 tests)
+   - Execute signal flow tests (13 tests)
+   - Filter tests (6 tests)
+   - Position sizing tests (4 tests)
+   - Contract selection tests (4 tests)
+   - Helper method tests (12 tests)
+   - Thread safety tests (2 tests)
+   - Error handling tests (4 tests)
+
+2. **Created tests/test_signal_automation/test_signal_store.py (70 tests)**
+   - SignalStatus and SignalType enums (5 tests)
+   - TIMEFRAME_PRIORITY constant (2 tests)
+   - StoredSignal properties (4 tests)
+   - StoredSignal serialization (4 tests)
+   - StoredSignal.generate_key (5 tests)
+   - StoredSignal.from_detected_signal (4 tests)
+   - SignalStore initialization (4 tests)
+   - Persistence tests (1 test)
+   - Add signal tests (2 tests)
+   - Deduplication tests (4 tests)
+   - Lifecycle tests (mark_alerted, triggered, etc.) (10 tests)
+   - OSI symbol index tests (5 tests)
+   - Query method tests (16 tests)
+   - Cleanup tests (2 tests)
+   - Statistics tests (2 tests)
+
+3. **Created tests/test_integrations/test_tiingo_data_fetcher.py (33 tests)**
+   - Initialization tests (3 tests)
+   - Fetch single/multiple symbols (5 tests)
+   - Timeframe conversion (12 parametrized tests)
+   - Caching behavior (3 tests)
+   - Update cache tests (3 tests)
+   - Clear cache tests (3 tests)
+   - VBT Data output tests (3 tests)
+
+### Test Results
+
+- 168 new tests (65 + 70 + 33)
+- 1,574 total tests passing (up from 1,406)
+- No regressions
+- 9 pre-existing flaky regime tests unchanged
+
+### Phase 3 Running Total
+
+- EQUITY-68: 48 tests (daemon TFC, position monitor)
+- EQUITY-69: 91 tests (paper_signal_scanner, options_module)
+- EQUITY-70: 212 tests (crypto signal_scanner + sizing + state + dashboard smoke)
+- EQUITY-71: 168 tests (executor + signal_store + tiingo_data_fetcher)
+- **Total: 519 new tests**
+
+### Files Created
+
+- `tests/test_signal_automation/test_executor.py` (65 tests)
+- `tests/test_signal_automation/test_signal_store.py` (70 tests)
+- `tests/test_integrations/test_tiingo_data_fetcher.py` (33 tests)
+
+---
+
+## Session EQUITY-70: Phase 3 Test Coverage (COMPLETE)
+
+**Date:** January 18, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 212 new tests (156 crypto + 56 dashboard smoke)
 
 ### What Was Accomplished
 
