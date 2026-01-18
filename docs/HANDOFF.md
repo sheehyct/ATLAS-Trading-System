@@ -1,36 +1,161 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 17, 2026 (Session EQUITY-68)
+**Last Updated:** January 18, 2026 (Session EQUITY-70)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 3 Test Coverage In Progress
-**Status:** EQUITY-68 COMPLETE - Crypto test coverage +48 tests
+**Status:** EQUITY-70 IN PROGRESS - +212 tests (156 crypto + 56 dashboard smoke)
 
 ---
 
-## Next Session: EQUITY-69 (TEST COVERAGE CONTINUED)
+## Next Session: EQUITY-71 (TEST COVERAGE CONTINUED)
 
-### Priority 1: Monitor VPS for TFC REEVAL Logs
+### Priority 1: Dashboard Smoke Tests
 
-Market opens Monday - verify EQUITY-67 features work:
-```bash
-# Check TFC re-evaluation logs
-ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon --since today | grep 'TFC REEVAL'"
+21 untested dashboard modules (~11,000 lines):
+- Start with core components: `app.py`, `config.py`
+- Then panels: `strat_analytics_panel.py`, `risk_panel.py`
+- Finally data loaders: `options_loader.py`, `live_loader.py`
 
-# Check for pattern invalidation (if any trades are open)
-ssh atlas@178.156.223.251 "sudo journalctl -u atlas-daemon | grep 'PATTERN INVALIDATED'"
-```
+### Priority 2: Monitor VPS at Market Open
 
-### Priority 2: Continue Phase 3 Test Coverage
+TFC REEVAL working correctly (verified EQUITY-69):
+- QBTS, PLTR entries rejected with TFC 2/3 < threshold 3
+- No PATTERN INVALIDATED events (no active trades)
 
-Remaining critical untested modules:
-- `strat/paper_signal_scanner.py` (1,600 lines, CRITICAL)
-- `strat/options_module.py` (1,500 lines, CRITICAL)
-- `crypto/scanning/signal_scanner.py` (1,296 lines, CRITICAL)
+---
 
-### Priority 3: Address Remaining Crypto Gaps (MEDIUM)
+## Session EQUITY-70: Phase 3 Test Coverage (IN PROGRESS)
 
-- TFC Direction Flip Detection - MISSING
-- Pattern Registry Usage - NOT IMPORTED
+**Date:** January 18, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** IN PROGRESS - 212 new tests (156 crypto + 56 dashboard smoke)
+
+### What Was Accomplished
+
+1. **Created tests/test_crypto/test_signal_scanner.py (78 tests)**
+   - Maintenance window detection (7 tests)
+   - Maintenance overlap checking (6 tests)
+   - ATR calculation (3 tests)
+   - Volume ratio calculation (5 tests)
+   - Market context (4 tests)
+   - Bar sequence formatting (7 tests)
+   - Pattern detection (7 tests)
+   - Setup detection (6 tests)
+   - Public scanning methods (9 tests)
+   - TFC evaluation (3 tests)
+   - Output methods (8 tests)
+   - Convenience functions (3 tests)
+   - Data fetching (5 tests)
+   - Edge cases (5 tests)
+
+2. **Verified TFC risk_multiplier Bug Already Fixed**
+   - Bug was fixed in EQUITY-42 (commit 16cd4e1)
+   - VPS signals verified: correct risk_multiplier values (0.5 for TFC 3, 1.0 for TFC 4)
+   - Removed stale bug from priorities
+
+3. **Created tests/test_dashboard/test_smoke.py (56 tests)**
+   - Module import tests (22 tests) - all components, loaders, visualizations
+   - Config validation (6 tests) - DASHBOARD_CONFIG, intervals, thresholds
+   - Theme tests (5 tests) - Plotly template, colors, CSS
+   - Utility function tests (2 tests) - calculate_trade_analytics
+   - Data loader class tests (7 tests) - CryptoDataLoader, LiveDataLoader, OptionsDataLoader
+   - Visualization tests (3 tests) - charts, performance_viz, regime_viz
+   - Component structure tests (3 tests) - header, panels
+   - Loader initialization tests (2 tests)
+   - Service/loader tests (6 tests)
+
+4. **Created tests/test_crypto/test_sizing.py (30 tests)**
+   - calculate_position_size basic tests (3 tests)
+   - Leverage capping tests (3 tests)
+   - Edge cases (6 tests)
+   - should_skip_trade tests (6 tests)
+   - calculate_stop_distance_for_leverage tests (3 tests)
+   - calculate_position_size_leverage_first tests (6 tests)
+   - Integration tests (3 tests)
+
+5. **Created tests/test_crypto/test_state.py (48 tests)**
+   - Initialization tests (3 tests)
+   - Bar classification tests (4 tests)
+   - Bar data tests (3 tests)
+   - Account state tests (3 tests)
+   - Pattern management tests (5 tests)
+   - Price retrieval tests (4 tests)
+   - Continuity score tests (5 tests)
+   - Veto checking tests (5 tests)
+   - Status summary tests (3 tests)
+   - Reset tests (1 test)
+   - Signal tracking tests (6 tests)
+   - Signal expiration tests (2 tests)
+   - Signal query tests (4 tests)
+
+### Test Results
+
+- 156 new crypto tests (78 signal_scanner + 30 sizing + 48 state)
+- 56 new dashboard smoke tests
+- 74 total dashboard tests (56 new + 18 existing)
+- 204 total crypto tests (48 previous + 156 new)
+- No regressions
+
+### Phase 3 Running Total
+
+- EQUITY-68: 48 tests (daemon TFC, position monitor)
+- EQUITY-69: 91 tests (paper_signal_scanner, options_module)
+- EQUITY-70: 212 tests (crypto signal_scanner + sizing + state + dashboard smoke)
+- **Total: 351 new tests**
+
+### Files Created
+
+- `tests/test_crypto/test_signal_scanner.py` (78 tests)
+- `tests/test_crypto/test_sizing.py` (30 tests)
+- `tests/test_crypto/test_state.py` (48 tests)
+- `tests/test_dashboard/test_smoke.py` (56 tests)
+
+---
+
+## Session EQUITY-69: Phase 3 Test Coverage (COMPLETE)
+
+**Date:** January 17, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 91 new tests for paper_signal_scanner and options_module
+
+### What Was Accomplished
+
+1. **VPS Logs Verified**
+   - TFC REEVAL working correctly
+   - QBTS 3-2U-? PUT rejected (TFC 2/3 < min 3)
+   - PLTR 3-1-? PUT rejected twice (TFC 2/3 < min 3)
+
+2. **Created tests/test_strat/test_paper_signal_scanner.py (50 tests)**
+   - SignalContext and DetectedSignal dataclasses
+   - ATR and volume ratio calculations
+   - Bar sequence string generation
+   - Hourly bar alignment and HTF resampling
+   - Pattern detection and setup detection
+   - STRAT methodology compliance tests
+
+3. **Created tests/test_strat/test_options_module.py (41 tests)**
+   - OptionType and OptionStrategy enums
+   - OSI symbol generation
+   - Strike rounding and candidate generation
+   - Hourly time filter ("Let the Market Breathe")
+   - Magnitude filter (Session 83K-31)
+   - DTE and holding period calculations
+
+4. **Technical Debt Plan Updated**
+   - Test modules: 40 -> 38 untested
+   - Phase 3 total: 139 new tests (48 + 50 + 41)
+   - TFC Direction Flip Detection: VERIFIED already ported
+
+### Test Results
+
+- 1133 total tests passing (91 new)
+- No regressions
+
+### Files Created/Modified
+
+- `tests/test_strat/test_paper_signal_scanner.py` (NEW - 50 tests)
+- `tests/test_strat/test_options_module.py` (NEW - 41 tests)
+- `C:\Users\sheeh\.claude\plans\sharded-foraging-puppy.md` (updated)
 
 ---
 
