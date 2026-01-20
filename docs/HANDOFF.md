@@ -1,26 +1,117 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 18, 2026 (Session EQUITY-73)
+**Last Updated:** January 20, 2026 (Session EQUITY-75)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 3 Test Coverage In Progress
-**Status:** EQUITY-73 COMPLETE - +105 tests (crypto daemon lifecycle + execution)
+**Status:** EQUITY-75 COMPLETE - Bug fix + 170 new tests (magnitude_calculators, scheduler, pattern_registry)
 
 ---
 
-## Next Session: EQUITY-74 (TEST COVERAGE CONTINUED)
+## Next Session: EQUITY-76 (TEST COVERAGE CONTINUED)
 
-### Priority 1: Dashboard Functional Tests
+### Priority 1: Continue Test Coverage
 
-Move beyond smoke tests to actual functionality testing.
+Remaining untested modules (~11):
+- `strat/signal_automation/alerters/discord_alerter.py` (830 lines)
+- `integrations/stock_scanner_bridge.py` (773 lines)
+- `crypto/alerters/discord_alerter.py` (596 lines)
 
 ### Priority 2: God Class Refactoring Prep (Phase 4)
 
 When test coverage sufficient - signal_scanner.py, daemon.py
 
-### Priority 3: Additional Test Coverage
+### Priority 3: Additional Module Coverage
 
-Consider remaining modules:
-- `strat/paper_signal_scanner.py` - deeper functional tests
+Lower priority modules:
+- `strat/trade_execution_log.py` (415 lines)
+- `strat/pattern_metrics.py` (320 lines)
+
+---
+
+## Session EQUITY-75: Bug Fix + Test Coverage (COMPLETE)
+
+**Date:** January 20, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Bug fix + 170 new tests for magnitude_calculators, scheduler, pattern_registry
+
+### What Was Accomplished
+
+1. **Fixed regime_viz.py DatetimeIndex.iloc bug:**
+   - Lines 161, 183, 184 used .iloc on DatetimeIndex (doesn't exist)
+   - Changed to direct indexing: dates[idx] instead of dates.iloc[idx]
+   - Removed 6 xfail markers from dashboard visualization tests
+
+2. **Created tests/test_strat/test_magnitude_calculators.py (66 tests):**
+   - MagnitudeResult dataclass (4 tests)
+   - Numba helpers: validate_target_geometry, calculate_measured_move, calculate_rr_ratio (17 tests)
+   - find_previous_outside_bar, find_swing_high, find_swing_low (15 tests)
+   - OptionA_PreviousOutsideBar, OptionB_SwingPivot, OptionC_MeasuredMove (21 tests)
+   - get_all_calculators factory (6 tests)
+   - Integration tests (3 tests)
+
+3. **Created tests/test_signal_automation/test_scheduler.py (58 tests):**
+   - SignalScheduler initialization (5 tests)
+   - Cron parsing (6 tests)
+   - Job addition: hourly, daily, weekly, monthly, 15m, 30m, base scan (21 tests)
+   - Job management: run_job_now, start, shutdown, pause, resume (11 tests)
+   - Status/stats reporting (7 tests)
+   - Event handlers (4 tests)
+   - Market hours checking (2 tests)
+   - Integration tests (2 tests)
+
+4. **Created tests/test_strat/test_pattern_registry.py (46 tests):**
+   - PatternMetadata dataclass (3 tests)
+   - PATTERN_REGISTRY definitions (11 tests)
+   - get_pattern_metadata (3 tests)
+   - is_bidirectional_pattern with heuristics (7 tests)
+   - get_valid_directions (7 tests)
+   - extract_setup_pattern_type (7 tests)
+   - Integration tests (8 tests)
+
+### Test Results
+
+- 170 new tests + 6 fixed xfail = 176 passing tests this session
+- 2,202 total tests passing (up from 2,026)
+- 11 pre-existing flaky regime tests unchanged
+
+### Phase 3 Running Total
+
+- EQUITY-68: 48 tests (daemon TFC, position monitor)
+- EQUITY-69: 91 tests (paper_signal_scanner, options_module)
+- EQUITY-70: 212 tests (crypto signal_scanner + sizing + state + dashboard smoke)
+- EQUITY-71: 168 tests (executor + signal_store + tiingo_data_fetcher)
+- EQUITY-72: 205 tests (entry_monitor + coinbase_client + paper_trader)
+- EQUITY-73: 105 tests (crypto daemon lifecycle + execution)
+- EQUITY-74: 150 tests (dashboard functional tests)
+- EQUITY-75: 170 tests (magnitude_calculators + scheduler + pattern_registry)
+- **Total: 1,149 new tests**
+
+### Files Created
+
+- `tests/test_strat/test_magnitude_calculators.py` (66 tests)
+- `tests/test_signal_automation/test_scheduler.py` (58 tests)
+- `tests/test_strat/test_pattern_registry.py` (46 tests)
+
+### Files Modified
+
+- `dashboard/visualizations/regime_viz.py` (bug fix - DatetimeIndex.iloc)
+- `tests/test_dashboard/test_visualizations.py` (removed 6 xfail markers)
+
+---
+
+## Session EQUITY-74: Dashboard Functional Tests (COMPLETE)
+
+**Date:** January 19, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 150 new tests for dashboard module
+
+### What Was Accomplished
+
+1. **Created tests/test_dashboard/test_data_loaders.py (64 tests)**
+2. **Created tests/test_dashboard/test_visualizations.py (38 tests)**
+3. **Created tests/test_dashboard/test_components.py (48 tests)**
+4. **Dashboard tests: 56 -> 224 (4x increase)**
+5. **Discovered regime_viz.py:161 DatetimeIndex.iloc bug (6 tests xfail)**
 
 ---
 
