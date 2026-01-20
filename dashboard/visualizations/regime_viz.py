@@ -158,7 +158,7 @@ def create_regime_timeline(
                 # Include current point in segment (for continuity)
                 end_idx = i if i < len(regimes) - 1 else i + 1
 
-                segment_dates = dates.iloc[start_idx:end_idx + 1] if end_idx < len(dates) else dates.iloc[start_idx:]
+                segment_dates = dates[start_idx:end_idx + 1] if end_idx < len(dates) else dates[start_idx:]
                 segment_values = regime_numeric.iloc[start_idx:end_idx + 1] if end_idx < len(regime_numeric) else regime_numeric.iloc[start_idx:]
 
                 # Add colored line segment
@@ -180,8 +180,8 @@ def create_regime_timeline(
 
                 # Also add regime background shading to bottom subplot
                 fig.add_vrect(
-                    x0=dates.iloc[start_idx],
-                    x1=dates.iloc[min(i, len(dates) - 1)],
+                    x0=dates[start_idx],
+                    x1=dates[min(i, len(dates) - 1)],
                     fillcolor=REGIME_COLORS.get(current_regime, 'rgba(128,128,128,0.2)'),
                     layer='below',
                     line_width=0,

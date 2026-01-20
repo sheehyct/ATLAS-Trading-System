@@ -199,14 +199,8 @@ class TestCreateRollingMetrics:
 
 
 class TestCreateRegimeTimeline:
-    """Test create_regime_timeline function.
+    """Test create_regime_timeline function."""
 
-    NOTE: These tests expose a bug in regime_viz.py where DatetimeIndex.iloc is used
-    but DatetimeIndex doesn't have .iloc attribute. Tests are marked xfail until fixed.
-    Bug location: dashboard/visualizations/regime_viz.py:161
-    """
-
-    @pytest.mark.xfail(reason="Bug: DatetimeIndex.iloc not supported - see regime_viz.py:161")
     def test_returns_figure(self):
         """create_regime_timeline returns Plotly figure."""
         from dashboard.visualizations.regime_viz import create_regime_timeline
@@ -219,7 +213,6 @@ class TestCreateRegimeTimeline:
 
         assert isinstance(fig, go.Figure)
 
-    @pytest.mark.xfail(reason="Bug: DatetimeIndex.iloc not supported - see regime_viz.py:161")
     def test_has_price_trace(self):
         """create_regime_timeline has price trace."""
         from dashboard.visualizations.regime_viz import create_regime_timeline
@@ -233,7 +226,6 @@ class TestCreateRegimeTimeline:
         trace_names = [t.name for t in fig.data]
         assert 'Price' in trace_names
 
-    @pytest.mark.xfail(reason="Bug: DatetimeIndex.iloc not supported - see regime_viz.py:161")
     def test_creates_regime_shading(self):
         """create_regime_timeline creates regime shading rectangles."""
         from dashboard.visualizations.regime_viz import create_regime_timeline
@@ -248,7 +240,6 @@ class TestCreateRegimeTimeline:
         # Check for vrect shapes
         assert len(fig.layout.shapes) > 0
 
-    @pytest.mark.xfail(reason="Bug: DatetimeIndex.iloc not supported - see regime_viz.py:161")
     def test_handles_all_regimes(self):
         """create_regime_timeline handles all regime types."""
         from dashboard.visualizations.regime_viz import create_regime_timeline
@@ -279,7 +270,6 @@ class TestCreateRegimeTimeline:
 
         assert isinstance(fig, go.Figure)
 
-    @pytest.mark.xfail(reason="Bug: DatetimeIndex.iloc not supported - see regime_viz.py:161")
     def test_handles_no_prices(self):
         """create_regime_timeline handles None prices."""
         from dashboard.visualizations.regime_viz import create_regime_timeline
@@ -605,7 +595,6 @@ class TestVisualizationEdgeCases:
         trace_names = [t.name for t in fig.data]
         assert 'Losing Entry' in trace_names
 
-    @pytest.mark.xfail(reason="Bug: DatetimeIndex.iloc not supported - see regime_viz.py:161")
     def test_regime_timeline_single_regime(self):
         """create_regime_timeline handles single regime period."""
         from dashboard.visualizations.regime_viz import create_regime_timeline
