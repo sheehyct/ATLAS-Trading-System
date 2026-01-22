@@ -744,7 +744,7 @@ class SignalDaemon:
             # Relaxed thresholds for SETUP signals (paper trading/monitoring)
             # Defaults: magnitude >= 0.1%, R:R >= 0.3
             # These can be overridden via environment variables
-            import os
+            # Note: os is imported at module level (line 21)
             setup_min_magnitude = float(os.environ.get('SIGNAL_SETUP_MIN_MAGNITUDE', '0.1'))
             setup_min_rr = float(os.environ.get('SIGNAL_SETUP_MIN_RR', '0.3'))
 
