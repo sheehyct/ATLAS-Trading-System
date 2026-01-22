@@ -471,15 +471,24 @@ class PositionMonitor:
         pattern_type = signal.pattern_type if hasattr(signal, 'pattern_type') else ''
 
         # Check if this is a 3-2 pattern (not 3-2-2)
-        is_32_pattern = '3-2' in pattern_type and '3-2-2' not in pattern_type
+        # Session EQUITY-78: Also include 3-? patterns - when triggered, they ARE 3-2 trades
+        # Pattern "3-?" means Type 3 waiting for break, which becomes 3-2U or 3-2D on trigger
+        is_32_pattern = (
+            ('3-2' in pattern_type and '3-2-2' not in pattern_type) or
+            pattern_type.startswith('3-?')
+        )
 
         if is_32_pattern:
-            # EQUITY-52: 3-2 patterns use ATR-based targets for ALL timeframes
-            # Do NOT override to 1.0x - keep the ATR-based target
-            atr_value = getattr(signal, 'atr_14', 0.0) or 0.0
+            # Session EQUITY-78: 3-2 patterns use simple 1.5% target per strat-methodology
+            # This overrides the R:R-based original_target for 3-? setups that triggered
+            # Bullish: entry * 1.015, Bearish: entry * 0.985
+            if direction.upper() in ['CALL', 'BULL', 'UP']:
+                effective_target = actual_entry_underlying * 1.015
+            else:
+                effective_target = actual_entry_underlying * 0.985
             logger.info(
-                f"3-2 pattern {osi_symbol}: Using ATR-based target ${original_target:.2f} "
-                f"(ATR: ${atr_value:.2f}, pattern: {pattern_type})"
+                f"3-2 pattern {osi_symbol}: Using 1.5% target ${effective_target:.2f} "
+                f"(entry: ${actual_entry_underlying:.2f}, pattern: {pattern_type})"
             )
         elif timeframe and timeframe.upper() in ['1H', '60MIN', '60M']:
             # Non-3-2 patterns on 1H: Use 1.0x R:R (EQUITY-36)
