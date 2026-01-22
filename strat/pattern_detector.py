@@ -1372,8 +1372,8 @@ def detect_outside_bar_setups_nb(classifications, high, low):
         short_trigger : Price to break for SHORT entry (outside bar LOW)
         stop_long : Stop for LONG trade (outside bar LOW)
         stop_short : Stop for SHORT trade (outside bar HIGH)
-        target_long : Target for LONG trade (measured move HIGH)
-        target_short : Target for SHORT trade (measured move LOW)
+        target_long : Target for LONG trade (1.5% above entry)
+        target_short : Target for SHORT trade (1.5% below entry)
     """
     if classifications.ndim == 1:
         n = len(classifications)
@@ -1399,10 +1399,9 @@ def detect_outside_bar_setups_nb(classifications, high, low):
                 stop_long[i] = low[i]       # LONG stop at outside bar LOW
                 stop_short[i] = high[i]     # SHORT stop at outside bar HIGH
 
-                # Target = measured move (bar range projected)
-                bar_range = high[i] - low[i]
-                target_long[i] = high[i] + bar_range   # 1R above entry
-                target_short[i] = low[i] - bar_range   # 1R below entry
+                # Session EQUITY-76: Simple 1.5% target per strat-methodology
+                target_long[i] = high[i] * 1.015    # 1.5% above entry
+                target_short[i] = low[i] * 0.985    # 1.5% below entry
 
     else:  # 2D arrays
         n = classifications.shape[0]
@@ -1424,9 +1423,9 @@ def detect_outside_bar_setups_nb(classifications, high, low):
                 stop_long[i, 0] = low[i, 0]
                 stop_short[i, 0] = high[i, 0]
 
-                bar_range = high[i, 0] - low[i, 0]
-                target_long[i, 0] = high[i, 0] + bar_range
-                target_short[i, 0] = low[i, 0] - bar_range
+                # Session EQUITY-76: Simple 1.5% target per strat-methodology
+                target_long[i, 0] = high[i, 0] * 1.015    # 1.5% above entry
+                target_short[i, 0] = low[i, 0] * 0.985    # 1.5% below entry
 
     return (setups, long_trigger, short_trigger,
             stop_long, stop_short, target_long, target_short)
