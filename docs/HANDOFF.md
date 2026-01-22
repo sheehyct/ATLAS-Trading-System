@@ -1,13 +1,67 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 21, 2026 (Session EQUITY-77)
+**Last Updated:** January 22, 2026 (Session EQUITY-78)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 3 Test Coverage In Progress
-**Status:** EQUITY-77 COMPLETE - 241 new tests (trade_execution_log, pattern_metrics, risk_free_rate, alerter_base, TFC adapter)
+**Status:** EQUITY-78 COMPLETE - Fixed os variable bug + 3-? target bug, committed EQUITY-76 work (191 tests)
 
 ---
 
-## Next Session: EQUITY-78 (TEST COVERAGE CONTINUED)
+## Session EQUITY-78: Bug Fixes + Market Monitoring (COMPLETE)
+
+**Date:** January 22, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 2 critical bugs fixed, 191 tests committed, VPS deployed
+
+### What Was Accomplished
+
+1. **Fixed os Variable Bug (6aec090):**
+   - Root cause: Local `import os` at line 747 in `_passes_filters()` shadowed module-level import
+   - When `is_setup=False`, Python saw local variable name but it was never assigned
+   - Error: "cannot access local variable 'os' where it is not associated with a value"
+   - Affected: SPY, AAPL, GOOG, META, COIN resampled scans
+   - Fix: Removed local import, use module-level `os` (line 21)
+
+2. **Fixed 3-? Target Bug (06ab6f8):**
+   - Root cause: `is_32_pattern` check only matched "3-2" not "3-?"
+   - Triggered 3-? setups kept pattern_type="3-?" instead of "3-2U/3-2D"
+   - Result: R:R-based targets used instead of 1.5% per strat-methodology
+   - Fix: Added `pattern_type.startswith('3-?')` to is_32_pattern check
+   - Fix: Calculate 1.5% target at tracking time (entry * 1.015 or 0.985)
+
+3. **Committed EQUITY-76 Work (e945a57):**
+   - `strat/pattern_detector.py` - 3-2 target fix (entry * 1.015/0.985)
+   - `tests/test_signal_automation/test_discord_alerter.py` (83 tests)
+   - `tests/test_integrations/test_stock_scanner_bridge.py` (47 tests)
+   - `tests/test_crypto/test_crypto_discord_alerter.py` (61 tests)
+
+4. **Market Open Monitoring:**
+   - 5 stale 1H positions from Jan 21 closed at market open
+   - No new entries (all triggers rejected: TFC, staleness, R:R)
+   - Filters working correctly
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `strat/signal_automation/daemon.py` | +import traceback, removed local os import, +traceback logging |
+| `strat/signal_automation/position_monitor.py` | +3-? to is_32_pattern check, 1.5% target calculation |
+| `strat/pattern_detector.py` | 3-2 targets: entry * 1.015/0.985 (committed from EQUITY-76) |
+
+### Test Results
+
+- 191 new tests committed (from EQUITY-76)
+- Total tests: 2,827 (2,636 + 191)
+
+### VPS Deployment
+
+- Commit 06ab6f8 deployed
+- Both bug fixes verified working
+- AMD position tracking confirmed with 1.5% target ($255.76)
+
+---
+
+## Next Session: EQUITY-79 (TEST COVERAGE CONTINUED)
 
 ### Priority 1: Continue Test Coverage
 
