@@ -23,6 +23,7 @@ import signal
 import sys
 import time
 import logging
+import traceback
 from datetime import datetime, time as dt_time, timedelta
 from typing import Optional, Dict, Any, List
 from threading import Event
@@ -544,6 +545,7 @@ class SignalDaemon:
                     new_signals.extend(detected)
                 except Exception as e:
                     logger.error(f"Error scanning {symbol} (resampled): {e}")
+                    logger.error(f"Traceback: {traceback.format_exc()}")
                     self._error_count += 1
 
             # Send alerts for new signals
