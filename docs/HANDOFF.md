@@ -1,9 +1,207 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 23, 2026 (Session EQUITY-79)
+**Last Updated:** January 23, 2026 (Session EQUITY-81)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 3 Test Coverage In Progress
-**Status:** EQUITY-79 COMPLETE - 113 new tests (greeks, logging_alerter)
+**Status:** EQUITY-81 COMPLETE - Comprehensive daemon.py test coverage
+
+---
+
+## Session EQUITY-81: Daemon Test Coverage (COMPLETE)
+
+**Date:** January 23, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 83 new tests for SignalDaemon class
+
+### What Was Accomplished
+
+1. **Created tests/test_signal_automation/test_daemon.py (83 tests):**
+   - Initialization tests (7 tests) - config, scanner, store creation
+   - Alerter setup tests (3 tests) - logging, Discord configuration
+   - Executor setup tests (2 tests) - enabled/disabled states
+   - Position monitor setup tests (2 tests)
+   - from_config tests (3 tests) - env and provided configs
+   - Filter tests (26 tests) - magnitude, R:R, pattern, TFC filtering
+   - Market hours tests (3 tests) - NYSE calendar integration
+   - Scanning tests (4 tests) - run_scan, run_all_scans
+   - Health check tests (8 tests) - status, counters, alerters
+   - Position monitoring tests (6 tests) - check_positions, tracked_positions
+   - Lifecycle tests (3 tests) - shutdown behavior
+   - Callback tests (4 tests) - scan callbacks, position exit
+   - Alert tests (2 tests) - send_alerts, error handling
+   - Integration tests (6 tests) - full filter chain validation
+
+2. **Filter Logic Coverage (_passes_filters):**
+   - SETUP vs COMPLETED magnitude thresholds (0.1% vs config)
+   - SETUP vs COMPLETED R:R thresholds (0.3 vs config)
+   - Pattern normalization (2U/2D -> 2, -? -> -2)
+   - TFC filtering for 1H (3/4 or 2/4+1D), 1D (2/3), 1W (1/2)
+   - Environment variable overrides for all thresholds
+
+3. **Coverage Status:**
+   - All signal_automation modules now have dedicated test files
+   - daemon.py (2042 lines) now has comprehensive coverage
+   - Existing daemon-related tests (tfc_reeval, stale_setup, etc.) complement new tests
+
+### Test Results
+
+- 83 new tests (all passing)
+- signal_automation tests: 695 -> 778 (+83)
+- Total test suite: 3,040 -> 3,123 (+83)
+
+### Files Created
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `tests/test_signal_automation/test_daemon.py` | 83 | Comprehensive SignalDaemon coverage |
+
+### Phase 3 Running Total
+
+- EQUITY-68 through EQUITY-80: 1,971 tests
+- EQUITY-81: 83 tests
+- **Total: 2,054 new tests**
+
+---
+
+## Session CRYPTO-BETA: Capital Efficiency Analysis (COMPLETE)
+
+**Date:** January 23, 2026
+**Environment:** Claude Desktop (Opus 4.5)
+**Status:** COMPLETE - Crypto trading module enhancements
+
+### What Was Accomplished
+
+1. **Leverage Tier Correction:**
+   - Discovered SOL/XRP/ADA have 5x intraday leverage (not 10x)
+   - Only BTC/ETH have 10x intraday leverage
+   - Updated `crypto/config.py` with correct values
+
+2. **Beta Analysis Module (`crypto/trading/beta.py`):**
+   - Calculated empirical beta values from Day Up/Down ranges
+   - ETH: 1.98x, SOL: 1.55x, XRP: 1.77x, ADA: 2.20x
+   - Effective multiplier formula: Leverage × Beta
+   - Capital efficiency ranking: ETH (19.8) > ADA (11.0) > BTC (10.0) > XRP (8.85) > SOL (7.75)
+   - Functions: `calculate_effective_multiplier()`, `rank_by_capital_efficiency()`, `project_pnl_on_btc_move()`, `calculate_rolling_beta()`
+
+3. **Fee Module (`crypto/trading/fees.py`):**
+   - Coinbase CFM: 0.02% taker + $0.15 minimum per contract
+   - Contract multipliers: BTC=0.01, ETH=0.10, SOL=5, XRP=500, ADA=1000
+   - Functions: `calculate_fee()`, `calculate_round_trip_fee()`, `calculate_breakeven_move()`, `create_coinbase_fee_func()` (VBT integration)
+
+4. **Documentation:**
+   - Created `crypto/trading/README.md` - comprehensive technical reference
+   - Updated `crypto/trading/__init__.py` with all exports
+   - Noted shorting IS available on perps (stat arb viable)
+
+### Key Discovery
+
+**Effective Multiplier determines true capital efficiency:**
+```
+ETH:  10x leverage × 1.98 beta = 19.8 effective (BEST)
+ADA:   5x leverage × 2.20 beta = 11.0 effective
+BTC:  10x leverage × 1.00 beta = 10.0 effective
+XRP:   5x leverage × 1.77 beta = 8.85 effective
+SOL:   5x leverage × 1.55 beta = 7.75 effective (WORST)
+```
+
+### Trade Post-Mortem Validated
+
+ADA loss ($263 on 12 contracts) validated the beta math:
+- 6.41% adverse move × $4,098 notional = $263 loss ✓
+- High beta (2.2x) amplifies both gains AND losses
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `crypto/trading/fees.py` | NEW | Fee calculations with $0.15 minimum |
+| `crypto/trading/beta.py` | NEW | Beta analysis, effective multiplier |
+| `crypto/trading/README.md` | NEW | Technical reference documentation |
+| `crypto/trading/__init__.py` | MODIFIED | Added exports |
+| `crypto/config.py` | MODIFIED | Corrected leverage tiers, added beta constants |
+
+### Research Notes
+
+- Stat arb IS viable since shorting perps is allowed
+- Lead-lag exploitation: BTC often leads altcoin moves
+- Beta is non-stationary - needs periodic recalculation
+- Future work: Cointegration testing, pairs trading module
+
+### Transcript
+
+`/mnt/transcripts/2026-01-23-17-22-49-crypto-leverage-beta-analysis.txt`
+
+---
+
+## Session EQUITY-80: Signal Automation Test Coverage (COMPLETE)
+
+**Date:** January 23, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 277 new tests for signal automation modules
+
+### What Was Accomplished
+
+1. **Created tests/test_signal_automation/test_config.py (131 tests):**
+   - ScanInterval enum (8 tests)
+   - AlertChannel enum (5 tests)
+   - ScanConfig defaults and custom (12 tests)
+   - ScheduleConfig HTF resampling, cron patterns (18 tests)
+   - AlertConfig with __post_init__ webhook loading (18 tests)
+   - ExecutionConfig TFC reeval, delta/DTE ranges (14 tests)
+   - MonitoringConfig with __post_init__ (8 tests)
+   - ApiConfig (4 tests)
+   - SignalAutomationConfig master config (5 tests)
+   - from_env() environment parsing (28 tests)
+   - validate() configuration validation (17 tests)
+
+2. **Created tests/test_signal_automation/test_entry_monitor.py (59 tests):**
+   - TriggerEvent creation and priority (5 tests)
+   - EntryMonitorConfig defaults (12 tests)
+   - EntryMonitor initialization (3 tests)
+   - is_market_hours NYSE calendar (2 tests)
+   - is_hourly_entry_allowed time restrictions (6 tests)
+   - get_pending_signals sorting and limits (7 tests)
+   - check_triggers bidirectional/unidirectional (13 tests)
+   - Start/stop background monitoring (5 tests)
+   - get_stats statistics (3 tests)
+   - Monitor loop behavior (2 tests)
+   - Integration tests (2 tests)
+
+3. **Created tests/test_signal_automation/test_position_monitor.py (87 tests):**
+   - ExitReason enum (12 tests)
+   - MonitoringConfig timeframe-specific loss (19 tests)
+   - TrackedPosition to_dict serialization (9 tests)
+   - ExitSignal creation (5 tests)
+   - PositionMonitor initialization (4 tests)
+   - _parse_expiration OSI symbol parsing (5 tests)
+   - _calculate_dte days to expiration (5 tests)
+   - _check_target_hit CALL/PUT (7 tests)
+   - _check_stop_hit CALL/PUT (6 tests)
+   - _check_partial_exit multi-contract (5 tests)
+   - sync_positions Alpaca integration (2 tests)
+   - _check_position exit conditions (4 tests)
+   - Statistics tracking (2 tests)
+   - Integration tests (2 tests)
+
+### Test Results
+
+- 277 new tests (131 + 59 + 87)
+- All 277 tests passing
+- Total test suite: 3,040 tests
+
+### Files Created
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `tests/test_signal_automation/test_config.py` | 131 | All config dataclasses, from_env, validate |
+| `tests/test_signal_automation/test_entry_monitor.py` | 59 | Entry trigger monitoring, time restrictions |
+| `tests/test_signal_automation/test_position_monitor.py` | 87 | Exit conditions, OSI parsing, DTE calc |
+
+### Phase 3 Running Total
+
+- EQUITY-68 through EQUITY-79: 1,694 tests
+- EQUITY-80: 277 tests
+- **Total: 1,971 new tests**
 
 ---
 
