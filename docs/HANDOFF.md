@@ -1,9 +1,66 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 22, 2026 (Session EQUITY-78)
+**Last Updated:** January 23, 2026 (Session EQUITY-79)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 3 Test Coverage In Progress
-**Status:** EQUITY-78 COMPLETE - Fixed os variable bug + 3-? target bug, committed EQUITY-76 work (191 tests)
+**Status:** EQUITY-79 COMPLETE - 113 new tests (greeks, logging_alerter)
+
+---
+
+## Session EQUITY-79: Test Coverage Expansion (COMPLETE)
+
+**Date:** January 23, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 113 new tests for greeks.py and logging_alerter.py
+
+### What Was Accomplished
+
+1. **Created tests/test_strat/test_greeks.py (69 tests):**
+   - _d1, _d2 helper functions (8 tests)
+   - black_scholes_price standalone (9 tests)
+   - Greeks dataclass validate_delta_range method (8 tests)
+   - Gamma validation (4 tests)
+   - Vega validation (4 tests)
+   - Rho validation (3 tests)
+   - calculate_iv_percentile - was MISSING from test coverage (6 tests)
+   - calculate_pnl_with_greeks - was MISSING from test coverage (8 tests)
+   - estimate_iv edge cases (3 tests)
+   - evaluate_trade_quality comprehensive (4 tests)
+   - calculate_greeks edge cases (6 tests)
+   - validate_delta_range function (6 tests)
+
+2. **Created tests/test_signal_automation/test_logging_alerter.py (44 tests):**
+   - JSONFormatter (5 tests)
+   - LoggingAlerter initialization (11 tests)
+   - send_alert (6 tests)
+   - send_batch_alert (4 tests)
+   - test_connection (2 tests)
+   - Scan lifecycle logging (3 tests)
+   - Daemon lifecycle logging (3 tests)
+   - Health check logging (2 tests)
+   - Position exit logging (5 tests)
+   - Integration tests (3 tests)
+
+3. **Verified test_options_risk_manager.py (54 tests):** Already comprehensive, all passing
+
+### Test Results
+
+- 113 new tests (69 + 44)
+- All 167 combined tests passing (69 + 54 + 44)
+- Total test suite: 2,940 tests (2,827 + 113)
+
+### Files Created
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `tests/test_strat/test_greeks.py` | 69 | Greeks calculations, IV percentile, PnL |
+| `tests/test_signal_automation/test_logging_alerter.py` | 44 | JSON logging, scan lifecycle |
+
+### Phase 3 Running Total
+
+- EQUITY-68 through EQUITY-77: 1,581 tests
+- EQUITY-79: 113 tests
+- **Total: 1,694 new tests**
 
 ---
 
