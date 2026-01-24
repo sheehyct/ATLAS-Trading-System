@@ -18,7 +18,6 @@ Designed for autonomous operation with:
 - Automatic position monitoring with target/stop exits
 """
 
-import os
 import signal
 import sys
 import time
@@ -54,7 +53,7 @@ from strat.signal_automation.entry_monitor import (
     EntryMonitorConfig,
     TriggerEvent,
 )
-from strat.signal_automation.coordinators import AlertManager
+from strat.signal_automation.coordinators import AlertManager, FilterManager, FilterConfig
 from strat.signal_automation.utils import MarketHoursValidator
 from strat.paper_signal_scanner import PaperSignalScanner, DetectedSignal
 
@@ -126,6 +125,7 @@ class SignalDaemon:
         # Initialize components
         self._setup_alerters()
         self._setup_alert_manager()  # EQUITY-85: Facade pattern
+        self._setup_filter_manager()  # EQUITY-87: Facade pattern
         self._setup_executor()
         self._setup_position_monitor()
         self._setup_entry_monitor()
@@ -178,6 +178,22 @@ class SignalDaemon:
     def _increment_error_count(self) -> None:
         """Callback for AlertManager to increment error count."""
         self._error_count += 1
+
+    def _setup_filter_manager(self) -> None:
+        """
+        Initialize FilterManager coordinator (EQUITY-87: Facade pattern).
+
+        FilterManager handles signal quality filtering with configurable thresholds.
+        Extracts filter logic from _passes_filters() for isolated testing.
+        """
+        # Create filter config from environment variables
+        filter_config = FilterConfig.from_env()
+
+        self._filter_manager = FilterManager(
+            config=filter_config,
+            scan_config=self.config.scan,
+        )
+        logger.info("FilterManager coordinator initialized")
 
     def _setup_executor(self) -> None:
         """Initialize executor if execution is enabled (Session 83K-48)."""
@@ -730,7 +746,8 @@ class SignalDaemon:
         """
         Check if signal passes quality filters.
 
-        Session EQUITY-47: Added logging for filter rejections with actual vs threshold values.
+        Session EQUITY-87: Delegates to FilterManager coordinator.
+        Session EQUITY-47: Logging for filter rejections with actual vs threshold values.
 
         Args:
             signal: Signal to check
@@ -738,131 +755,8 @@ class SignalDaemon:
         Returns:
             True if passes all filters
         """
-        # =================================================================
-        # Session 83K-71: SETUP signals use relaxed thresholds
-        # SETUP signals (ending in inside bar) have naturally lower magnitude
-        # because target is first directional bar's extreme, which is close.
-        # We allow them through for live monitoring, then can filter at execution.
-        #
-        # TO RESTORE STRICT FILTERING FOR SETUPS:
-        # Set SIGNAL_SETUP_MIN_MAGNITUDE=0.5 and SIGNAL_SETUP_MIN_RR=1.0
-        # in environment, or change the defaults below to match config values.
-        # =================================================================
-        is_setup = getattr(signal, 'signal_type', 'COMPLETED') == 'SETUP'
-        # Human-readable key for filter logging (not the database signal_key which uses timestamp)
-        signal_key = f"{signal.symbol}_{signal.timeframe}_{signal.pattern_type}_{signal.direction}"
-
-        if is_setup:
-            # Relaxed thresholds for SETUP signals (paper trading/monitoring)
-            # Defaults: magnitude >= 0.1%, R:R >= 0.3
-            # These can be overridden via environment variables
-            # Note: os is imported at module level (line 21)
-            setup_min_magnitude = float(os.environ.get('SIGNAL_SETUP_MIN_MAGNITUDE', '0.1'))
-            setup_min_rr = float(os.environ.get('SIGNAL_SETUP_MIN_RR', '0.3'))
-
-            if signal.magnitude_pct < setup_min_magnitude:
-                # Session EQUITY-47: Log filter rejection with actual vs threshold
-                logger.info(
-                    f"FILTER REJECTED: {signal_key} - "
-                    f"magnitude {signal.magnitude_pct:.3f}% < min {setup_min_magnitude}% (SETUP)"
-                )
-                return False
-            if signal.risk_reward < setup_min_rr:
-                # Session EQUITY-47: Log filter rejection with actual vs threshold
-                logger.info(
-                    f"FILTER REJECTED: {signal_key} - "
-                    f"R:R {signal.risk_reward:.2f} < min {setup_min_rr} (SETUP)"
-                )
-                return False
-        else:
-            # Standard thresholds for COMPLETED signals (historical)
-            if signal.magnitude_pct < self.config.scan.min_magnitude_pct:
-                # Session EQUITY-47: Log filter rejection with actual vs threshold
-                logger.info(
-                    f"FILTER REJECTED: {signal_key} - "
-                    f"magnitude {signal.magnitude_pct:.3f}% < min {self.config.scan.min_magnitude_pct}%"
-                )
-                return False
-            if signal.risk_reward < self.config.scan.min_risk_reward:
-                # Session EQUITY-47: Log filter rejection with actual vs threshold
-                logger.info(
-                    f"FILTER REJECTED: {signal_key} - "
-                    f"R:R {signal.risk_reward:.2f} < min {self.config.scan.min_risk_reward}"
-                )
-                return False
-
-        # Pattern filter (if specific patterns configured)
-        if self.config.scan.patterns:
-            # Convert directional pattern name to base pattern for comparison
-            # e.g., '2U-2D' -> '2-2', '2D-1-2U' -> '2-1-2', '3-2U' -> '3-2'
-            # Also handle SETUP patterns like '3-1-?' and '2D-1-?'
-            base_pattern = signal.pattern_type.replace('2U', '2').replace('2D', '2').replace('-?', '-2')
-            if base_pattern not in self.config.scan.patterns:
-                # Session EQUITY-47: Log filter rejection for pattern type
-                logger.info(
-                    f"FILTER REJECTED: {signal_key} - "
-                    f"pattern '{base_pattern}' not in allowed patterns {self.config.scan.patterns}"
-                )
-                return False
-
-        # =================================================================
-        # Session EQUITY-62/65: TFC Filtering with 1D Alignment Requirement
-        # Reject signals that lack timeframe continuity alignment.
-        # Per STRAT methodology: Trade WITH the higher timeframes, not against.
-        #
-        # Session EQUITY-65 Enhancement: "Control" concept for 1H patterns
-        # - 1D represents "who is in control right now" for intraday trades
-        # - 2/4 TFC only passes if 1D is one of the aligned timeframes
-        # - Type 1 (inside) on 1D = "chop" = dangerous for options (theta decay)
-        # =================================================================
-        tfc_score = getattr(signal.context, 'tfc_score', 0) if signal.context else 0
-        tfc_alignment = getattr(signal.context, 'tfc_alignment', '') if signal.context else ''
-        aligned_timeframes = getattr(signal.context, 'aligned_timeframes', []) if signal.context else []
-
-        # Environment variable kill switch for testing
-        tfc_filter_enabled = os.environ.get('SIGNAL_TFC_FILTER_ENABLED', 'true').lower() == 'true'
-
-        if tfc_filter_enabled:
-            timeframe = signal.timeframe
-
-            # Session EQUITY-65: Enhanced 1H TFC filter with 1D alignment requirement
-            if timeframe == '1H':
-                if tfc_score >= 3:
-                    # 3/4 or 4/4 always passes (strong alignment)
-                    pass
-                elif tfc_score == 2:
-                    # 2/4 only passes if 1D is aligned (daily "control" supports trade)
-                    if '1D' not in aligned_timeframes:
-                        logger.info(
-                            f"FILTER REJECTED (TFC): {signal_key} - "
-                            f"TFC 2/4 but 1D not aligned (aligned: {aligned_timeframes}, {tfc_alignment or 'N/A'})"
-                        )
-                        return False
-                else:
-                    # 0/4 or 1/4 fails (weak alignment)
-                    logger.info(
-                        f"FILTER REJECTED (TFC): {signal_key} - "
-                        f"TFC {tfc_score}/4 below minimum ({tfc_alignment or 'N/A'})"
-                    )
-                    return False
-            else:
-                # Non-1H patterns use existing minimums
-                timeframe_tfc_minimums = {
-                    '4H': 2,  # 2 out of 3 aligned (same as Daily)
-                    '1D': 2,  # 2 out of 3 aligned
-                    '1W': 1,  # 1 out of 2 aligned
-                    '1M': 1,  # 1 out of 1 aligned
-                }
-                min_aligned = timeframe_tfc_minimums.get(timeframe, 2)
-
-                if tfc_score < min_aligned:
-                    logger.info(
-                        f"FILTER REJECTED (TFC): {signal_key} - "
-                        f"TFC score {tfc_score} < min {min_aligned} ({tfc_alignment or 'N/A'})"
-                    )
-                    return False
-
-        return True
+        # EQUITY-87: Delegate to FilterManager coordinator
+        return self._filter_manager.passes_filters(signal)
 
     def _is_market_hours(self) -> bool:
         """

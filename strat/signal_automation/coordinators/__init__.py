@@ -18,10 +18,12 @@ Extracted components:
 # Coordinators imported as they are extracted
 from strat.signal_automation.coordinators.alert_manager import AlertManager
 from strat.signal_automation.coordinators.health_monitor import HealthMonitor, DaemonStats
-# etc.
+from strat.signal_automation.coordinators.filter_manager import FilterManager, FilterConfig
 
 __all__ = [
     'AlertManager',
     'HealthMonitor',
     'DaemonStats',
+    'FilterManager',
+    'FilterConfig',
 ]

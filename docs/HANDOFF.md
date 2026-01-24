@@ -1,9 +1,76 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 24, 2026 (Session EQUITY-86)
+**Last Updated:** January 24, 2026 (Session EQUITY-87)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 4 IN PROGRESS (God Class Refactoring)
-**Status:** EQUITY-86 COMPLETE - Phase 1 Week 1 finished, MarketHoursValidator extracted
+**Status:** EQUITY-87 COMPLETE - Phase 2.1 FilterManager extracted, daemon.py down to 1,849 lines
+
+---
+
+## Session EQUITY-87: Phase 2.1 FilterManager Extraction (COMPLETE)
+
+**Date:** January 24, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - FilterManager extracted, daemon reduced by 126 lines
+
+### What Was Accomplished
+
+1. **Created FilterManager Coordinator**
+   - New file: `strat/signal_automation/coordinators/filter_manager.py` (301 lines)
+   - FilterConfig dataclass for externalized configuration
+   - Methods: `passes_filters()`, `_check_magnitude()`, `_check_rr()`, `_check_pattern()`, `_check_tfc()`
+   - Supports runtime env var overrides (matching original behavior)
+   - Full TFC filtering with 1H+1D alignment requirement
+
+2. **Wired FilterManager to Daemon**
+   - Added `_setup_filter_manager()` method
+   - Replaced 137-line `_passes_filters()` with 4-line delegation
+   - Removed unused `os` import
+   - daemon.py: 1,976 -> 1,849 lines (-127 lines)
+
+3. **Added 59 New Tests**
+   - Created `tests/test_signal_automation/test_coordinators/test_filter_manager.py`
+   - Coverage: FilterConfig, magnitude, R:R, pattern, TFC filters
+   - Edge cases: negative values, missing context, boundary conditions
+
+4. **Verified All Existing Tests Pass**
+   - Signal automation tests: 956/956 passing
+   - No regressions from refactoring
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `strat/signal_automation/coordinators/filter_manager.py` | NEW | FilterManager coordinator (301 lines) |
+| `strat/signal_automation/coordinators/__init__.py` | MODIFIED | Added FilterManager, FilterConfig exports |
+| `strat/signal_automation/daemon.py` | MODIFIED | Delegates to FilterManager (-127 lines) |
+| `tests/test_signal_automation/test_coordinators/test_filter_manager.py` | NEW | 59 tests |
+
+### Test Results
+
+- Signal automation tests: 956/956 passing
+- New tests added: 59 (FilterManager)
+- Total test suite: 3,595 -> 3,654 tests (+59)
+
+### Phase 2 Progress
+
+| Coordinator | Lines | Tests | Session | Status |
+|-------------|-------|-------|---------|--------|
+| FilterManager | 301 | 59 | EQUITY-87 | COMPLETE |
+| StaleSetupValidator | TBD | TBD | TBD | PENDING |
+
+### Line Count Progress
+
+| File | Before | After | Reduction |
+|------|--------|-------|-----------|
+| daemon.py | 1,976 | 1,849 | -127 lines |
+| Goal | - | <1,500 | -476 more needed |
+
+### Next Session: EQUITY-88
+
+- Continue Phase 2: StaleSetupValidator extraction
+- Consider ExecutionCoordinator extraction
+- Target: <1,700 lines in daemon.py
 
 ---
 
