@@ -1,9 +1,112 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 24, 2026 (Session EQUITY-84)
+**Last Updated:** January 24, 2026 (Session EQUITY-86)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 4 IN PROGRESS (God Class Refactoring)
-**Status:** EQUITY-84 COMPLETE - AlertManager extracted, trade_audit bug fixed
+**Status:** EQUITY-86 COMPLETE - Phase 1 Week 1 finished, MarketHoursValidator extracted
+
+---
+
+## Session EQUITY-86: Phase 1.3 MarketHoursValidator Extraction (COMPLETE)
+
+**Date:** January 24, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Phase 1 (Week 1) finished
+
+### What Was Accomplished
+
+1. **Created MarketHoursValidator Shared Utility**
+   - New file: `strat/signal_automation/utils/market_hours.py` (298 lines)
+   - MarketHoursValidator class with NYSE calendar integration
+   - MarketSchedule dataclass for schedule representation
+   - Supports holidays, early closes, timezone handling
+   - Module-level convenience functions
+
+2. **Wired Validator to 4 Modules**
+   - daemon.py: `_is_market_hours()` now delegates to validator
+   - position_monitor.py: `_is_market_hours()` now delegates
+   - entry_monitor.py: `is_market_hours()` now delegates
+   - scheduler.py: `is_market_hours()` now delegates
+   - Removed ~110 lines of duplicate code
+
+3. **Added 41 New Tests**
+   - Created `tests/test_signal_automation/test_utils/test_market_hours.py`
+   - Coverage: holidays, early closes, weekends, pre/post market, timezones
+
+4. **Fixed 2 Pre-existing Test Issues**
+   - `test_timeframe_specific_max_loss`: Used 1H timeframe which triggered EOD exit
+   - `test_is_market_hours_during_trading`: Mock location needed update for new validator
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `strat/signal_automation/utils/market_hours.py` | NEW | MarketHoursValidator utility (298 lines) |
+| `strat/signal_automation/utils/__init__.py` | MODIFIED | Added exports |
+| `strat/signal_automation/daemon.py` | MODIFIED | Delegates to validator (-35 lines) |
+| `strat/signal_automation/position_monitor.py` | MODIFIED | Delegates to validator (-35 lines) |
+| `strat/signal_automation/entry_monitor.py` | MODIFIED | Delegates to validator (-20 lines) |
+| `strat/signal_automation/scheduler.py` | MODIFIED | Delegates to validator (-20 lines) |
+| `tests/test_signal_automation/test_utils/__init__.py` | NEW | Test package |
+| `tests/test_signal_automation/test_utils/test_market_hours.py` | NEW | 41 tests |
+| `tests/test_signal_automation/test_position_monitor.py` | MODIFIED | Fixed test |
+| `tests/test_signal_automation/test_scheduler.py` | MODIFIED | Fixed test |
+
+### Test Results
+
+- Signal automation tests: 897/897 passing
+- New tests added: 41 (MarketHoursValidator)
+- Total test suite: 3,554 -> 3,595 tests (+41)
+
+### Phase 1 Summary (Week 1 COMPLETE)
+
+| Coordinator | Lines | Tests | Session |
+|-------------|-------|-------|---------|
+| AlertManager | 222 | 22 | EQUITY-85 |
+| HealthMonitor | 260 | 30 | EQUITY-85 |
+| MarketHoursValidator | 298 | 41 | EQUITY-86 |
+| **Total** | **780** | **93** | |
+
+### Commits
+
+- `e36586a` - refactor: extract MarketHoursValidator to shared utility (EQUITY-86)
+
+### Next Session: EQUITY-87
+
+- Begin Phase 2: FilterManager extraction (lines 729-865)
+- Continue god class line reduction
+- Target: 40+ tests for FilterManager
+
+---
+
+## Session EQUITY-85: HealthMonitor + AlertManager Wiring (COMPLETE)
+
+**Date:** January 24, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - HealthMonitor extracted, AlertManager wired to daemon
+
+### What Was Accomplished
+
+1. **Extracted HealthMonitor Coordinator**
+   - New file: `strat/signal_automation/coordinators/health_monitor.py` (260 lines)
+   - Methods: health_check(), generate_daily_audit(), run_daily_audit()
+   - Created DaemonStats dataclass for thread-safe stat passing
+   - 30 new tests
+
+2. **Created release/v1.0 Branch**
+   - Added .gitattributes with export-ignore patterns
+   - Pushed to remote
+
+3. **Wired AlertManager to Daemon**
+   - Added _setup_alert_manager() method
+   - Delegated alert methods to AlertManager coordinator
+   - Daemon reduced by 66 lines (-3.2%)
+
+### Commits
+
+- `de2da8c` - refactor: extract HealthMonitor from SignalDaemon (EQUITY-85)
+- `9769246` - chore: add .gitattributes for clean release exports
+- `e44df1e` - refactor: wire AlertManager to SignalDaemon (EQUITY-85)
 
 ---
 
