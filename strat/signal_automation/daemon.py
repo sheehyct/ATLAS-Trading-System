@@ -1677,7 +1677,8 @@ class SignalDaemon:
         }
 
         # Load paper trades
-        paper_trades_path = Path('paper_trades/paper_trades.json')
+        # EQUITY-84: Use absolute path to avoid issues when daemon runs from different cwd
+        paper_trades_path = Path(__file__).parent.parent.parent / 'paper_trades' / 'paper_trades.json'
         if paper_trades_path.exists():
             try:
                 with open(paper_trades_path, 'r') as f:
@@ -1707,6 +1708,10 @@ class SignalDaemon:
             except (json.JSONDecodeError, KeyError, IOError) as e:
                 logger.error(f"Failed to load paper trades for audit: {e}")
                 audit_data['anomalies'].append(f"Failed to load trades: {e}")
+        else:
+            # EQUITY-84: Log warning if paper trades file not found
+            logger.warning(f"Paper trades file not found at {paper_trades_path.absolute()}")
+            audit_data['anomalies'].append(f"Paper trades file not found: {paper_trades_path}")
 
         # Get open positions from position monitor
         if self.position_monitor is not None:
