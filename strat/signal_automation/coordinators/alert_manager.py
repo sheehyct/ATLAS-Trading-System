@@ -13,6 +13,7 @@ Responsibilities:
 """
 
 import logging
+import pytz
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 
@@ -22,6 +23,7 @@ from strat.signal_automation.executor import ExecutionResult
 from strat.signal_automation.position_monitor import ExitSignal
 
 logger = logging.getLogger(__name__)
+_ET_TIMEZONE = pytz.timezone('America/New_York')
 
 
 class AlertManager:
@@ -53,6 +55,21 @@ class AlertManager:
         self._is_market_hours = is_market_hours_fn
         self._on_error = on_error or (lambda: None)
 
+    def _get_et_time(self) -> str:
+        """Get current time in ET timezone as formatted string."""
+        now_et = datetime.now(_ET_TIMEZONE)
+        return now_et.strftime('%H:%M:%S ET')
+
+    def _should_mark_alerted(self, signal: StoredSignal) -> bool:
+        """Check if a signal should be marked as alerted."""
+        return signal.status != SignalStatus.HISTORICAL_TRIGGERED.value
+
+    def _mark_signals_alerted(self, signals: List[StoredSignal]) -> None:
+        """Mark non-historical signals as alerted in the store."""
+        for signal in signals:
+            if self._should_mark_alerted(signal):
+                self._signal_store.mark_alerted(signal.signal_key)
+
     def send_signal_alerts(self, signals: List[StoredSignal]) -> None:
         """
         Send alerts for new signals.
@@ -65,12 +82,10 @@ class AlertManager:
         Args:
             signals: Signals to alert
         """
-        import pytz
-        et = pytz.timezone('America/New_York')
-        now_et = datetime.now(et)
+        et_time = self._get_et_time()
 
         logger.info(
-            f"AlertManager.send_signal_alerts: {len(signals)} signals at {now_et.strftime('%H:%M:%S ET')}, "
+            f"AlertManager.send_signal_alerts: {len(signals)} signals at {et_time}, "
             f"is_market_hours={self._is_market_hours()}, "
             f"alert_on_signal_detection={self._config.alert_on_signal_detection}"
         )
@@ -89,47 +104,49 @@ class AlertManager:
         # Session EQUITY-33: Skip ALL alerting during premarket/afterhours
         if not self._is_market_hours():
             logger.info(
-                f"BLOCKED (outside market hours): {len(signals)} signals at {now_et.strftime('%H:%M:%S ET')}"
+                f"BLOCKED (outside market hours): {len(signals)} signals at {et_time}"
             )
-            # Still mark as alerted for internal tracking
-            for signal in signals:
-                if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
-                    self._signal_store.mark_alerted(signal.signal_key)
+            self._mark_signals_alerted(signals)
             return
 
         for alerter in self._alerters:
             try:
                 # Session EQUITY-34: Use explicit config flag for Discord signal detection
-                if isinstance(alerter, DiscordAlerter):
-                    if not self._config.alert_on_signal_detection:
-                        logger.info(
-                            f"BLOCKED Discord pattern alerts: alert_on_signal_detection=False, "
-                            f"{len(signals)} signals"
-                        )
-                        # Mark as alerted without sending Discord message
-                        for signal in signals:
-                            if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
-                                self._signal_store.mark_alerted(signal.signal_key)
-                        continue
+                if isinstance(alerter, DiscordAlerter) and not self._config.alert_on_signal_detection:
+                    logger.info(
+                        f"BLOCKED Discord pattern alerts: alert_on_signal_detection=False, "
+                        f"{len(signals)} signals"
+                    )
+                    self._mark_signals_alerted(signals)
+                    continue
 
-                # Send alerts via alerter
-                if len(signals) > 1 and hasattr(alerter, 'send_batch_alert'):
-                    success = alerter.send_batch_alert(signals)
-                else:
-                    success = True
-                    for signal in signals:
-                        if not alerter.send_alert(signal):
-                            success = False
-
+                success = self._send_via_alerter(alerter, signals)
                 if success:
-                    # Mark signals as alerted (skip if already HISTORICAL_TRIGGERED)
-                    for signal in signals:
-                        if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
-                            self._signal_store.mark_alerted(signal.signal_key)
+                    self._mark_signals_alerted(signals)
 
             except Exception as e:
                 logger.error(f"Alert error ({alerter.name}): {e}")
                 self._on_error()
+
+    def _send_via_alerter(self, alerter: BaseAlerter, signals: List[StoredSignal]) -> bool:
+        """
+        Send signals via a specific alerter.
+
+        Args:
+            alerter: The alerter to use
+            signals: Signals to send
+
+        Returns:
+            True if all signals were sent successfully
+        """
+        if len(signals) > 1 and hasattr(alerter, 'send_batch_alert'):
+            return alerter.send_batch_alert(signals)
+
+        success = True
+        for signal in signals:
+            if not alerter.send_alert(signal):
+                success = False
+        return success
 
     def send_entry_alert(
         self,
@@ -179,25 +196,40 @@ class AlertManager:
         for alerter in self._alerters:
             try:
                 if isinstance(alerter, DiscordAlerter):
-                    # Use simplified exit alert
-                    reason_str = (
-                        exit_signal.reason.value
-                        if hasattr(exit_signal.reason, 'value')
-                        else str(exit_signal.reason)
-                    )
-                    alerter.send_simple_exit_alert(
-                        symbol=signal.symbol if signal else exit_signal.osi_symbol[:3],
-                        pattern_type=signal.pattern_type if signal else "Unknown",
-                        timeframe=signal.timeframe if signal else "Unknown",
-                        direction=signal.direction if signal else "CALL",
-                        exit_reason=reason_str,
-                        pnl=exit_signal.unrealized_pnl,
-                    )
+                    self._send_discord_exit_alert(alerter, exit_signal, signal)
                 elif isinstance(alerter, LoggingAlerter):
                     alerter.log_position_exit(exit_signal, order_result)
             except Exception as e:
                 logger.error(f"Exit alert error ({alerter.name}): {e}")
                 self._on_error()
+
+    def _send_discord_exit_alert(
+        self,
+        alerter: DiscordAlerter,
+        exit_signal: ExitSignal,
+        signal: Optional[StoredSignal],
+    ) -> None:
+        """
+        Send Discord exit alert with proper signal context.
+
+        Args:
+            alerter: Discord alerter instance
+            exit_signal: Exit signal with reason and P/L
+            signal: Optional original signal for context
+        """
+        reason_str = (
+            exit_signal.reason.value
+            if hasattr(exit_signal.reason, 'value')
+            else str(exit_signal.reason)
+        )
+        alerter.send_simple_exit_alert(
+            symbol=signal.symbol if signal else exit_signal.osi_symbol[:3],
+            pattern_type=signal.pattern_type if signal else "Unknown",
+            timeframe=signal.timeframe if signal else "Unknown",
+            direction=signal.direction if signal else "CALL",
+            exit_reason=reason_str,
+            pnl=exit_signal.unrealized_pnl,
+        )
 
     def test_alerters(self) -> Dict[str, bool]:
         """

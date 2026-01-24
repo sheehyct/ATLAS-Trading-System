@@ -1,9 +1,68 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 23, 2026 (Session EQUITY-83)
+**Last Updated:** January 24, 2026 (Session EQUITY-84)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Phase 3 COMPLETE, Phase 4 Ready
-**Status:** EQUITY-83 COMPLETE - Phase 3 test coverage finished
+**Phase:** Paper Trading - Phase 4 IN PROGRESS (God Class Refactoring)
+**Status:** EQUITY-84 COMPLETE - AlertManager extracted, trade_audit bug fixed
+
+---
+
+## Session EQUITY-84: Phase 4 God Class Refactoring Start (COMPLETE)
+
+**Date:** January 24, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - AlertManager extracted + trade_audit.py bug fixed
+
+### What Was Accomplished
+
+1. **Created Phase 4 Refactoring Plan**
+   - 6-week roadmap for extracting 12 coordinators from 3 god classes
+   - SignalDaemon (2,042 lines), PositionMonitor (1,572 lines), CryptoSignalDaemon (1,501 lines)
+   - Repository strategy: Single repo + release branch
+   - Context management: Status line + hooks workflow
+
+2. **Fixed trade_audit.py Bug (EQUITY-82 flagged)**
+   - Root cause: Relative path failed when daemon ran from different cwd
+   - Fix: Changed to absolute path + added warning log
+   - Location: daemon.py:1680
+
+3. **Extracted AlertManager Coordinator**
+   - New file: `strat/signal_automation/coordinators/alert_manager.py` (222 lines)
+   - Methods: send_signal_alerts(), send_entry_alert(), send_exit_alert(), test_alerters()
+   - Features: Market hours blocking, priority sorting, Discord/logging routing
+   - Tests: 22 new tests (all passing)
+
+4. **Created Directory Structure**
+   - `strat/signal_automation/coordinators/` - Extracted coordinator classes
+   - `strat/signal_automation/utils/` - Shared utilities
+   - `strat/signal_automation/integrations/` - Broker abstractions
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `strat/signal_automation/daemon.py` | MODIFIED | trade_audit.py bug fix |
+| `strat/signal_automation/coordinators/__init__.py` | NEW | Coordinators package |
+| `strat/signal_automation/coordinators/alert_manager.py` | NEW | AlertManager coordinator |
+| `strat/signal_automation/utils/__init__.py` | NEW | Utils package |
+| `strat/signal_automation/integrations/__init__.py` | NEW | Integrations package |
+| `tests/test_signal_automation/test_coordinators/test_alert_manager.py` | NEW | 22 AlertManager tests |
+
+### Test Results
+
+- AlertManager tests: 22/22 passing
+- Daemon tests: 81/83 passing (2 pre-existing mock issues)
+- Test suite: 3,502 -> 3,524 tests (+22)
+
+### Commits
+
+- `0eebd0d` - refactor: extract AlertManager + fix trade_audit bug (EQUITY-84)
+
+### Next Session: EQUITY-85
+
+- Continue Phase 4: Extract HealthMonitor coordinator
+- Create release/v1.0 branch
+- Wire AlertManager to daemon (complete facade pattern)
 
 ---
 
