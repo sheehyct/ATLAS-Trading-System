@@ -1,9 +1,151 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 23, 2026 (Session EQUITY-81)
+**Last Updated:** January 23, 2026 (Session EQUITY-83)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 3 Test Coverage In Progress
-**Status:** EQUITY-81 COMPLETE - Comprehensive daemon.py test coverage
+**Status:** EQUITY-83 COMPLETE - Utils module test coverage
+
+---
+
+## Session EQUITY-83: Utils Module Test Coverage (COMPLETE)
+
+**Date:** January 23, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 149 new tests for utils/ modules
+
+### What Was Accomplished
+
+1. **Created tests/test_utils/test_fix_manifest.py (37 tests):**
+   - FixEntry dataclass creation and serialization
+   - FixManifest load/save, add/get operations
+   - Timestamp queries (get_fixes_after, get_fixes_before, trade_after_fix)
+   - Verification workflow (mark_verified, get_unverified_fixes)
+   - Audit report generation and JSON export
+
+2. **Created tests/test_utils/test_version_tracker.py (34 tests):**
+   - VersionInfo dataclass and properties
+   - Session ID extraction (parentheses, colon prefix, middle of message)
+   - Git command execution and error handling
+   - Version caching and force refresh
+   - Component dependency tracking
+
+3. **Created tests/test_utils/test_position_sizing.py (28 tests):**
+   - ATR-based position sizing (scalar and pandas Series)
+   - Capital constraint enforcement
+   - Edge cases (zero ATR, NaN handling, penny stocks, expensive stocks)
+   - validate_position_size function
+   - VBT Pro compatibility testing
+
+4. **Created tests/test_utils/test_portfolio_heat.py (33 tests):**
+   - PortfolioHeatManager initialization and validation
+   - Heat calculation with multiple positions
+   - Trade acceptance/rejection logic
+   - Position add/remove/update operations
+   - Integration tests (typical trading session, trailing stops)
+
+5. **Created tests/test_utils/test_data_fetch.py (17 tests):**
+   - Source validation (alpaca, tiingo, yahoo)
+   - Timezone enforcement (America/New_York)
+   - Weekend date detection
+   - verify_bar_classifications function
+
+### Test Results
+
+- 149 new tests (37 + 34 + 28 + 33 + 17)
+- 148 passed, 1 xfailed (source code bug in timezone check)
+- Total test suite: 3,280 -> 3,429 (+149)
+
+### Files Created
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `tests/test_utils/test_fix_manifest.py` | 37 | Fix tracking, audit reports |
+| `tests/test_utils/test_version_tracker.py` | 34 | Version info, git commands |
+| `tests/test_utils/test_position_sizing.py` | 28 | ATR sizing, VBT Pro |
+| `tests/test_utils/test_portfolio_heat.py` | 33 | Heat management |
+| `tests/test_utils/test_data_fetch.py` | 17 | Timezone enforcement |
+
+### Phase 3 Running Total
+
+- EQUITY-68 through EQUITY-82: 2,211 tests
+- EQUITY-83: 149 tests
+- **Total: 2,360 new tests**
+
+### Note: Code Simplifier Review
+
+Code-simplifier plugin identified minor opportunities:
+- Use pytest `capsys` instead of manual stdout capture (test_portfolio_heat.py)
+- Use `@pytest.mark.parametrize` instead of loops (test_position_sizing.py)
+- Extract repeated mock setups to fixtures (test_data_fetch.py)
+
+These are style improvements, not blocking issues.
+
+---
+
+## Session EQUITY-82: Crypto Trading Test Coverage (COMPLETE)
+
+**Date:** January 23, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 157 new tests for crypto/trading/ modules
+
+### What Was Accomplished
+
+1. **Comprehensive Technical Debt Audit:**
+   - Verified Phase 3 progress: 2,054 tests added (EQUITY-68 to EQUITY-81)
+   - Identified 13 remaining untested modules (4,649 lines)
+   - Updated plan file with complete Phase 3 roadmap
+
+2. **Created tests/test_crypto/test_beta.py (57 tests):**
+   - CRYPTO_BETA_TO_BTC and leverage tier constants
+   - calculate_effective_multiplier(), get_effective_multipliers()
+   - rank_by_capital_efficiency() - sorted ranking
+   - project_pnl_on_btc_move() - P&L projection
+   - calculate_rolling_beta() - pandas rolling calculation
+   - calculate_beta_from_ranges() - Day Up/Down method
+   - calculate_beta_adjusted_size() - normalized sizing
+   - select_best_instrument() - signal selection
+
+3. **Created tests/test_crypto/test_fees.py (53 tests):**
+   - TAKER_FEE_RATE, MIN_FEE_PER_CONTRACT, CONTRACT_MULTIPLIERS
+   - calculate_fee() - percentage vs minimum floor
+   - calculate_round_trip_fee() - entry + exit
+   - calculate_breakeven_move() - fee impact on returns
+   - calculate_num_contracts() / calculate_notional_from_contracts()
+   - create_coinbase_fee_func() - VBT integration
+   - analyze_fee_impact() - comprehensive analysis
+
+4. **Created tests/test_crypto/test_derivatives.py (47 tests):**
+   - get_leverage_for_tier() - tier lookup
+   - calculate_funding_cost() - long/short funding
+   - get_next_funding_time() / time_to_funding()
+   - calculate_initial_margin() / calculate_maintenance_margin()
+   - calculate_liquidation_price() - liq price formula
+   - should_close_before_funding() - decision logic
+   - calculate_effective_leverage() / is_leverage_safe()
+
+### Test Results
+
+- 157 new tests (57 + 53 + 47)
+- All 157 tests passing
+- Total test suite: 3,123 -> 3,280 (+157)
+
+### Files Created
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `tests/test_crypto/test_beta.py` | 57 | Beta calculations, capital efficiency |
+| `tests/test_crypto/test_fees.py` | 53 | Coinbase CFM fee model |
+| `tests/test_crypto/test_derivatives.py` | 47 | Funding, margin, liquidation |
+
+### Phase 3 Running Total
+
+- EQUITY-68 through EQUITY-81: 2,054 tests
+- EQUITY-82: 157 tests
+- **Total: 2,211 new tests**
+
+### Note: Trade Audit Bug
+
+User reported trade_audit.py Discord alerts showing zero trades despite actual trades occurring. Flagged for investigation when testing utils modules (fix_manifest.py, version_tracker.py).
 
 ---
 
