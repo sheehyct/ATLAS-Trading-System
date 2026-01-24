@@ -776,13 +776,18 @@ class TestEventHandlers:
 class TestIsMarketHours:
     """Test is_market_hours method."""
 
-    def test_is_market_hours_during_trading(self, scheduler, mock_scheduler):
-        """Market hours check during trading day."""
+    def test_is_market_hours_during_trading(self, mock_scheduler):
+        """Market hours check during trading day.
+
+        EQUITY-86: MarketHoursValidator caches calendar at init, so we must
+        create the scheduler inside the patch context.
+        """
         import pandas as pd
 
-        with patch('pandas_market_calendars.get_calendar') as mock_get_cal:
+        # Patch mcal before creating scheduler (validator caches calendar at init)
+        with patch('strat.signal_automation.utils.market_hours.mcal') as mock_mcal:
             mock_calendar = MagicMock()
-            mock_get_cal.return_value = mock_calendar
+            mock_mcal.get_calendar.return_value = mock_calendar
 
             # Create schedule DataFrame
             tz = pytz.timezone('America/New_York')
@@ -792,13 +797,15 @@ class TestIsMarketHours:
             })
             mock_calendar.schedule.return_value = schedule
 
+            # Create scheduler inside patch context
+            test_scheduler = SignalScheduler()
+
             # Mock current time to be during market hours
             mock_now = tz.localize(datetime(2024, 1, 15, 12, 0))
-            with patch.object(scheduler.timezone, 'localize', return_value=mock_now):
-                with patch('strat.signal_automation.scheduler.datetime') as mock_dt:
-                    mock_dt.now.return_value = mock_now
+            with patch('strat.signal_automation.utils.market_hours.datetime') as mock_dt:
+                mock_dt.now.return_value = mock_now
 
-                    result = scheduler.is_market_hours()
+                result = test_scheduler.is_market_hours()
 
         assert result is True
 

@@ -55,6 +55,7 @@ from strat.signal_automation.entry_monitor import (
     TriggerEvent,
 )
 from strat.signal_automation.coordinators import AlertManager
+from strat.signal_automation.utils import MarketHoursValidator
 from strat.paper_signal_scanner import PaperSignalScanner, DetectedSignal
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ class SignalDaemon:
         self.scanner = scanner or PaperSignalScanner()
         self.signal_store = signal_store or SignalStore(config.store_path)
         self.scheduler = SignalScheduler(config.schedule)
+        self._market_hours_validator = MarketHoursValidator()  # EQUITY-86: Shared utility
         self.alerters: List[BaseAlerter] = []
         self.executor: Optional[SignalExecutor] = executor
         self.position_monitor: Optional[PositionMonitor] = position_monitor
@@ -868,44 +870,12 @@ class SignalDaemon:
 
         Session EQUITY-34: Uses pandas_market_calendars for accurate holiday
         and early close handling (e.g., Christmas Eve 1PM, Thanksgiving Friday 1PM).
+        Session EQUITY-86: Delegates to shared MarketHoursValidator utility.
 
         Returns:
             True if within market hours, False otherwise
         """
-        import pytz
-        import pandas_market_calendars as mcal
-
-        et = pytz.timezone('America/New_York')
-        now = datetime.now(et)
-
-        # Get NYSE calendar
-        nyse = mcal.get_calendar('NYSE')
-
-        # Get today's schedule
-        schedule = nyse.schedule(
-            start_date=now.date(),
-            end_date=now.date()
-        )
-
-        # Check if market is open today (handles holidays)
-        if schedule.empty:
-            logger.debug(f"Market closed: {now.date()} is not a trading day")
-            return False
-
-        # Get market open/close times (handles early closes)
-        market_open = schedule.iloc[0]['market_open']
-        market_close = schedule.iloc[0]['market_close']
-
-        # Compare timezone-aware datetimes
-        if now < market_open:
-            logger.debug(f"Market not yet open: opens at {market_open.strftime('%H:%M')} ET")
-            return False
-
-        if now > market_close:
-            logger.debug(f"Market closed: closed at {market_close.strftime('%H:%M')} ET")
-            return False
-
-        return True
+        return self._market_hours_validator.is_market_hours()
 
     def _is_setup_stale(self, signal: StoredSignal) -> tuple[bool, str]:
         """

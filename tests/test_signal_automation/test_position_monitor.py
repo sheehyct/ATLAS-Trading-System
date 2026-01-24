@@ -859,13 +859,35 @@ class TestCheckPosition:
         assert result is not None
         assert result.reason == ExitReason.MAX_LOSS
 
-    def test_timeframe_specific_max_loss(self, monitor, position):
-        """Test timeframe-specific max loss thresholds."""
-        position.timeframe = '1H'  # 40% threshold
-        position.underlying_price = 442.0
-        position.unrealized_pct = -0.42  # 42% loss
+    def test_timeframe_specific_max_loss(self):
+        """Test timeframe-specific max loss thresholds.
 
-        result = monitor._check_position(position)
+        Note: Uses 1D timeframe which has 50% max loss threshold.
+        Uses 1 contract to avoid partial exit logic.
+        """
+        # Disable partial exit to test max loss in isolation
+        config = MonitoringConfig(partial_exit_enabled=False, minimum_hold_seconds=0)
+        monitor = PositionMonitor(config=config)
+
+        pos = TrackedPosition(
+            osi_symbol='SPY241220C00450000',
+            signal_key='SPY_1D',
+            symbol='SPY',
+            direction='CALL',
+            entry_trigger=445.0,
+            target_price=455.0,
+            stop_price=440.0,
+            pattern_type='3-1-2U',
+            timeframe='1D',  # 50% threshold, avoids 1H EOD logic
+            entry_price=5.50,
+            contracts=1,  # Single contract to avoid partial exit
+            entry_time=datetime.now() - timedelta(minutes=10),
+            expiration=(datetime.now() + timedelta(days=10)).strftime('%Y-%m-%d'),
+        )
+        pos.underlying_price = 442.0  # Not hitting stop
+        pos.unrealized_pct = -0.55  # 55% loss, above 50% threshold for 1D
+
+        result = monitor._check_position(pos)
         assert result is not None
         assert result.reason == ExitReason.MAX_LOSS
 

@@ -23,6 +23,7 @@ from strat.signal_automation.executor import (
     ExecutionState,
 )
 from strat.signal_automation.signal_store import SignalStore, StoredSignal
+from strat.signal_automation.utils import MarketHoursValidator
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +307,7 @@ class PositionMonitor:
         self.trading_client = trading_client
         self.signal_store = signal_store
         self.on_exit_callback = on_exit_callback
+        self._market_hours_validator = MarketHoursValidator()  # EQUITY-86: Shared utility
 
         # Tracked positions (osi_symbol -> TrackedPosition)
         self._positions: Dict[str, TrackedPosition] = {}
@@ -1311,42 +1313,9 @@ class PositionMonitor:
         Session 83K-77: Prevent exit attempts outside market hours.
         Session EQUITY-36: Uses pandas_market_calendars for accurate holiday
         and early close handling (e.g., Christmas Eve 1PM, day after Christmas).
+        Session EQUITY-86: Delegates to shared MarketHoursValidator utility.
         """
-        import pytz
-        import pandas_market_calendars as mcal
-
-        et = pytz.timezone('America/New_York')
-        now = datetime.now(et)
-
-        # Get NYSE calendar
-        nyse = mcal.get_calendar('NYSE')
-
-        # Get schedule for today
-        schedule = nyse.schedule(
-            start_date=now.date(),
-            end_date=now.date()
-        )
-
-        # Check if market is open today (handles holidays)
-        if schedule.empty:
-            logger.debug(f"Market closed: {now.date()} is not a trading day (holiday)")
-            return False
-
-        # Get market open/close times (handles early closes)
-        market_open = schedule.iloc[0]['market_open'].tz_convert(et)
-        market_close = schedule.iloc[0]['market_close'].tz_convert(et)
-
-        # Check if current time is within market hours
-        now_aware = now if now.tzinfo else et.localize(now)
-        is_open = market_open <= now_aware <= market_close
-
-        if not is_open:
-            logger.debug(
-                f"Outside market hours: {now.strftime('%H:%M ET')} "
-                f"(open: {market_open.strftime('%H:%M')}, close: {market_close.strftime('%H:%M')})"
-            )
-
-        return is_open
+        return self._market_hours_validator.is_market_hours()
 
     def _is_stale_1h_position(self, entry_time: datetime) -> bool:
         """

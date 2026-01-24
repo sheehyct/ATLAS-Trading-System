@@ -26,6 +26,7 @@ from apscheduler.events import (
 import pytz
 
 from strat.signal_automation.config import ScheduleConfig
+from strat.signal_automation.utils import MarketHoursValidator
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class SignalScheduler:
         """
         self.config = config or ScheduleConfig()
         self.timezone = pytz.timezone(timezone)
+        self._market_hours_validator = MarketHoursValidator(timezone=timezone)
 
         # Create scheduler with timezone
         self._scheduler = BackgroundScheduler(
@@ -595,34 +597,12 @@ class SignalScheduler:
 
         Session EQUITY-36: Uses pandas_market_calendars for accurate holiday
         and early close handling (e.g., Christmas Eve 1PM, day after Christmas).
+        Session EQUITY-86: Delegates to shared MarketHoursValidator utility.
 
         Returns:
             True if market is open (handles holidays and early closes)
         """
-        import pandas_market_calendars as mcal
-
-        now = datetime.now(self.timezone)
-
-        # Get NYSE calendar
-        nyse = mcal.get_calendar('NYSE')
-
-        # Get schedule for today
-        schedule = nyse.schedule(
-            start_date=now.date(),
-            end_date=now.date()
-        )
-
-        # Check if market is open today (handles holidays)
-        if schedule.empty:
-            return False
-
-        # Get market open/close times (handles early closes)
-        market_open = schedule.iloc[0]['market_open'].tz_convert(self.timezone)
-        market_close = schedule.iloc[0]['market_close'].tz_convert(self.timezone)
-
-        # Check if current time is within market hours
-        now_aware = now if now.tzinfo else self.timezone.localize(now)
-        return market_open <= now_aware <= market_close
+        return self._market_hours_validator.is_market_hours()
 
     def start(self) -> None:
         """Start the scheduler."""

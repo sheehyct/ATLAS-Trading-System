@@ -26,6 +26,7 @@ from strat.signal_automation.signal_store import (
     TIMEFRAME_PRIORITY,
 )
 from strat.pattern_registry import is_bidirectional_pattern
+from strat.signal_automation.utils import MarketHoursValidator
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,7 @@ class EntryMonitor:
         self.signal_store = signal_store
         self.price_fetcher = price_fetcher
         self.config = config or EntryMonitorConfig()
+        self._market_hours_validator = MarketHoursValidator()  # EQUITY-86: Shared utility
 
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -116,27 +118,9 @@ class EntryMonitor:
 
         Uses pandas_market_calendars for accurate holiday/early close handling.
         Session EQUITY-36: Fixed to properly handle NYSE holidays.
+        Session EQUITY-86: Delegates to shared MarketHoursValidator utility.
         """
-        import pytz
-        import pandas_market_calendars as mcal
-
-        et = pytz.timezone('America/New_York')
-        now = datetime.now(et)
-
-        # Use NYSE calendar for accurate holiday handling
-        nyse = mcal.get_calendar('NYSE')
-        schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
-
-        if schedule.empty:
-            # Not a trading day (weekend or holiday)
-            logger.debug(f"Market closed: {now.date()} is not a trading day")
-            return False
-
-        # Get actual market hours for today (handles early close days)
-        market_open = schedule.iloc[0]['market_open'].tz_convert(et)
-        market_close = schedule.iloc[0]['market_close'].tz_convert(et)
-
-        return market_open <= now <= market_close
+        return self._market_hours_validator.is_market_hours()
 
     def is_hourly_entry_allowed(self, signal: StoredSignal) -> bool:
         """
