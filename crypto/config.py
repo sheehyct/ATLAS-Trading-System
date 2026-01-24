@@ -55,17 +55,59 @@ CRYPTO_SPOT_SYMBOLS: List[str] = [
 # =============================================================================
 
 # Leverage tiers based on holding period
+# CORRECTED Session Jan 23, 2026: SOL/XRP/ADA are 5x intraday, not 10x
+# CORRECTED Session Jan 24, 2026: Overnight/swing values verified from platform
 LEVERAGE_TIERS: Dict[str, Dict[str, float]] = {
     "intraday": {
         "BTC": 10.0,   # Must close before 4PM ET
         "ETH": 10.0,
-        "SOL": 10.0,
+        "SOL": 5.0,    # Altcoins get 5x max intraday
+        "XRP": 5.0,
+        "ADA": 5.0,
     },
-    "swing": {
-        "BTC": 4.0,    # Holding through funding periods, 24/7
+    "overnight": {
+        # Verified from Coinbase CFM platform Jan 24, 2026
+        "BTC": 4.1,
         "ETH": 4.0,
-        "SOL": 3.0,    # More volatile
+        "SOL": 2.7,
+        "XRP": 2.6,
+        "ADA": 3.4,
     },
+    # Legacy alias for backward compatibility
+    "swing": {
+        "BTC": 4.1,
+        "ETH": 4.0,
+        "SOL": 2.7,
+        "XRP": 2.6,
+        "ADA": 3.4,
+    },
+}
+
+# =============================================================================
+# BETA TO BTC (Volatility Multiplier)
+# =============================================================================
+# Empirical beta values - how much each asset moves relative to BTC
+# Calculated from Day Down/Day Up ranges (Jan 23, 2026 snapshot)
+# Should be recalculated periodically as market dynamics change
+#
+# Key Insight: Lower leverage altcoins can outperform higher leverage BTC/ETH
+# when their beta exceeds the leverage differential.
+# Example: ADA (5x, 2.2 beta) beats BTC (10x, 1.0 beta) on same market move
+
+CRYPTO_BETA_TO_BTC: Dict[str, float] = {
+    "BTC": 1.00,
+    "ETH": 1.98,
+    "SOL": 1.55,
+    "XRP": 1.77,
+    "ADA": 2.20,
+}
+
+# Effective multiplier = Leverage × Beta
+# This determines true capital efficiency
+# Ranking (intraday): ETH (19.8) > ADA (11.0) > BTC (10.0) > XRP (8.85) > SOL (7.75)
+EFFECTIVE_MULTIPLIER_INTRADAY: Dict[str, float] = {
+    symbol: LEVERAGE_TIERS["intraday"].get(symbol, 5.0) * CRYPTO_BETA_TO_BTC.get(symbol, 1.0)
+    for symbol in CRYPTO_BETA_TO_BTC
 }
 
 # Default leverage tier for position sizing
