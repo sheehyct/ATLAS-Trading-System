@@ -1,0 +1,25 @@
+# Git attributes for ATLAS Trading System
+# Export-ignore patterns exclude files from git archive exports
+
+# Session documentation (development artifacts)
+docs/session_archive/** export-ignore
+.session_startup_prompt.md export-ignore
+
+# Database files
+*.sqlite export-ignore
+
+# Output and generated files
+output/** export-ignore
+
+# Reference books (copyright)
+Books/** export-ignore
+
+# Development templates
+docs/worktree_templates/** export-ignore
+
+# Investigation/debug files
+docs/*_INVESTIGATION_*.md export-ignore
+
+# Claude Code hooks/commands (development-specific)
+.claude/hooks/** export-ignore
+.claude/commands/** export-ignore
