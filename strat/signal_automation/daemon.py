@@ -54,6 +54,7 @@ from strat.signal_automation.entry_monitor import (
     EntryMonitorConfig,
     TriggerEvent,
 )
+from strat.signal_automation.coordinators import AlertManager
 from strat.paper_signal_scanner import PaperSignalScanner, DetectedSignal
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,7 @@ class SignalDaemon:
 
         # Initialize components
         self._setup_alerters()
+        self._setup_alert_manager()  # EQUITY-85: Facade pattern
         self._setup_executor()
         self._setup_position_monitor()
         self._setup_entry_monitor()
@@ -154,6 +156,26 @@ class SignalDaemon:
                 logger.info("Discord alerter initialized")
             except ValueError as e:
                 logger.error(f"Failed to initialize Discord alerter: {e}")
+
+    def _setup_alert_manager(self) -> None:
+        """
+        Initialize AlertManager coordinator (EQUITY-85: Facade pattern).
+
+        AlertManager delegates alert delivery to configured alerters.
+        This enables clean separation of concerns and isolated testing.
+        """
+        self._alert_manager = AlertManager(
+            alerters=self.alerters,
+            signal_store=self.signal_store,
+            config_alerts=self.config.alerts,
+            is_market_hours_fn=self._is_market_hours,
+            on_error=self._increment_error_count,
+        )
+        logger.info("AlertManager coordinator initialized")
+
+    def _increment_error_count(self) -> None:
+        """Callback for AlertManager to increment error count."""
+        self._error_count += 1
 
     def _setup_executor(self) -> None:
         """Initialize executor if execution is enabled (Session 83K-48)."""
@@ -234,30 +256,18 @@ class SignalDaemon:
         exit_signal: ExitSignal,
         order_result: Dict[str, Any]
     ) -> None:
-        """Callback when a position is exited (Session 83K-49)."""
+        """
+        Callback when a position is exited (Session 83K-49).
+
+        EQUITY-85: Delegates exit alerts to AlertManager coordinator.
+        """
         self._exit_count += 1
 
         # Get signal details for the alert
         signal = self.signal_store.get_signal(exit_signal.signal_key) if exit_signal.signal_key else None
 
-        # Send exit alert (Session 83K-77: simplified Discord alerts)
-        for alerter in self.alerters:
-            try:
-                if isinstance(alerter, DiscordAlerter):
-                    # Use simplified exit alert
-                    reason_str = exit_signal.reason.value if hasattr(exit_signal.reason, 'value') else str(exit_signal.reason)
-                    alerter.send_simple_exit_alert(
-                        symbol=signal.symbol if signal else exit_signal.osi_symbol[:3],
-                        pattern_type=signal.pattern_type if signal else "Unknown",
-                        timeframe=signal.timeframe if signal else "Unknown",
-                        direction=signal.direction if signal else "CALL",
-                        exit_reason=reason_str,
-                        pnl=exit_signal.unrealized_pnl,
-                    )
-                elif isinstance(alerter, LoggingAlerter):
-                    alerter.log_position_exit(exit_signal, order_result)
-            except Exception as e:
-                logger.error(f"Exit alert error ({alerter.name}): {e}")
+        # Delegate to AlertManager (EQUITY-85: Facade pattern)
+        self._alert_manager.send_exit_alert(exit_signal, order_result, signal)
 
     def _setup_entry_monitor(self) -> None:
         """Initialize entry trigger monitor (Session 83K-66)."""
@@ -1129,81 +1139,14 @@ class SignalDaemon:
         """
         Send alerts for new signals.
 
-        Session EQUITY-34: Uses explicit config flags for Discord alert control.
-        Discord only receives alerts based on alert_on_signal_detection config.
-        Trade entry/exit alerts are controlled by alert_on_trade_entry/exit flags.
-        Logging alerter still logs all signals.
+        EQUITY-85: Delegates to AlertManager coordinator (Facade pattern).
+        AlertManager handles market hours blocking, signal sorting,
+        Discord config flags, and alerter error handling.
 
         Args:
             signals: Signals to alert
         """
-        # Session EQUITY-35: Debug logging to understand alert flow
-        import pytz
-        et = pytz.timezone('America/New_York')
-        now_et = datetime.now(et)
-        logger.info(
-            f"_send_alerts called: {len(signals)} signals at {now_et.strftime('%H:%M:%S ET')}, "
-            f"is_market_hours={self._is_market_hours()}, "
-            f"alert_on_signal_detection={self.config.alerts.alert_on_signal_detection}"
-        )
-
-        # Session EQUITY-40: Sort signals by priority and continuity strength for deterministic batching
-        signals = sorted(
-            signals,
-            key=lambda s: (
-                getattr(s, 'priority', 0),
-                getattr(s, 'continuity_strength', 0),
-                getattr(s, 'magnitude_pct', 0),
-            ),
-            reverse=True,
-        )
-
-        # Session EQUITY-33: Skip ALL alerting during premarket/afterhours
-        if not self._is_market_hours():
-            logger.info(
-                f"BLOCKED (outside market hours): {len(signals)} signals at {now_et.strftime('%H:%M:%S ET')}"
-            )
-            # Still mark as alerted for internal tracking
-            for signal in signals:
-                if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
-                    self.signal_store.mark_alerted(signal.signal_key)
-            return
-
-        for alerter in self.alerters:
-            try:
-                # Session EQUITY-34: Use explicit config flag for Discord signal detection
-                if isinstance(alerter, DiscordAlerter):
-                    if not self.config.alerts.alert_on_signal_detection:
-                        # Session EQUITY-35: Log when Discord alerts are blocked
-                        logger.info(
-                            f"BLOCKED Discord pattern alerts: alert_on_signal_detection=False, "
-                            f"{len(signals)} signals"
-                        )
-                        # Mark as alerted without sending Discord message
-                        for signal in signals:
-                            if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
-                                self.signal_store.mark_alerted(signal.signal_key)
-                        continue
-
-                # Logging alerter: log all signals
-                if len(signals) > 1 and hasattr(alerter, 'send_batch_alert'):
-                    success = alerter.send_batch_alert(signals)
-                else:
-                    # Send individual alerts
-                    success = True
-                    for signal in signals:
-                        if not alerter.send_alert(signal):
-                            success = False
-
-                if success:
-                    # Mark signals as alerted (skip if already HISTORICAL_TRIGGERED)
-                    for signal in signals:
-                        if signal.status != SignalStatus.HISTORICAL_TRIGGERED.value:
-                            self.signal_store.mark_alerted(signal.signal_key)
-
-            except Exception as e:
-                logger.error(f"Alert error ({alerter.name}): {e}")
-                self._error_count += 1
+        self._alert_manager.send_signal_alerts(signals)
 
     def _get_current_price(self, symbol: str) -> Optional[float]:
         """
@@ -1945,17 +1888,12 @@ class SignalDaemon:
         """
         Test all configured alerters.
 
+        EQUITY-85: Delegates to AlertManager coordinator.
+
         Returns:
             Dictionary of alerter_name -> test_passed
         """
-        results = {}
-        for alerter in self.alerters:
-            try:
-                results[alerter.name] = alerter.test_connection()
-            except Exception as e:
-                logger.error(f"Alerter test failed ({alerter.name}): {e}")
-                results[alerter.name] = False
-        return results
+        return self._alert_manager.test_alerters()
 
     @property
     def is_running(self) -> bool:

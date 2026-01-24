@@ -941,7 +941,9 @@ class TestTestAlerters:
         mock_alerter2.name = 'test2'
         mock_alerter2.test_connection.return_value = False
 
+        # EQUITY-85: Update both daemon.alerters and AlertManager's alerters
         daemon.alerters = [mock_alerter1, mock_alerter2]
+        daemon._alert_manager._alerters = [mock_alerter1, mock_alerter2]
 
         result = daemon.test_alerters()
 
@@ -1003,12 +1005,23 @@ class TestSendAlerts:
     """Tests for _send_alerts method."""
 
     def test_calls_alerters_for_each_signal(self, daemon):
-        """_send_alerts calls each alerter."""
+        """_send_alerts calls each alerter via AlertManager."""
         mock_alerter = Mock()
+        mock_alerter.name = 'TestAlerter'
+        mock_alerter.send_alert.return_value = True
+        # EQUITY-85: Update both daemon.alerters and AlertManager's alerters
         daemon.alerters = [mock_alerter]
+        daemon._alert_manager._alerters = [mock_alerter]
+        # EQUITY-85: Mock market hours to be True so alerts are not blocked
+        daemon._alert_manager._is_market_hours = Mock(return_value=True)
 
         signal = Mock(spec=StoredSignal)
         signal.symbol = 'TEST'
+        signal.signal_key = 'test_key_123'
+        signal.status = SignalStatus.DETECTED.value
+        signal.priority = 1
+        signal.continuity_strength = 1
+        signal.magnitude_pct = 1.0
 
         daemon._send_alerts([signal])
 
@@ -1016,14 +1029,22 @@ class TestSendAlerts:
         assert mock_alerter.send_alert.called or mock_alerter.send_batch_alert.called
 
     def test_handles_alerter_error(self, daemon, caplog):
-        """_send_alerts handles alerter errors gracefully."""
+        """_send_alerts handles alerter errors gracefully via AlertManager."""
         mock_alerter = Mock()
+        mock_alerter.name = 'TestAlerter'
         mock_alerter.send_alert.side_effect = Exception("Alert failed")
         mock_alerter.send_batch_alert.side_effect = Exception("Batch alert failed")
+        # EQUITY-85: Update both daemon.alerters and AlertManager's alerters
         daemon.alerters = [mock_alerter]
+        daemon._alert_manager._alerters = [mock_alerter]
 
         signal = Mock(spec=StoredSignal)
         signal.symbol = 'TEST'
+        signal.signal_key = 'test_key_456'
+        signal.status = SignalStatus.DETECTED.value
+        signal.priority = 1
+        signal.continuity_strength = 1
+        signal.magnitude_pct = 1.0
 
         # Should not crash
         daemon._send_alerts([signal])
