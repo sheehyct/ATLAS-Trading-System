@@ -53,14 +53,18 @@ INTRADAY_LEVERAGE: Dict[str, float] = {
     "ADA": 5.0,
 }
 
-# Swing leverage tiers (4PM ET to 6PM ET, weekends)
-SWING_LEVERAGE: Dict[str, float] = {
-    "BTC": 4.0,
+# Swing/Overnight leverage tiers (4PM ET to 6PM ET, weekends)
+# VERIFIED Jan 24, 2026 from Coinbase CFM platform
+OVERNIGHT_LEVERAGE: Dict[str, float] = {
+    "BTC": 4.1,
     "ETH": 4.0,
-    "SOL": 3.0,
-    "XRP": 3.0,
-    "ADA": 3.0,
+    "SOL": 2.7,
+    "XRP": 2.6,
+    "ADA": 3.4,
 }
+
+# Legacy alias for backward compatibility
+SWING_LEVERAGE: Dict[str, float] = OVERNIGHT_LEVERAGE
 
 
 # =============================================================================

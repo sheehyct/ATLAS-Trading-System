@@ -3,6 +3,12 @@ Paper trading simulation system for crypto derivatives.
 
 Provides comprehensive paper trading since Coinbase doesn't offer native paper trading.
 Tracks simulated positions, orders, P&L, and trade history with realistic fills.
+
+Session Jan 24, 2026: Enhanced with Coinbase CFM fee modeling:
+- Taker fee: 0.07% + $0.15/contract
+- Maker fee: 0.065% + $0.15/contract  
+- Slippage simulation (configurable)
+- Funding rate accumulation (8-hour intervals)
 """
 
 import json
@@ -13,6 +19,53 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# FEE CONFIGURATION - VERIFIED Jan 24, 2026
+# =============================================================================
+
+# Coinbase CFM fee structure
+TAKER_FEE_RATE: float = 0.0007     # 0.07%
+MAKER_FEE_RATE: float = 0.00065   # 0.065%
+FIXED_FEE_PER_CONTRACT: float = 0.15  # $0.15 per contract
+
+# Default slippage (0.05% = 5 bps)
+DEFAULT_SLIPPAGE_RATE: float = 0.0005
+
+# Funding rate (annualized, typical bull market)
+ANNUAL_FUNDING_RATE: float = 0.10  # 10% APR
+FUNDING_PERIODS_PER_DAY: int = 3   # Every 8 hours
+
+
+def calculate_trade_fee(
+    notional: float,
+    num_contracts: int = 1,
+    is_maker: bool = False,
+) -> float:
+    """
+    Calculate Coinbase CFM trade fee.
+    
+    Formula: (Notional × Rate) + (Fixed × Contracts)
+    """
+    rate = MAKER_FEE_RATE if is_maker else TAKER_FEE_RATE
+    return (notional * rate) + (FIXED_FEE_PER_CONTRACT * num_contracts)
+
+
+def calculate_slippage(
+    price: float,
+    side: str,
+    slippage_rate: float = DEFAULT_SLIPPAGE_RATE,
+) -> float:
+    """
+    Calculate slippage-adjusted fill price.
+    
+    Buys get filled higher, sells get filled lower.
+    """
+    if side == "BUY":
+        return price * (1 + slippage_rate)
+    else:
+        return price * (1 - slippage_rate)
 
 
 @dataclass
@@ -30,6 +83,8 @@ class SimulatedTrade:
     pnl: Optional[float] = None
     pnl_percent: Optional[float] = None
     status: str = "OPEN"  # OPEN, CLOSED
+    # Session EQUITY-91: Strategy attribution for separate P/L tracking
+    strategy: str = "strat"  # "strat" or "statarb"
     # Position monitoring fields (Session CRYPTO-4)
     stop_price: Optional[float] = None
     target_price: Optional[float] = None
@@ -47,10 +102,20 @@ class SimulatedTrade:
     entry_bar_low: float = 0.0  # Setup bar low for Type 3 detection
     intrabar_high: float = 0.0  # Highest price since entry
     intrabar_low: float = float("inf")  # Lowest price since entry
+    # Session Jan 24, 2026: Fee and cost tracking
+    entry_fee: float = 0.0  # Fee paid on entry
+    exit_fee: float = 0.0  # Fee paid on exit
+    entry_slippage: float = 0.0  # Slippage cost on entry
+    exit_slippage: float = 0.0  # Slippage cost on exit
+    accumulated_funding: float = 0.0  # Funding payments (positive = paid, negative = received)
+    gross_pnl: Optional[float] = None  # P&L before fees/costs
+    total_costs: float = 0.0  # Total fees + funding
 
     def close(self, exit_price: float, exit_time: Optional[datetime] = None) -> None:
         """
-        Close the trade and calculate P&L.
+        Close the trade and calculate P&L including fees and costs.
+
+        Session Jan 24, 2026: Now calculates gross P&L, exit fees, and net P&L.
 
         Args:
             exit_price: Price at which trade was closed
@@ -60,13 +125,23 @@ class SimulatedTrade:
         self.exit_time = exit_time or datetime.utcnow()
         self.status = "CLOSED"
 
-        # Calculate P&L
+        # Calculate gross P&L (before fees)
+        notional = self.entry_price * self.quantity
         if self.side == "BUY":
-            self.pnl = (exit_price - self.entry_price) * self.quantity
+            self.gross_pnl = (exit_price - self.entry_price) * self.quantity
         else:
-            self.pnl = (self.entry_price - exit_price) * self.quantity
+            self.gross_pnl = (self.entry_price - exit_price) * self.quantity
 
-        self.pnl_percent = (self.pnl / (self.entry_price * self.quantity)) * 100
+        # Calculate exit fee
+        exit_notional = exit_price * self.quantity
+        self.exit_fee = calculate_trade_fee(exit_notional, num_contracts=1, is_maker=False)
+
+        # Calculate total costs
+        self.total_costs = self.entry_fee + self.exit_fee + self.accumulated_funding
+
+        # Net P&L (after all costs)
+        self.pnl = self.gross_pnl - self.total_costs
+        self.pnl_percent = (self.pnl / notional) * 100 if notional > 0 else 0
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -82,6 +157,7 @@ class SimulatedTrade:
             "pnl": self.pnl,
             "pnl_percent": self.pnl_percent,
             "status": self.status,
+            "strategy": self.strategy,  # Session EQUITY-91
             "stop_price": self.stop_price,
             "target_price": self.target_price,
             "timeframe": self.timeframe,
@@ -89,14 +165,21 @@ class SimulatedTrade:
             "exit_reason": self.exit_reason,
             "tfc_score": self.tfc_score,
             "risk_multiplier": self.risk_multiplier,
-            "priority_rank": self.priority_rank,  # Session EQUITY-40
-            "margin_reserved": self.margin_reserved,  # Session EQUITY-34
-            # Session EQUITY-67: Pattern invalidation tracking
+            "priority_rank": self.priority_rank,
+            "margin_reserved": self.margin_reserved,
             "entry_bar_type": self.entry_bar_type,
             "entry_bar_high": self.entry_bar_high,
             "entry_bar_low": self.entry_bar_low,
             "intrabar_high": self.intrabar_high,
             "intrabar_low": self.intrabar_low if self.intrabar_low != float("inf") else 0.0,
+            # Session Jan 24, 2026: Fee and cost tracking
+            "entry_fee": self.entry_fee,
+            "exit_fee": self.exit_fee,
+            "entry_slippage": self.entry_slippage,
+            "exit_slippage": self.exit_slippage,
+            "accumulated_funding": self.accumulated_funding,
+            "gross_pnl": self.gross_pnl,
+            "total_costs": self.total_costs,
         }
 
     @classmethod
@@ -110,6 +193,7 @@ class SimulatedTrade:
             entry_price=data["entry_price"],
             entry_time=datetime.fromisoformat(data["entry_time"]),
             status=data.get("status", "OPEN"),
+            strategy=data.get("strategy", "strat"),  # Session EQUITY-91
             stop_price=data.get("stop_price"),
             target_price=data.get("target_price"),
             timeframe=data.get("timeframe"),
@@ -117,14 +201,21 @@ class SimulatedTrade:
             exit_reason=data.get("exit_reason"),
             tfc_score=data.get("tfc_score"),
             risk_multiplier=data.get("risk_multiplier", 1.0),
-            priority_rank=data.get("priority_rank", 0),  # Session EQUITY-40
-            margin_reserved=data.get("margin_reserved", 0.0),  # Session EQUITY-34
-            # Session EQUITY-67: Pattern invalidation tracking
+            priority_rank=data.get("priority_rank", 0),
+            margin_reserved=data.get("margin_reserved", 0.0),
             entry_bar_type=data.get("entry_bar_type", ""),
             entry_bar_high=data.get("entry_bar_high", 0.0),
             entry_bar_low=data.get("entry_bar_low", 0.0),
             intrabar_high=data.get("intrabar_high", 0.0),
             intrabar_low=data.get("intrabar_low") if data.get("intrabar_low", 0.0) > 0 else float("inf"),
+            # Session Jan 24, 2026: Fee and cost tracking
+            entry_fee=data.get("entry_fee", 0.0),
+            exit_fee=data.get("exit_fee", 0.0),
+            entry_slippage=data.get("entry_slippage", 0.0),
+            exit_slippage=data.get("exit_slippage", 0.0),
+            accumulated_funding=data.get("accumulated_funding", 0.0),
+            gross_pnl=data.get("gross_pnl"),
+            total_costs=data.get("total_costs", 0.0),
         )
         if data.get("exit_price"):
             trade.exit_price = data["exit_price"]
@@ -216,26 +307,36 @@ class PaperTrader:
         entry_bar_type: str = "",
         entry_bar_high: float = 0.0,
         entry_bar_low: float = 0.0,
+        # Session Jan 24, 2026: Realistic execution modeling
+        apply_slippage: bool = True,
+        slippage_rate: float = DEFAULT_SLIPPAGE_RATE,
+        # Session EQUITY-91: Strategy attribution
+        strategy: str = "strat",
     ) -> Optional[SimulatedTrade]:
         """
-        Open a new simulated trade with margin reservation.
+        Open a new simulated trade with margin reservation, fees, and slippage.
 
-        Session EQUITY-34: Now tracks margin requirements and prevents
-        over-leveraging by checking available balance before opening.
+        Session Jan 24, 2026: Enhanced with realistic execution modeling:
+        - Slippage applied to entry price (buys fill higher, sells fill lower)
+        - Entry fees calculated and tracked
+        - Fee deducted from account balance immediately
 
         Args:
             symbol: Trading pair (e.g., 'BTC-USD')
             side: 'BUY' or 'SELL'
             quantity: Position size in base currency
-            entry_price: Entry price
+            entry_price: Entry price (before slippage)
             entry_time: Entry timestamp (defaults to now)
             stop_price: Stop loss price for position monitoring
             target_price: Take profit price for position monitoring
             timeframe: Signal timeframe (e.g., '1d', '4h')
             pattern_type: STRAT pattern (e.g., '3-2U', '2D-1-2U')
             tfc_score: Timeframe Continuity score (0-4)
-            priority_rank: Priority rank for trade queueing (Session EQUITY-40)
+            priority_rank: Priority rank for trade queueing
             leverage: Leverage used for margin calculation (default: 4x swing)
+            apply_slippage: Whether to apply slippage to entry (default: True)
+            slippage_rate: Slippage rate to apply (default: 0.05%)
+            strategy: Strategy name for P/L attribution ("strat" or "statarb")
 
         Returns:
             SimulatedTrade object if opened, None if insufficient margin
@@ -251,18 +352,31 @@ class PaperTrader:
             return None
         quantity = adjusted_quantity
 
-        # Calculate margin required for this position
-        # Session EQUITY-34: Use max(1.0, leverage) to avoid margin > notional when leverage < 1
-        position_notional = quantity * entry_price
-        effective_leverage = max(1.0, leverage)
-        margin_required = position_notional / effective_leverage
+        # Session Jan 24, 2026: Apply slippage to get actual fill price
+        if apply_slippage:
+            fill_price = calculate_slippage(entry_price, side, slippage_rate)
+            entry_slippage_cost = abs(fill_price - entry_price) * quantity
+        else:
+            fill_price = entry_price
+            entry_slippage_cost = 0.0
 
-        # Check available balance (Session EQUITY-34)
+        # Calculate entry fee
+        entry_notional = fill_price * quantity
+        entry_fee = calculate_trade_fee(entry_notional, num_contracts=1, is_maker=False)
+
+        # Calculate margin required for this position
+        effective_leverage = max(1.0, leverage)
+        margin_required = entry_notional / effective_leverage
+
+        # Check available balance (margin + entry fee)
+        total_required = margin_required + entry_fee
         available = self.get_available_balance()
-        if margin_required > available:
+        if total_required > available:
             logger.warning(
-                "Insufficient margin for trade: need $%.2f, have $%.2f available",
+                "Insufficient funds: need $%.2f (margin $%.2f + fee $%.2f), have $%.2f",
+                total_required,
                 margin_required,
+                entry_fee,
                 available
             )
             return None
@@ -272,7 +386,7 @@ class PaperTrader:
             symbol=symbol,
             side=side,
             quantity=quantity,
-            entry_price=entry_price,
+            entry_price=fill_price,  # Use slippage-adjusted price
             entry_time=entry_time or datetime.utcnow(),
             stop_price=stop_price,
             target_price=target_price,
@@ -282,27 +396,31 @@ class PaperTrader:
             risk_multiplier=risk_multiplier,
             priority_rank=priority_rank,
             margin_reserved=margin_required,
-            # Session EQUITY-67: Pattern invalidation tracking
+            strategy=strategy,  # Session EQUITY-91
             entry_bar_type=entry_bar_type,
             entry_bar_high=entry_bar_high,
             entry_bar_low=entry_bar_low,
-            intrabar_high=entry_price,  # Initialize with entry price
-            intrabar_low=entry_price,  # Initialize with entry price
+            intrabar_high=fill_price,
+            intrabar_low=fill_price,
+            # Session Jan 24, 2026: Track costs
+            entry_fee=entry_fee,
+            entry_slippage=entry_slippage_cost,
         )
 
-        # Reserve margin (Session EQUITY-34)
+        # Reserve margin and deduct entry fee
         self.account.reserved_margin += margin_required
+        self.account.current_balance -= entry_fee  # Fee deducted immediately
         self.account.open_trades.append(trade)
 
         logger.info(
-            "Opened simulated trade: %s %s %s @ %.2f (margin=$%.2f, stop=%.2f, target=%.2f)",
+            "Opened trade: %s %s %s @ %.4f (slip: %.4f, fee: $%.2f, margin: $%.2f)",
             trade.trade_id,
             side,
             symbol,
-            entry_price,
+            fill_price,
+            entry_slippage_cost,
+            entry_fee,
             margin_required,
-            stop_price or 0,
-            target_price or 0,
         )
 
         self._save_state()
@@ -324,16 +442,21 @@ class PaperTrader:
         trade_id: str,
         exit_price: float,
         exit_time: Optional[datetime] = None,
+        apply_slippage: bool = True,
+        slippage_rate: float = DEFAULT_SLIPPAGE_RATE,
     ) -> Optional[SimulatedTrade]:
         """
         Close an open trade and release margin.
 
-        Session EQUITY-34: Now releases reserved margin when trade closes.
+        Session Jan 24, 2026: Enhanced with exit slippage and fee tracking.
+        Exit fee is deducted from balance along with P&L.
 
         Args:
             trade_id: Trade ID to close
-            exit_price: Exit price
+            exit_price: Exit price (before slippage)
             exit_time: Exit timestamp (defaults to now)
+            apply_slippage: Whether to apply slippage to exit
+            slippage_rate: Slippage rate to apply
 
         Returns:
             Closed SimulatedTrade or None if not found
@@ -343,30 +466,110 @@ class PaperTrader:
             logger.warning("Trade not found: %s", trade_id)
             return None
 
-        trade.close(exit_price, exit_time)
+        # Apply slippage to exit (opposite direction of entry)
+        # For a BUY trade closing, we're selling - so price slips DOWN
+        # For a SELL trade closing, we're buying back - so price slips UP
+        if apply_slippage:
+            close_side = "SELL" if trade.side == "BUY" else "BUY"
+            fill_price = calculate_slippage(exit_price, close_side, slippage_rate)
+            trade.exit_slippage = abs(fill_price - exit_price) * trade.quantity
+        else:
+            fill_price = exit_price
+            trade.exit_slippage = 0.0
+
+        # Calculate accumulated funding before closing
+        self._accrue_funding_for_trade(trade, exit_time or datetime.utcnow())
+
+        # Close the trade (calculates P&L internally)
+        trade.close(fill_price, exit_time)
 
         # Move to closed trades
         self.account.open_trades.remove(trade)
         self.account.closed_trades.append(trade)
 
-        # Release margin (Session EQUITY-34)
+        # Release margin
         self.account.reserved_margin -= trade.margin_reserved
         self.account.reserved_margin = max(0, self.account.reserved_margin)
 
-        # Update account
+        # Update account: Net P&L already accounts for exit fee
+        # But exit fee was calculated in close(), so we just apply net P&L
         self.account.realized_pnl += trade.pnl or 0
-        self.account.current_balance += trade.pnl or 0
+        self.account.current_balance += (trade.gross_pnl or 0) - trade.exit_fee - trade.accumulated_funding
 
         logger.info(
-            "Closed trade %s: P&L = $%.2f (%.2f%%), margin released: $%.2f",
+            "Closed %s: Gross $%.2f, Fees $%.2f, Funding $%.2f, Net $%.2f (%.1f%%)",
             trade_id,
+            trade.gross_pnl or 0,
+            trade.entry_fee + trade.exit_fee,
+            trade.accumulated_funding,
             trade.pnl or 0,
             trade.pnl_percent or 0,
-            trade.margin_reserved,
         )
 
         self._save_state()
         return trade
+
+    def _accrue_funding_for_trade(self, trade: SimulatedTrade, current_time: datetime) -> None:
+        """
+        Calculate and accrue funding rate charges for a trade.
+
+        Funding is charged every 8 hours. Longs typically pay shorts in bull markets.
+
+        Args:
+            trade: Trade to calculate funding for
+            current_time: Current timestamp
+        """
+        if trade.entry_time is None:
+            return
+
+        # Calculate hold duration in days
+        hold_duration = current_time - trade.entry_time
+        hold_days = hold_duration.total_seconds() / 86400
+
+        # Calculate funding periods (every 8 hours = 3 per day)
+        funding_periods = int(hold_days * FUNDING_PERIODS_PER_DAY)
+
+        if funding_periods <= 0:
+            return
+
+        # Calculate funding cost
+        # Rate per period = annual_rate / (365 * 3)
+        rate_per_period = ANNUAL_FUNDING_RATE / (365 * FUNDING_PERIODS_PER_DAY)
+        notional = trade.entry_price * trade.quantity
+
+        # Longs pay funding in bull market (positive rate)
+        # Shorts receive funding
+        if trade.side == "BUY":
+            funding_cost = notional * rate_per_period * funding_periods
+        else:
+            funding_cost = -notional * rate_per_period * funding_periods  # Shorts receive
+
+        trade.accumulated_funding = funding_cost
+
+    def accrue_funding_all_positions(self) -> float:
+        """
+        Accrue funding charges for all open positions.
+
+        Call this periodically (e.g., every 8 hours) to track funding costs.
+
+        Returns:
+            Total funding accrued this call
+        """
+        total_funding = 0.0
+        current_time = datetime.utcnow()
+
+        for trade in self.account.open_trades:
+            old_funding = trade.accumulated_funding
+            self._accrue_funding_for_trade(trade, current_time)
+            new_funding = trade.accumulated_funding - old_funding
+            total_funding += new_funding
+
+        if total_funding != 0:
+            logger.info("Accrued funding: $%.4f across %d positions",
+                       total_funding, len(self.account.open_trades))
+            self._save_state()
+
+        return total_funding
 
     def close_all_trades(
         self,
@@ -514,6 +717,115 @@ class PaperTrader:
             ),
             "largest_win": max((t.pnl or 0 for t in closed), default=0),
             "largest_loss": min((t.pnl or 0 for t in closed), default=0),
+        }
+
+    # =========================================================================
+    # STRATEGY ATTRIBUTION (Session EQUITY-91)
+    # =========================================================================
+
+    def get_trades_by_strategy(self, strategy: str) -> List[SimulatedTrade]:
+        """
+        Get all trades for a specific strategy.
+
+        Args:
+            strategy: Strategy name ("strat" or "statarb")
+
+        Returns:
+            List of trades for that strategy (open and closed)
+        """
+        open_trades = [t for t in self.account.open_trades if t.strategy == strategy]
+        closed_trades = [t for t in self.account.closed_trades if t.strategy == strategy]
+        return open_trades + closed_trades
+
+    def get_pnl_by_strategy(self) -> Dict[str, Dict[str, float]]:
+        """
+        Get P/L breakdown by strategy.
+
+        Returns:
+            Dictionary with strategy -> {gross, fees, funding, net, trades}
+
+        Example:
+            {
+                "strat": {"gross": 150.0, "fees": -12.50, "funding": -2.0, "net": 135.50, "trades": 5},
+                "statarb": {"gross": 45.0, "fees": -8.20, "funding": -1.5, "net": 35.30, "trades": 2},
+                "combined": {"gross": 195.0, "fees": -20.70, "funding": -3.5, "net": 170.80, "trades": 7}
+            }
+        """
+        strategies = set()
+        for t in self.account.closed_trades:
+            strategies.add(t.strategy)
+
+        result: Dict[str, Dict[str, float]] = {}
+
+        for strategy in strategies:
+            trades = [t for t in self.account.closed_trades if t.strategy == strategy]
+            gross = sum(t.gross_pnl or 0 for t in trades)
+            fees = sum(t.entry_fee + t.exit_fee for t in trades)
+            funding = sum(t.accumulated_funding for t in trades)
+            net = sum(t.pnl or 0 for t in trades)
+
+            result[strategy] = {
+                "gross": gross,
+                "fees": -fees,  # Negative to show as cost
+                "funding": -funding,  # Negative to show as cost
+                "net": net,
+                "trades": len(trades),
+            }
+
+        # Add combined totals
+        if result:
+            result["combined"] = {
+                "gross": sum(s["gross"] for s in result.values()),
+                "fees": sum(s["fees"] for s in result.values()),
+                "funding": sum(s["funding"] for s in result.values()),
+                "net": sum(s["net"] for s in result.values()),
+                "trades": sum(int(s["trades"]) for s in result.values()),
+            }
+
+        return result
+
+    def get_performance_by_strategy(self, strategy: str) -> Dict[str, Any]:
+        """
+        Calculate performance metrics for a specific strategy.
+
+        Args:
+            strategy: Strategy name ("strat" or "statarb")
+
+        Returns:
+            Dict with performance metrics for that strategy
+        """
+        closed = [t for t in self.account.closed_trades if t.strategy == strategy]
+        if not closed:
+            return {"message": f"No closed trades for strategy: {strategy}"}
+
+        winners = [t for t in closed if (t.pnl or 0) > 0]
+        losers = [t for t in closed if (t.pnl or 0) < 0]
+
+        total_pnl = sum(t.pnl or 0 for t in closed)
+        gross_profit = sum(t.pnl or 0 for t in winners)
+        gross_loss = abs(sum(t.pnl or 0 for t in losers))
+
+        avg_win = gross_profit / len(winners) if winners else 0
+        avg_loss = gross_loss / len(losers) if losers else 0
+
+        return {
+            "strategy": strategy,
+            "total_trades": len(closed),
+            "winning_trades": len(winners),
+            "losing_trades": len(losers),
+            "win_rate": len(winners) / len(closed) * 100 if closed else 0,
+            "total_pnl": total_pnl,
+            "gross_profit": gross_profit,
+            "gross_loss": gross_loss,
+            "profit_factor": gross_profit / gross_loss if gross_loss > 0 else float("inf"),
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "expectancy": (
+                (len(winners) / len(closed) * avg_win)
+                - (len(losers) / len(closed) * avg_loss)
+                if closed
+                else 0
+            ),
         }
 
     def get_trade_history(self, limit: int = 50) -> List[Dict[str, Any]]:

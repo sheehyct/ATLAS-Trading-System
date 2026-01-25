@@ -1,9 +1,127 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 25, 2026 (Session EQUITY-89)
+**Last Updated:** January 25, 2026 (Session EQUITY-91)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Phase 4 IN PROGRESS (God Class Refactoring)
-**Status:** EQUITY-89 COMPLETE - daemon.py reduced to 1,444 lines (goal achieved!)
+**Phase:** Paper Trading - Phase 6 IN PROGRESS (Crypto Architecture Unification)
+**Status:** EQUITY-91 COMPLETE - StatArb foundation complete, daemon integration pending
+
+---
+
+## Session EQUITY-91: Crypto StatArb Integration (Phase 6.1-6.2 COMPLETE)
+
+**Date:** January 25, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Strategy field and StatArb signal generator implemented
+
+### What Was Accomplished
+
+1. **Phase 6.1 - Strategy Field Addition**
+   - Added `strategy: str = "strat"` to SimulatedTrade dataclass
+   - Added `strategy` parameter to PaperTrader.open_trade()
+   - Added P/L aggregation methods:
+     - `get_pnl_by_strategy()` - Breakdown by strategy
+     - `get_trades_by_strategy()` - Filter trades
+     - `get_performance_by_strategy()` - Metrics per strategy
+   - 16 new tests, all passing
+
+2. **Phase 6.2 - StatArb Signal Generator**
+   - Created `crypto/statarb/signal_generator.py` (~400 lines)
+   - Classes: StatArbSignalGenerator, StatArbSignal, StatArbConfig, StatArbPosition
+   - Z-score based entry (threshold crossover) and exit (mean reversion)
+   - Position tracking with get_active_symbols() for STRAT priority
+   - 28 new tests, all passing
+
+3. **VPS Deployment**
+   - Phase 4 coordinators deployed to VPS
+   - Daemon restarted with new coordinator architecture
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `crypto/simulation/paper_trader.py` | MODIFIED | Added strategy field, P/L aggregation |
+| `crypto/statarb/signal_generator.py` | NEW | StatArbSignalGenerator (~400 lines) |
+| `crypto/statarb/__init__.py` | MODIFIED | Added signal generator exports |
+| `tests/test_crypto/test_paper_trader.py` | MODIFIED | 16 new strategy tests |
+| `tests/test_crypto/test_statarb_signal_generator.py` | NEW | 28 tests |
+
+### Test Results
+
+- Paper trader strategy tests: 16/16 passing
+- StatArb signal generator tests: 28/28 passing
+- Total new tests: 44
+
+### Phase 6 Progress
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 6.1 | Strategy field addition | COMPLETE |
+| 6.2 | StatArb signal generator | COMPLETE |
+| 6.3 | Daemon integration | PENDING |
+| 6.4 | Coordinator extraction | PENDING |
+| 6.5 | Dashboard filter | PENDING |
+
+### Next Session: EQUITY-92
+
+- Phase 6.3: Integrate StatArb into CryptoSignalDaemon
+- Phase 6.4: Extract coordinators (target <1,200 lines)
+- Phase 6.5: Dashboard strategy filter
+
+---
+
+## Session EQUITY-90: PositionMonitor Extraction (COMPLETE)
+
+**Date:** January 25, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - position_monitor.py reduced to 1,142 lines (target was <1,200)
+
+### What Was Accomplished
+
+1. **Extracted ExitConditionEvaluator (Phase 4.1)**
+   - New file: `strat/signal_automation/coordinators/exit_evaluator.py` (471 lines)
+   - Protocol-based TrailingStopChecker/PartialExitChecker for dependency injection
+   - Handles all exit conditions in priority order: EOD, DTE, stop, max loss, target, pattern invalidation, trailing, partial, max profit
+   - 57 new tests
+
+2. **Extracted TrailingStopManager (Phase 4.2)**
+   - New file: `strat/signal_automation/coordinators/trailing_stop_manager.py` (309 lines)
+   - ATR-based for 3-2 patterns (0.75 ATR activation, 1.0 ATR trail)
+   - Percentage-based for others (0.5x R:R activation, 50% trail)
+   - 22 new tests
+
+3. **Extracted PartialExitManager (Phase 4.3)**
+   - New file: `strat/signal_automation/coordinators/partial_exit_manager.py` (116 lines)
+   - Multi-contract partial exit at 1.0x R:R target
+   - 18 new tests
+
+4. **Position Monitor Reduced 27%**
+   - Original: 1,572 lines
+   - Final: 1,142 lines (-430 lines)
+   - Target was <1,200 lines - ACHIEVED
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `strat/signal_automation/coordinators/exit_evaluator.py` | NEW | ExitConditionEvaluator (471 lines) |
+| `strat/signal_automation/coordinators/trailing_stop_manager.py` | NEW | TrailingStopManager (309 lines) |
+| `strat/signal_automation/coordinators/partial_exit_manager.py` | NEW | PartialExitManager (116 lines) |
+| `strat/signal_automation/coordinators/__init__.py` | MODIFIED | Added new exports |
+| `strat/signal_automation/position_monitor.py` | MODIFIED | Delegates to managers (-430 lines) |
+| `tests/test_signal_automation/test_coordinators/test_exit_evaluator.py` | NEW | 57 tests |
+| `tests/test_signal_automation/test_coordinators/test_trailing_stop_manager.py` | NEW | 22 tests |
+| `tests/test_signal_automation/test_coordinators/test_partial_exit_manager.py` | NEW | 18 tests |
+| `tests/test_signal_automation/test_position_monitor.py` | MODIFIED | Updated for new managers |
+
+### Test Results
+
+- Signal automation tests: 1,126/1,126 passing (was 1,030)
+- New tests added: 97 (Phase 4 coordinators)
+- No regressions
+
+### Commit
+
+- `303ed5f` - refactor: extract PositionMonitor exit managers (EQUITY-90)
 
 ---
 

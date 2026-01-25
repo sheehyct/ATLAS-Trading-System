@@ -3,29 +3,37 @@ Fee calculations for Coinbase CFM crypto derivatives trading.
 
 Implements accurate fee modeling including:
 - Percentage-based taker/maker fees
-- Minimum fee per contract floor
+- Fixed fee per contract
 - Round-trip cost calculations
 - VectorBT Pro integration for backtesting
 
-Coinbase CFM Fee Structure (as of Jan 2025):
-- Taker fee: 0.02% (0.0002)
-- Maker fee: 0.00% (0.0000) for limit orders
-- Minimum fee: $0.15 per contract
+Coinbase CFM Fee Structure - VERIFIED Jan 24, 2026:
+- Taker fee: 0.07% (0.0007) based on trailing 30-day volume
+- Maker fee: 0.065% (0.00065) for limit orders
+- Fixed fee: $0.15 per contract (covers NFA, exchange, vendor costs)
+- Formula: (Notional × Rate) + (Fixed × Contracts)
 
-Reference: https://www.coinbase.com/blog/perpetual-futures-have-arrived-in-the-us
+Reference: Coinbase CFM platform fee tier display
 """
 
 from typing import Callable, Dict, Optional
 
 
 # =============================================================================
-# FEE CONSTANTS
+# FEE CONSTANTS - VERIFIED Jan 24, 2026
 # =============================================================================
 
 # Coinbase CFM fee structure
-TAKER_FEE_RATE: float = 0.0002  # 0.02%
-MAKER_FEE_RATE: float = 0.0000  # 0.00% for limit orders
-MIN_FEE_PER_CONTRACT: float = 0.15  # $0.15 minimum per contract
+# Note: Fee tiers are based on trailing 30-day derivatives volume
+# These are default tier rates - may be lower with higher volume
+TAKER_FEE_RATE: float = 0.0007   # 0.07%
+MAKER_FEE_RATE: float = 0.00065  # 0.065% for limit orders
+
+# Fixed per-contract fee (covers NFA, exchange, vendor costs - ALL trades)
+FIXED_FEE_PER_CONTRACT: float = 0.15  # $0.15 per contract
+
+# Legacy alias for backward compatibility
+MIN_FEE_PER_CONTRACT: float = FIXED_FEE_PER_CONTRACT
 
 # Contract specifications for fee calculations
 # Maps symbol prefix to contract multiplier (units of underlying per contract)
@@ -51,11 +59,11 @@ def calculate_fee(
     is_maker: bool = False,
 ) -> float:
     """
-    Calculate trading fee with minimum floor per contract.
+    Calculate trading fee with fixed per-contract component.
 
-    The fee is the GREATER of:
-    - Percentage fee (notional × rate)
-    - Minimum fee ($0.15 × num_contracts)
+    Formula: (Notional × Rate) + (Fixed × Contracts)
+    
+    VERIFIED Jan 24, 2026 from Coinbase CFM platform.
 
     Args:
         notional_value: Total notional value of the trade in USD
@@ -66,20 +74,20 @@ def calculate_fee(
         Fee amount in USD
 
     Example:
-        >>> calculate_fee(notional_value=1000, num_contracts=10, is_maker=False)
-        1.50  # 10 contracts × $0.15 minimum (greater than $1000 × 0.02% = $0.20)
+        >>> calculate_fee(notional_value=1000, num_contracts=1, is_maker=False)
+        0.85  # $1000 × 0.07% + $0.15 = $0.70 + $0.15 = $0.85
 
         >>> calculate_fee(notional_value=50000, num_contracts=5, is_maker=False)
-        10.0  # $50,000 × 0.02% = $10 (greater than 5 × $0.15 = $0.75)
+        35.75  # $50,000 × 0.07% + 5 × $0.15 = $35 + $0.75 = $35.75
     """
     if notional_value <= 0 or num_contracts <= 0:
         return 0.0
 
     fee_rate = MAKER_FEE_RATE if is_maker else TAKER_FEE_RATE
     percentage_fee = notional_value * fee_rate
-    minimum_fee = MIN_FEE_PER_CONTRACT * num_contracts
+    fixed_fee = FIXED_FEE_PER_CONTRACT * num_contracts
 
-    return max(percentage_fee, minimum_fee)
+    return percentage_fee + fixed_fee
 
 
 def calculate_round_trip_fee(
@@ -217,6 +225,8 @@ def create_coinbase_fee_func(
 
     VectorBT expects a function with signature: func(col, i, val) -> fee
     where val is the trade value (positive for buys, negative for sells).
+    
+    Fee formula: (Notional × Rate) + (Fixed × Contracts)
 
     Args:
         symbol: Trading symbol for contract size lookup
@@ -251,21 +261,22 @@ def create_coinbase_fee_func(
 
         fee_rate = MAKER_FEE_RATE if is_maker else TAKER_FEE_RATE
         percentage_fee = notional * fee_rate
-        minimum_fee = MIN_FEE_PER_CONTRACT * num_contracts
+        fixed_fee = FIXED_FEE_PER_CONTRACT * num_contracts
 
-        return max(percentage_fee, minimum_fee)
+        return percentage_fee + fixed_fee
 
     return coinbase_cfm_fee
 
 
-def create_fixed_pct_fee_func(fee_pct: float = 0.0002) -> Callable:
+def create_fixed_pct_fee_func(fee_pct: float = 0.0007) -> Callable:
     """
     Create a simple percentage-based fee function for VectorBT.
 
     Use this for quick backtesting when contract-level precision isn't needed.
+    Default is taker rate (0.07%). Does NOT include fixed per-contract fee.
 
     Args:
-        fee_pct: Fee as decimal (0.0002 = 0.02%)
+        fee_pct: Fee as decimal (0.0007 = 0.07%)
 
     Returns:
         Fee function for VectorBT Pro

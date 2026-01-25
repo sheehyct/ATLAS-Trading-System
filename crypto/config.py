@@ -176,6 +176,16 @@ CONTRACT_TYPES: Dict[str, str] = {
     "ETP-20DEC30-CDE": "dated_future",  # Nano Ether - expires Dec 30, 2025
 }
 
+# Contract sizes for CFM Nano Perp Style Futures
+# VERIFIED Jan 24, 2026 from Coinbase CFM platform
+CONTRACT_SIZES: Dict[str, float] = {
+    "BTC": 0.01,     # 0.01 BTC per contract
+    "ETH": 0.1,      # 0.1 ETH per contract
+    "SOL": 5.0,      # 5 SOL per contract
+    "XRP": 500.0,    # 500 XRP per contract
+    "ADA": 1000.0,   # 1,000 ADA per contract
+}
+
 # Dated futures expiration
 # Format: "SYMBOL": "YYYY-MM-DD"
 # NOTE: These are "Perp Style" futures - they roll quarterly but have expiration
@@ -212,6 +222,58 @@ MAINTENANCE_MARGIN_PERCENT: Dict[str, float] = {
     "ETH": 0.05,
     "SOL": 0.067,  # ~15x max before liquidation
 }
+
+# =============================================================================
+# FEE STRUCTURE (Coinbase CFM)
+# =============================================================================
+# VERIFIED Jan 24, 2026 from Coinbase CFM platform
+# Fee = (Notional * Rate) + Fixed_Per_Contract
+# Fee tiers are based on trailing 30-day derivatives volume
+
+# Default tier fee rates (adjusts based on volume tier)
+MAKER_FEE_RATE: float = 0.00065    # 0.065% for maker (limit orders)
+TAKER_FEE_RATE: float = 0.0007     # 0.07% for taker (market orders)
+
+# Fixed per-contract fee (covers NFA, exchange, and vendor costs)
+MIN_FEE_PER_CONTRACT: float = 0.15  # $0.15 per contract ALL trades
+
+# Liquidation fee
+LIQUIDATION_FEE_RATE: float = 0.001  # 0.10%
+
+
+def calculate_trade_fee(notional: float, is_maker: bool = False, num_contracts: int = 1) -> float:
+    """
+    Calculate Coinbase CFM trade fee.
+    
+    Fee = (Notional × Rate) + (Fixed × Contracts)
+    
+    Args:
+        notional: Total notional value of trade in USD
+        is_maker: True for limit orders, False for market orders
+        num_contracts: Number of contracts (for fixed fee component)
+    
+    Returns:
+        Total fee in USD
+    
+    Example:
+        >>> calculate_trade_fee(1000, is_maker=False, num_contracts=1)
+        0.85  # $1000 × 0.07% + $0.15 = $0.70 + $0.15 = $0.85
+    """
+    rate = MAKER_FEE_RATE if is_maker else TAKER_FEE_RATE
+    percentage_fee = notional * rate
+    fixed_fee = MIN_FEE_PER_CONTRACT * num_contracts
+    return percentage_fee + fixed_fee
+
+
+def calculate_round_trip_fee(notional: float, is_maker: bool = False, num_contracts: int = 1) -> float:
+    """Calculate total fee for entry + exit."""
+    return calculate_trade_fee(notional, is_maker, num_contracts) * 2
+
+
+def calculate_breakeven_move(notional: float, is_maker: bool = False, num_contracts: int = 1) -> float:
+    """Calculate minimum price move percentage needed to break even after fees."""
+    round_trip = calculate_round_trip_fee(notional, is_maker, num_contracts)
+    return round_trip / notional  # As decimal (multiply by 100 for percentage)
 
 # =============================================================================
 # RISK PARAMETERS
