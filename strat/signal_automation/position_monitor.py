@@ -309,6 +309,24 @@ class PositionMonitor:
         self.on_exit_callback = on_exit_callback
         self._market_hours_validator = MarketHoursValidator()  # EQUITY-86: Shared utility
 
+        # EQUITY-90: Exit condition evaluator (Phase 4.1) with managers (Phase 4.2/4.3)
+        # Import here to avoid circular import (position_monitor <-> coordinators)
+        from strat.signal_automation.coordinators.exit_evaluator import ExitConditionEvaluator
+        from strat.signal_automation.coordinators.trailing_stop_manager import TrailingStopManager
+        from strat.signal_automation.coordinators.partial_exit_manager import PartialExitManager
+
+        # EQUITY-90 Phase 4.2: TrailingStopManager
+        self._trailing_stop_manager = TrailingStopManager(config=self.config)
+
+        # EQUITY-90 Phase 4.3: PartialExitManager
+        self._partial_exit_manager = PartialExitManager(config=self.config)
+
+        self._exit_evaluator = ExitConditionEvaluator(
+            config=self.config,
+            trailing_stop_checker=self._trailing_stop_manager,
+            partial_exit_checker=self._partial_exit_manager,
+        )
+
         # Tracked positions (osi_symbol -> TrackedPosition)
         self._positions: Dict[str, TrackedPosition] = {}
 
@@ -651,6 +669,10 @@ class PositionMonitor:
         """
         Check single position for exit conditions.
 
+        EQUITY-90: Delegates to ExitConditionEvaluator for main logic.
+        Trailing stop and partial exit are still handled locally until
+        Phase 4.2 and 4.3 complete extraction.
+
         Exit conditions (in priority order):
         0. Minimum hold time check (Session 83K-77 - prevent rapid exit)
         0.5. EOD exit for 1H trades (Session EQUITY-35 - avoid overnight gap)
@@ -662,7 +684,8 @@ class PositionMonitor:
         6. Partial exit (multi-contract positions)
         7. Max profit exceeded (take profits)
         """
-        # 0. Check minimum hold time before any exit condition (Session 83K-77)
+        # EQUITY-90: Check minimum hold time FIRST to block all exit checks
+        # This ensures local trailing/partial exit checks also respect minimum hold
         hold_duration = (datetime.now() - pos.entry_time).total_seconds()
         if hold_duration < self.config.minimum_hold_seconds:
             logger.debug(
@@ -671,171 +694,25 @@ class PositionMonitor:
             )
             return None
 
-        # 0.5. Session EQUITY-35: EOD exit for 1H trades
-        # All hourly trades must exit before market close to avoid overnight gap risk
-        # Session EQUITY-51: Also exit IMMEDIATELY if position is stale (entered previous day)
-        # Session EQUITY-58: Handle timeframe variants (1H, 60MIN, 60M) - matches line 484
-        if pos.timeframe and pos.timeframe.upper() in ['1H', '60MIN', '60M']:
-            import pytz
-            et = pytz.timezone('America/New_York')
-            now_et = datetime.now(et)
-
-            # CRITICAL: Check for stale 1H position first (entered on previous trading day)
-            # These should have been exited yesterday but survived overnight
-            if self._is_stale_1h_position(pos.entry_time):
-                logger.warning(
-                    f"STALE EOD EXIT: {pos.osi_symbol} (1H) - "
-                    f"entered {pos.entry_time.strftime('%Y-%m-%d %H:%M')} but still open on {now_et.date()}"
-                )
-                return ExitSignal(
-                    osi_symbol=pos.osi_symbol,
-                    signal_key=pos.signal_key,
-                    reason=ExitReason.EOD_EXIT,
-                    underlying_price=pos.underlying_price or 0.0,
-                    current_option_price=pos.current_price,
-                    unrealized_pnl=pos.unrealized_pnl,
-                    dte=pos.dte,
-                    details=f"STALE 1H trade - entered {pos.entry_time.strftime('%Y-%m-%d')} but not exited, closing immediately",
-                )
-
-            # Normal EOD exit check for positions entered today
-            eod_exit_time = now_et.replace(
-                hour=self.config.eod_exit_hour,
-                minute=self.config.eod_exit_minute,
-                second=0,
-                microsecond=0
-            )
-            if now_et >= eod_exit_time:
-                logger.info(
-                    f"EOD EXIT: {pos.osi_symbol} (1H) - "
-                    f"current time {now_et.strftime('%H:%M ET')} >= "
-                    f"EOD cutoff {self.config.eod_exit_hour}:{self.config.eod_exit_minute:02d} ET"
-                )
-                return ExitSignal(
-                    osi_symbol=pos.osi_symbol,
-                    signal_key=pos.signal_key,
-                    reason=ExitReason.EOD_EXIT,
-                    underlying_price=pos.underlying_price or 0.0,
-                    current_option_price=pos.current_price,
-                    unrealized_pnl=pos.unrealized_pnl,
-                    dte=pos.dte,
-                    details=f"1H trade EOD exit at {now_et.strftime('%H:%M ET')} (cutoff: {self.config.eod_exit_hour}:{self.config.eod_exit_minute:02d} ET)",
-                )
-
-        # Update DTE
-        pos.dte = self._calculate_dte(pos.expiration)
-
-        # Get underlying price
+        # Get underlying price for the evaluator
         underlying_price = self._get_underlying_price(pos.symbol)
-        if underlying_price:
-            pos.underlying_price = underlying_price
 
-            # Session EQUITY-48: Update intrabar extremes for real-time Type 3 detection
-            # Track highest and lowest prices since entry to detect Type 3 evolution
-            if underlying_price > pos.intrabar_high:
-                pos.intrabar_high = underlying_price
-            if underlying_price < pos.intrabar_low:
-                pos.intrabar_low = underlying_price
+        # Get bar data for pattern invalidation check
+        bar_data = self._bar_cache.get(pos.symbol)
 
-        # 1. DTE Exit - mandatory close before expiration
-        if pos.dte <= self.config.exit_dte:
-            return ExitSignal(
-                osi_symbol=pos.osi_symbol,
-                signal_key=pos.signal_key,
-                reason=ExitReason.DTE_EXIT,
-                underlying_price=pos.underlying_price,
-                current_option_price=pos.current_price,
-                unrealized_pnl=pos.unrealized_pnl,
-                dte=pos.dte,
-                details=f"DTE {pos.dte} <= threshold {self.config.exit_dte}",
-            )
+        # EQUITY-90: Delegate to ExitConditionEvaluator
+        # Note: Trailing stop and partial exit checkers not yet wired (Phase 4.2/4.3)
+        # Those checks fall through to local methods below
+        exit_signal = self._exit_evaluator.evaluate(
+            pos=pos,
+            underlying_price=underlying_price,
+            bar_data=bar_data,
+        )
 
-        # Need underlying price for target/stop checks
-        if not pos.underlying_price:
-            logger.debug(f"No underlying price for {pos.symbol}")
-            return None
-
-        # 2. Check stop hit (underlying price check)
-        if self._check_stop_hit(pos):
-            return ExitSignal(
-                osi_symbol=pos.osi_symbol,
-                signal_key=pos.signal_key,
-                reason=ExitReason.STOP_HIT,
-                underlying_price=pos.underlying_price,
-                current_option_price=pos.current_price,
-                unrealized_pnl=pos.unrealized_pnl,
-                dte=pos.dte,
-                details=f"Underlying ${pos.underlying_price:.2f} hit stop ${pos.stop_price:.2f}",
-            )
-
-        # 3. Max loss check (option premium loss)
-        # Session EQUITY-42: Use timeframe-specific max loss thresholds
-        # Monthly patterns need more room due to longer time horizon and theta decay
-        max_loss_threshold = self.config.get_max_loss_pct(pos.timeframe)
-        if pos.unrealized_pct <= -max_loss_threshold:
-            return ExitSignal(
-                osi_symbol=pos.osi_symbol,
-                signal_key=pos.signal_key,
-                reason=ExitReason.MAX_LOSS,
-                underlying_price=pos.underlying_price,
-                current_option_price=pos.current_price,
-                unrealized_pnl=pos.unrealized_pnl,
-                dte=pos.dte,
-                details=f"Loss {pos.unrealized_pct:.1%} >= max {max_loss_threshold:.1%} ({pos.timeframe})",
-            )
-
-        # Session EQUITY-42: Check TARGET HIT BEFORE trailing stop
-        # Bug fix: If price hits target but trailing stop also triggered, target should win
-        # Target hit is a clear signal the trade achieved its goal
-        # 4. Check target hit (moved BEFORE trailing stop)
-        if self._check_target_hit(pos):
-            return ExitSignal(
-                osi_symbol=pos.osi_symbol,
-                signal_key=pos.signal_key,
-                reason=ExitReason.TARGET_HIT,
-                underlying_price=pos.underlying_price,
-                current_option_price=pos.current_price,
-                unrealized_pnl=pos.unrealized_pnl,
-                dte=pos.dte,
-                details=f"Underlying ${pos.underlying_price:.2f} hit target ${pos.target_price:.2f}",
-            )
-
-        # Session EQUITY-44: Pattern invalidation (Type 3 evolution)
-        # Per STRAT methodology EXECUTION.md Section 8:
-        # If entry bar evolves to Type 3 (breaks both high and low), exit immediately
-        # Priority: Target > Pattern Invalidated > Traditional Stop
-        # 4.5. Check pattern invalidation
-        invalidation_signal = self._check_pattern_invalidation(pos)
-        if invalidation_signal:
-            return invalidation_signal
-
-        # Session EQUITY-36: Optimal exit strategy
-        # 5. Update trailing stop state and check conditions (after target check)
-        if self.config.use_trailing_stop:
-            trailing_signal = self._check_trailing_stop(pos)
-            if trailing_signal:
-                return trailing_signal
-
-        # 6. Check partial exit for multi-contract positions
-        if self.config.partial_exit_enabled:
-            partial_signal = self._check_partial_exit(pos)
-            if partial_signal:
-                return partial_signal
-
-        # 7. Max profit check (option premium gain)
-        if pos.unrealized_pct >= self.config.max_profit_pct:
-            return ExitSignal(
-                osi_symbol=pos.osi_symbol,
-                signal_key=pos.signal_key,
-                reason=ExitReason.TARGET_HIT,
-                underlying_price=pos.underlying_price,
-                current_option_price=pos.current_price,
-                unrealized_pnl=pos.unrealized_pnl,
-                dte=pos.dte,
-                details=f"Profit {pos.unrealized_pct:.1%} >= target {self.config.max_profit_pct:.1%}",
-            )
-
-        return None
+        # EQUITY-90: All exit checks now handled by evaluator + managers
+        # - TrailingStopManager (Phase 4.2)
+        # - PartialExitManager (Phase 4.3)
+        return exit_signal
 
     def _check_target_hit(self, pos: TrackedPosition) -> bool:
         """Check if underlying has reached target price."""
@@ -855,285 +732,9 @@ class PositionMonitor:
             # For puts, stop is above entry
             return pos.underlying_price >= pos.stop_price
 
-    def _check_trailing_stop(self, pos: TrackedPosition) -> Optional[ExitSignal]:
-        """
-        Session EQUITY-36/52: Check and update trailing stop logic.
-
-        Routes to appropriate trailing stop method:
-        - ATR-based for 3-2 patterns (EQUITY-52): 0.75 ATR activation, 1.0 ATR trail
-        - Percentage-based for others (EQUITY-36): 0.5x R:R activation, 50% trail
-
-        Returns ExitSignal if trailing stop is hit, None otherwise.
-        """
-        # EQUITY-52: Route to ATR trailing for 3-2 patterns
-        if pos.use_atr_trailing and pos.atr_trail_distance > 0:
-            return self._check_atr_trailing_stop(pos)
-        else:
-            return self._check_percentage_trailing_stop(pos)
-
-    def _check_atr_trailing_stop(self, pos: TrackedPosition) -> Optional[ExitSignal]:
-        """
-        EQUITY-52: ATR-based trailing stop for 3-2 patterns.
-
-        Logic:
-        1. Update high water mark as price moves in our favor
-        2. Activate trailing stop once 0.75 ATR profit is reached
-        3. Trail stop at 1.0 ATR distance from high water mark
-        4. Exit if price retraces to trailing stop level
-
-        Returns ExitSignal if trailing stop is hit, None otherwise.
-        """
-        is_bullish = pos.direction.upper() in ['CALL', 'BULL', 'UP']
-        entry_price = pos.actual_entry_underlying if pos.actual_entry_underlying > 0 else pos.entry_trigger
-
-        # Calculate profit in direction of trade
-        if is_bullish:
-            current_profit = pos.underlying_price - entry_price
-            # Update high water mark
-            if pos.underlying_price > pos.high_water_mark or pos.high_water_mark == 0:
-                pos.high_water_mark = pos.underlying_price
-        else:
-            current_profit = entry_price - pos.underlying_price
-            # Update high water mark (lowest price for puts)
-            if pos.underlying_price < pos.high_water_mark or pos.high_water_mark == 0:
-                pos.high_water_mark = pos.underlying_price
-
-        # Check activation: 0.75 ATR profit
-        activation_threshold = pos.atr_at_detection * self.config.atr_trailing_activation_multiple
-
-        if not pos.trailing_stop_active and current_profit >= activation_threshold:
-            pos.trailing_stop_active = True
-            logger.info(
-                f"ATR Trailing stop ACTIVATED for {pos.osi_symbol}: "
-                f"profit ${current_profit:.2f} >= 0.75 ATR (${activation_threshold:.2f})"
-            )
-
-        # If active, calculate and check trailing stop level
-        if pos.trailing_stop_active:
-            trail_distance = pos.atr_trail_distance  # Pre-calculated 1.0 ATR
-
-            if is_bullish:
-                pos.trailing_stop_price = pos.high_water_mark - trail_distance
-
-                if pos.underlying_price <= pos.trailing_stop_price:
-                    # Check minimum profit requirement
-                    if pos.unrealized_pct < self.config.trailing_stop_min_profit_pct:
-                        logger.info(
-                            f"ATR TRAILING STOP BLOCKED for {pos.osi_symbol}: "
-                            f"option P/L {pos.unrealized_pct:.1%} < min"
-                        )
-                        return None
-
-                    logger.info(
-                        f"ATR TRAILING STOP HIT for {pos.osi_symbol}: "
-                        f"${pos.underlying_price:.2f} <= trail ${pos.trailing_stop_price:.2f} "
-                        f"(HWM: ${pos.high_water_mark:.2f}, 1.0 ATR: ${trail_distance:.2f})"
-                    )
-                    return ExitSignal(
-                        osi_symbol=pos.osi_symbol,
-                        signal_key=pos.signal_key,
-                        reason=ExitReason.TRAILING_STOP,
-                        underlying_price=pos.underlying_price,
-                        current_option_price=pos.current_price,
-                        unrealized_pnl=pos.unrealized_pnl,
-                        dte=pos.dte,
-                        details=f"ATR trailing stop at ${pos.trailing_stop_price:.2f} hit (1.0 ATR trail, HWM: ${pos.high_water_mark:.2f})",
-                    )
-            else:  # Bearish (PUT)
-                pos.trailing_stop_price = pos.high_water_mark + trail_distance
-
-                if pos.underlying_price >= pos.trailing_stop_price:
-                    if pos.unrealized_pct < self.config.trailing_stop_min_profit_pct:
-                        logger.info(
-                            f"ATR TRAILING STOP BLOCKED for {pos.osi_symbol}: "
-                            f"option P/L {pos.unrealized_pct:.1%} < min"
-                        )
-                        return None
-
-                    logger.info(
-                        f"ATR TRAILING STOP HIT for {pos.osi_symbol}: "
-                        f"${pos.underlying_price:.2f} >= trail ${pos.trailing_stop_price:.2f} "
-                        f"(HWM: ${pos.high_water_mark:.2f}, 1.0 ATR: ${trail_distance:.2f})"
-                    )
-                    return ExitSignal(
-                        osi_symbol=pos.osi_symbol,
-                        signal_key=pos.signal_key,
-                        reason=ExitReason.TRAILING_STOP,
-                        underlying_price=pos.underlying_price,
-                        current_option_price=pos.current_price,
-                        unrealized_pnl=pos.unrealized_pnl,
-                        dte=pos.dte,
-                        details=f"ATR trailing stop at ${pos.trailing_stop_price:.2f} hit (1.0 ATR trail, HWM: ${pos.high_water_mark:.2f})",
-                    )
-
-        return None
-
-    def _check_percentage_trailing_stop(self, pos: TrackedPosition) -> Optional[ExitSignal]:
-        """
-        Session EQUITY-36: Percentage-based trailing stop for non-3-2 patterns.
-
-        Logic:
-        1. Update high water mark as price moves in our favor
-        2. Activate trailing stop once 0.5x R:R profit is reached
-        3. Trail stop at 50% of profit from high water mark
-        4. Exit if price retraces to trailing stop level
-
-        CRITICAL FIX (Session EQUITY-36): Uses actual_entry_underlying for P/L
-        calculations, not entry_trigger. For gap-through scenarios (e.g., META
-        Dec 29 2025), entry_trigger is the trigger level but actual entry may
-        be at a significantly different price due to gap open.
-
-        Returns ExitSignal if trailing stop is hit, None otherwise.
-        """
-        is_bullish = pos.direction.upper() in ['CALL', 'BULL', 'UP']
-
-        # Session EQUITY-36: Use actual entry price, fallback to trigger level
-        # This fixes the gap-through bug where trigger != actual entry
-        entry_price = pos.actual_entry_underlying if pos.actual_entry_underlying > 0 else pos.entry_trigger
-
-        risk = abs(entry_price - pos.stop_price)
-        activation_threshold = self.config.trailing_stop_activation_rr * risk
-
-        # Calculate profit in direction of trade using ACTUAL entry price
-        if is_bullish:
-            current_profit = pos.underlying_price - entry_price
-            # Update high water mark
-            if pos.underlying_price > pos.high_water_mark or pos.high_water_mark == 0:
-                pos.high_water_mark = pos.underlying_price
-        else:
-            current_profit = entry_price - pos.underlying_price
-            # Update high water mark (lowest price for puts)
-            if pos.underlying_price < pos.high_water_mark or pos.high_water_mark == 0:
-                pos.high_water_mark = pos.underlying_price
-
-        # Check if we should activate trailing stop
-        if not pos.trailing_stop_active and current_profit >= activation_threshold:
-            pos.trailing_stop_active = True
-            logger.info(
-                f"Trailing stop ACTIVATED for {pos.osi_symbol}: "
-                f"profit ${current_profit:.2f} >= activation ${activation_threshold:.2f} (0.5x R:R)"
-            )
-
-        # If trailing stop is active, calculate and check trailing stop level
-        if pos.trailing_stop_active:
-            # Calculate trail amount (50% of max profit from high water mark)
-            if is_bullish:
-                max_profit_from_hwm = pos.high_water_mark - entry_price
-                trail_amount = max_profit_from_hwm * self.config.trailing_stop_pct
-                pos.trailing_stop_price = pos.high_water_mark - trail_amount
-
-                # Check if trailing stop is hit
-                if pos.underlying_price <= pos.trailing_stop_price:
-                    # Session EQUITY-42: Don't exit at a loss with trailing stop
-                    # The trailing stop tracks underlying, but option P/L can be negative due to theta
-                    # This prevents confusing "TRAIL | P/L: -$X" alerts
-                    if pos.unrealized_pct < self.config.trailing_stop_min_profit_pct:
-                        logger.info(
-                            f"TRAILING STOP BLOCKED for {pos.osi_symbol}: "
-                            f"option P/L {pos.unrealized_pct:.1%} < min {self.config.trailing_stop_min_profit_pct:.1%}"
-                        )
-                        return None
-
-                    logger.info(
-                        f"TRAILING STOP HIT for {pos.osi_symbol}: "
-                        f"${pos.underlying_price:.2f} <= trail ${pos.trailing_stop_price:.2f} "
-                        f"(HWM: ${pos.high_water_mark:.2f}, entry: ${entry_price:.2f})"
-                    )
-                    return ExitSignal(
-                        osi_symbol=pos.osi_symbol,
-                        signal_key=pos.signal_key,
-                        reason=ExitReason.TRAILING_STOP,
-                        underlying_price=pos.underlying_price,
-                        current_option_price=pos.current_price,
-                        unrealized_pnl=pos.unrealized_pnl,
-                        dte=pos.dte,
-                        details=f"Trailing stop at ${pos.trailing_stop_price:.2f} hit (HWM: ${pos.high_water_mark:.2f})",
-                    )
-            else:  # Bearish (PUT)
-                max_profit_from_hwm = entry_price - pos.high_water_mark
-                trail_amount = max_profit_from_hwm * self.config.trailing_stop_pct
-                pos.trailing_stop_price = pos.high_water_mark + trail_amount
-
-                # Check if trailing stop is hit
-                if pos.underlying_price >= pos.trailing_stop_price:
-                    # Session EQUITY-42: Don't exit at a loss with trailing stop
-                    # The trailing stop tracks underlying, but option P/L can be negative due to theta
-                    # This prevents confusing "TRAIL | P/L: -$X" alerts
-                    if pos.unrealized_pct < self.config.trailing_stop_min_profit_pct:
-                        logger.info(
-                            f"TRAILING STOP BLOCKED for {pos.osi_symbol}: "
-                            f"option P/L {pos.unrealized_pct:.1%} < min {self.config.trailing_stop_min_profit_pct:.1%}"
-                        )
-                        return None
-
-                    logger.info(
-                        f"TRAILING STOP HIT for {pos.osi_symbol}: "
-                        f"${pos.underlying_price:.2f} >= trail ${pos.trailing_stop_price:.2f} "
-                        f"(HWM: ${pos.high_water_mark:.2f}, entry: ${entry_price:.2f})"
-                    )
-                    return ExitSignal(
-                        osi_symbol=pos.osi_symbol,
-                        signal_key=pos.signal_key,
-                        reason=ExitReason.TRAILING_STOP,
-                        underlying_price=pos.underlying_price,
-                        current_option_price=pos.current_price,
-                        unrealized_pnl=pos.unrealized_pnl,
-                        dte=pos.dte,
-                        details=f"Trailing stop at ${pos.trailing_stop_price:.2f} hit (HWM: ${pos.high_water_mark:.2f})",
-                    )
-
-        return None
-
-    def _check_partial_exit(self, pos: TrackedPosition) -> Optional[ExitSignal]:
-        """
-        Session EQUITY-36: Check for partial exit at 1.0x R:R.
-
-        Logic:
-        1. Only for positions with contracts > 1
-        2. Only if partial exit not already done
-        3. Exit 50% of contracts when 1.0x R:R target is hit
-
-        Returns ExitSignal for partial exit if conditions met, None otherwise.
-        """
-        # Skip if only 1 contract (use trailing stop instead)
-        if pos.contracts <= 1:
-            return None
-
-        # Skip if partial exit already done
-        if pos.partial_exit_done:
-            return None
-
-        # Check if 1.0x R:R target reached
-        is_bullish = pos.direction.upper() in ['CALL', 'BULL', 'UP']
-
-        if is_bullish:
-            target_1x_reached = pos.underlying_price >= pos.target_1x
-        else:
-            target_1x_reached = pos.underlying_price <= pos.target_1x
-
-        if target_1x_reached:
-            # Calculate contracts to close (50% rounded up)
-            contracts_to_close = max(1, int(pos.contracts * self.config.partial_exit_pct + 0.5))
-
-            logger.info(
-                f"PARTIAL EXIT for {pos.osi_symbol}: "
-                f"Closing {contracts_to_close} of {pos.contracts} contracts at 1.0x R:R "
-                f"(underlying ${pos.underlying_price:.2f} hit target_1x ${pos.target_1x:.2f})"
-            )
-
-            return ExitSignal(
-                osi_symbol=pos.osi_symbol,
-                signal_key=pos.signal_key,
-                reason=ExitReason.PARTIAL_EXIT,
-                underlying_price=pos.underlying_price,
-                current_option_price=pos.current_price,
-                unrealized_pnl=pos.unrealized_pnl,
-                dte=pos.dte,
-                details=f"Partial exit: {contracts_to_close}/{pos.contracts} contracts at 1.0x R:R (${pos.target_1x:.2f})",
-                contracts_to_close=contracts_to_close,
-            )
-
-        return None
+    # EQUITY-90: Trailing stop and partial exit methods removed
+    # Now handled by TrailingStopManager and PartialExitManager
+    # See strat/signal_automation/coordinators/
 
     def _update_underlying_prices(self) -> None:
         """

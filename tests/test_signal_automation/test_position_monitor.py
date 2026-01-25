@@ -647,11 +647,11 @@ class TestCheckStopHit:
 
 
 # =============================================================================
-# PositionMonitor._check_partial_exit Tests
+# PartialExitManager Tests (via PositionMonitor._partial_exit_manager)
 # =============================================================================
 
 class TestCheckPartialExit:
-    """Tests for _check_partial_exit method."""
+    """Tests for partial exit via PartialExitManager."""
 
     @pytest.fixture
     def monitor(self):
@@ -695,20 +695,20 @@ class TestCheckPartialExit:
             expiration='2024-12-20',
         )
         pos.underlying_price = 451.0  # Above target_1x
-        result = monitor._check_partial_exit(pos)
+        result = monitor._partial_exit_manager.check(pos)
         assert result is None
 
     def test_partial_exit_skips_if_already_done(self, monitor, multi_contract_position):
         """Test partial exit skips if already done."""
         multi_contract_position.partial_exit_done = True
         multi_contract_position.underlying_price = 451.0
-        result = monitor._check_partial_exit(multi_contract_position)
+        result = monitor._partial_exit_manager.check(multi_contract_position)
         assert result is None
 
     def test_partial_exit_call_target_hit(self, monitor, multi_contract_position):
         """Test partial exit triggers when CALL target_1x hit."""
         multi_contract_position.underlying_price = 451.0  # Above target_1x (450)
-        result = monitor._check_partial_exit(multi_contract_position)
+        result = monitor._partial_exit_manager.check(multi_contract_position)
         assert result is not None
         assert result.reason == ExitReason.PARTIAL_EXIT
         assert result.contracts_to_close == 2  # 50% of 4
@@ -716,7 +716,7 @@ class TestCheckPartialExit:
     def test_partial_exit_call_target_not_hit(self, monitor, multi_contract_position):
         """Test partial exit does not trigger when below target_1x."""
         multi_contract_position.underlying_price = 448.0  # Below target_1x
-        result = monitor._check_partial_exit(multi_contract_position)
+        result = monitor._partial_exit_manager.check(multi_contract_position)
         assert result is None
 
     def test_partial_exit_put_target_hit(self, monitor):
@@ -738,7 +738,7 @@ class TestCheckPartialExit:
             expiration='2024-12-20',
         )
         pos.underlying_price = 449.0  # Below target_1x (450)
-        result = monitor._check_partial_exit(pos)
+        result = monitor._partial_exit_manager.check(pos)
         assert result is not None
         assert result.reason == ExitReason.PARTIAL_EXIT
 

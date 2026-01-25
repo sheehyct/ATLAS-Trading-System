@@ -24,6 +24,17 @@ from strat.signal_automation.coordinators.stale_setup_validator import (
     StaleSetupValidator,
     StalenessConfig,
 )
+from strat.signal_automation.coordinators.exit_evaluator import (
+    ExitConditionEvaluator,
+    TrailingStopChecker,
+    PartialExitChecker,
+)
+from strat.signal_automation.coordinators.trailing_stop_manager import (
+    TrailingStopManager,
+)
+from strat.signal_automation.coordinators.partial_exit_manager import (
+    PartialExitManager,
+)
 
 __all__ = [
     'AlertManager',
@@ -34,4 +45,9 @@ __all__ = [
     'ExecutionCoordinator',
     'StaleSetupValidator',
     'StalenessConfig',
+    'ExitConditionEvaluator',
+    'TrailingStopChecker',
+    'PartialExitChecker',
+    'TrailingStopManager',
+    'PartialExitManager',
 ]
