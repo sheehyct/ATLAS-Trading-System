@@ -323,6 +323,7 @@ class TimeframeContinuityChecker:
         # Session EQUITY-63: Include 1M for 1H - if all aligned, that's FTFC (no conflict)
         timeframe_requirements = {
             '1H': ['1M', '1W', '1D', '1H'],  # Hourly: All 4 TFs for Full TFC possibility
+            '4H': ['1W', '1D', '4H', '1H'],  # EQUITY-89: 4H for crypto (no monthly needed)
             '1D': ['1M', '1W', '1D'],        # Daily: Month, Week, Day, need 2/3
             '1W': ['1M', '1W'],              # Weekly: Just month+week, need 1/2
             '1M': ['1M']                     # Monthly: Just itself, need 1/1
@@ -332,6 +333,7 @@ class TimeframeContinuityChecker:
         # Session EQUITY-63: 1H now checks 4 TFs, min 3 means 3/4 to pass
         timeframe_min_strength = {
             '1H': 3,  # Need 3/4 (any 3 of Month, Week, Day, Hour aligned)
+            '4H': 2,  # EQUITY-89: Need 2/4 (any 2 of Week, Day, 4H, Hour aligned)
             '1D': 2,  # Need 2/3 (any 2 of Month, Week, Day)
             '1W': 1,  # Need 1/2 (Month OR Week aligned)
             '1M': 1   # Need 1/1 (Monthly bar itself)
@@ -474,6 +476,7 @@ class TimeframeContinuityChecker:
         # Session EQUITY-63: Include 1M for 1H - if all aligned, that's FTFC (no conflict)
         timeframe_requirements = {
             '1H': ['1M', '1W', '1D', '1H'],  # Hourly: All 4 TFs for Full TFC possibility
+            '4H': ['1W', '1D', '4H', '1H'],  # EQUITY-89: 4H for crypto (no monthly needed)
             '1D': ['1M', '1W', '1D'],        # Daily: Month, Week, Day, need 2/3
             '1W': ['1M', '1W'],              # Weekly: Just month+week, need 1/2
             '1M': ['1M']                     # Monthly: Just itself, need 1/1
@@ -483,6 +486,7 @@ class TimeframeContinuityChecker:
         # Session EQUITY-63: 1H now checks 4 TFs, min 3 means 3/4 to pass
         timeframe_min_strength = {
             '1H': 3,  # Need 3/4 (any 3 of Month, Week, Day, Hour aligned)
+            '4H': 2,  # EQUITY-89: Need 2/4 (any 2 of Week, Day, 4H, Hour aligned)
             '1D': 2,  # Need 2/3 (any 2 of Month, Week, Day)
             '1W': 1,  # Need 1/2 (Month OR Week aligned)
             '1M': 1   # Need 1/1 (Monthly bar itself)
