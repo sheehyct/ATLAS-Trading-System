@@ -67,7 +67,10 @@ def daemon(mock_config):
     """Create daemon instance for testing."""
     daemon = SignalDaemon(config=mock_config)
     # Mock the scanner's evaluate_tfc method
-    daemon.scanner = Mock()
+    mock_scanner = Mock()
+    daemon.scanner = mock_scanner
+    # EQUITY-88: Also update the ExecutionCoordinator's TFC evaluator
+    daemon._execution_coordinator.set_tfc_evaluator(mock_scanner)
     return daemon
 
 
@@ -75,7 +78,10 @@ def daemon(mock_config):
 def daemon_disabled(mock_config_disabled):
     """Create daemon with TFC re-eval disabled."""
     daemon = SignalDaemon(config=mock_config_disabled)
-    daemon.scanner = Mock()
+    mock_scanner = Mock()
+    daemon.scanner = mock_scanner
+    # EQUITY-88: Also update the ExecutionCoordinator's TFC evaluator
+    daemon._execution_coordinator.set_tfc_evaluator(mock_scanner)
     return daemon
 
 

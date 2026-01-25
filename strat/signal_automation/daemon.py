@@ -23,7 +23,7 @@ import sys
 import time
 import logging
 import traceback
-from datetime import datetime, time as dt_time, timedelta
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from threading import Event
 
@@ -53,7 +53,7 @@ from strat.signal_automation.entry_monitor import (
     EntryMonitorConfig,
     TriggerEvent,
 )
-from strat.signal_automation.coordinators import AlertManager, FilterManager, FilterConfig
+from strat.signal_automation.coordinators import AlertManager, FilterManager, FilterConfig, ExecutionCoordinator
 from strat.signal_automation.utils import MarketHoursValidator
 from strat.paper_signal_scanner import PaperSignalScanner, DetectedSignal
 
@@ -127,6 +127,7 @@ class SignalDaemon:
         self._setup_alert_manager()  # EQUITY-85: Facade pattern
         self._setup_filter_manager()  # EQUITY-87: Facade pattern
         self._setup_executor()
+        self._setup_execution_coordinator()  # EQUITY-88: Facade pattern
         self._setup_position_monitor()
         self._setup_entry_monitor()
 
@@ -194,6 +195,29 @@ class SignalDaemon:
             scan_config=self.config.scan,
         )
         logger.info("FilterManager coordinator initialized")
+
+    def _setup_execution_coordinator(self) -> None:
+        """
+        Initialize ExecutionCoordinator (EQUITY-88: Facade pattern).
+
+        ExecutionCoordinator handles signal execution, TFC re-evaluation,
+        and intraday timing filters. Wired after executor setup so it can
+        reference the executor instance.
+        """
+        self._execution_coordinator = ExecutionCoordinator(
+            config=self.config.execution,
+            executor=self.executor,
+            signal_store=self.signal_store,
+            tfc_evaluator=self.scanner,  # Scanner has evaluate_tfc()
+            alerters=self.alerters,
+            on_execution=self._increment_execution_count,
+            on_error=self._increment_error_count,
+        )
+        logger.info("ExecutionCoordinator initialized")
+
+    def _increment_execution_count(self) -> None:
+        """Callback for ExecutionCoordinator to increment execution count."""
+        self._execution_count += 1
 
     def _setup_executor(self) -> None:
         """Initialize executor if execution is enabled (Session 83K-48)."""
@@ -877,13 +901,7 @@ class SignalDaemon:
         Re-evaluate TFC alignment at entry time and check if entry should be blocked.
 
         Session EQUITY-49: TFC Re-evaluation at Entry.
-
-        TFC can change between pattern detection and entry trigger (hours/days later).
-        This method:
-        1. Re-evaluates TFC using current market data
-        2. Compares with original TFC at detection time
-        3. Logs the comparison for audit trail
-        4. Optionally blocks entry if TFC degraded significantly or flipped direction
+        Session EQUITY-88: Delegates to ExecutionCoordinator.
 
         Args:
             signal: The stored signal about to be executed
@@ -891,113 +909,7 @@ class SignalDaemon:
         Returns:
             Tuple of (should_block: bool, reason: str)
         """
-        # Check if TFC re-evaluation is enabled
-        if not self.config.execution.tfc_reeval_enabled:
-            return False, ""
-
-        # Get original TFC data from signal with defensive validation (Issue #2 fix)
-        original_strength = signal.tfc_score if signal.tfc_score is not None else 0
-        original_alignment = signal.tfc_alignment or ""  # Handle None
-        # Session EQUITY-62: Default to False (fail-closed, not fail-open)
-        original_passes = signal.passes_flexible if signal.passes_flexible is not None else False
-
-        # Determine original direction from alignment string
-        original_tfc_direction = ""
-        if original_alignment and "BULLISH" in original_alignment.upper():
-            original_tfc_direction = "bullish"
-        elif original_alignment and "BEARISH" in original_alignment.upper():
-            original_tfc_direction = "bearish"
-        elif not original_alignment:
-            logger.debug(
-                f"TFC REEVAL: {signal.signal_key} has no original TFC alignment - "
-                f"direction flip detection will be skipped"
-            )
-
-        # Re-evaluate TFC using current market data
-        # Direction: CALL = bullish (1), PUT = bearish (-1)
-        direction_int = 1 if signal.direction == 'CALL' else -1
-
-        try:
-            current_tfc = self.scanner.evaluate_tfc(
-                symbol=signal.symbol,
-                detection_timeframe=signal.timeframe,
-                direction=direction_int
-            )
-        except (ConnectionError, TimeoutError, ValueError) as e:
-            # Expected errors: network issues, data issues - log and proceed
-            logger.warning(
-                f"TFC REEVAL ERROR (recoverable): {signal.symbol} {signal.pattern_type} - "
-                f"{type(e).__name__}: {e} (proceeding with entry)"
-            )
-            self._error_count += 1
-            return False, ""
-        except Exception as e:
-            # Unexpected error - log as error, increment counter, but still proceed
-            # (fail-open to avoid blocking all entries on system errors)
-            logger.error(
-                f"TFC REEVAL UNEXPECTED ERROR: {signal.symbol} {signal.pattern_type} - "
-                f"{type(e).__name__}: {e} (proceeding with entry)"
-            )
-            self._error_count += 1
-            return False, ""
-
-        # Validate returned assessment (Issue #5 fix)
-        if current_tfc is None or not hasattr(current_tfc, 'strength'):
-            logger.error(f"TFC REEVAL: Invalid assessment returned for {signal.symbol} - proceeding with entry")
-            self._error_count += 1
-            return False, ""
-
-        current_strength = current_tfc.strength if current_tfc.strength is not None else 0
-        current_alignment = current_tfc.alignment_label() if hasattr(current_tfc, 'alignment_label') else f"{current_strength}/?"
-        # Session EQUITY-62: Default to False for safety (fail-closed)
-        current_passes = getattr(current_tfc, 'passes_flexible', False)
-        current_direction = getattr(current_tfc, 'direction', '') or ""
-
-        # Calculate strength change
-        strength_delta = current_strength - original_strength
-
-        # Detect direction flip (e.g., bullish -> bearish) (Issue #4 fix)
-        direction_flipped = False
-        if original_tfc_direction and current_direction:
-            direction_flipped = original_tfc_direction != current_direction
-        elif not original_tfc_direction and current_direction:
-            # Can't detect flip without original direction - log at debug level
-            logger.debug(
-                f"TFC REEVAL: {signal.signal_key} - direction flip detection skipped "
-                f"(no original TFC direction in signal)"
-            )
-
-        # Build comparison log message
-        comparison = (
-            f"TFC REEVAL: {signal.signal_key} ({signal.symbol} {signal.pattern_type} {signal.direction}) | "
-            f"Original: {original_alignment or 'N/A'} (score={original_strength}, passes={original_passes}) | "
-            f"Current: {current_alignment} (score={current_strength}, passes={current_passes}) | "
-            f"Delta: {strength_delta:+d} | "
-            f"Flipped: {direction_flipped}"
-        )
-
-        # Always log if configured
-        if self.config.execution.tfc_reeval_log_always:
-            if strength_delta < 0 or direction_flipped:
-                logger.warning(comparison)
-            else:
-                logger.info(comparison)
-
-        # Determine if entry should be blocked
-        should_block = False
-        block_reason = ""
-
-        # Block if direction flipped (most severe)
-        if direction_flipped and self.config.execution.tfc_reeval_block_on_flip:
-            should_block = True
-            block_reason = f"TFC direction flipped from {original_tfc_direction} to {current_direction}"
-
-        # Block if strength dropped below minimum threshold
-        elif current_strength < self.config.execution.tfc_reeval_min_strength:
-            should_block = True
-            block_reason = f"TFC strength {current_strength} < min threshold {self.config.execution.tfc_reeval_min_strength}"
-
-        return should_block, block_reason
+        return self._execution_coordinator.reevaluate_tfc_at_entry(signal)
 
     def _send_alerts(self, signals: List[StoredSignal]) -> None:
         """
@@ -1017,6 +929,7 @@ class SignalDaemon:
         Get current price for a symbol using executor's trading client.
 
         Session EQUITY-32: Helper for triggered pattern execution.
+        Session EQUITY-88: Delegates to ExecutionCoordinator.
 
         Args:
             symbol: Stock symbol
@@ -1024,19 +937,7 @@ class SignalDaemon:
         Returns:
             Current mid price or None if unavailable
         """
-        if self.executor is None:
-            return None
-        try:
-            quotes = self.executor._trading_client.get_stock_quotes([symbol])
-            if symbol in quotes:
-                quote = quotes[symbol]
-                if isinstance(quote, dict) and 'mid' in quote:
-                    return quote['mid']
-                elif isinstance(quote, (int, float)):
-                    return float(quote)
-        except Exception as e:
-            logger.error(f"Price fetch error for {symbol}: {e}")
-        return None
+        return self._execution_coordinator._get_current_price(symbol)
 
     def _execute_triggered_pattern(self, signal: StoredSignal) -> Optional[ExecutionResult]:
         """
@@ -1044,9 +945,7 @@ class SignalDaemon:
 
         Session EQUITY-32: Patterns where entry bar has formed should
         execute at current market price, not be discarded.
-
-        These are COMPLETED patterns (e.g., 3-1-2U where the 2U bar has
-        already broken the inside bar). STRAT principle: entry on the break.
+        Session EQUITY-88: Delegates to ExecutionCoordinator.
 
         Args:
             signal: TRIGGERED signal (signal_type="COMPLETED")
@@ -1054,111 +953,14 @@ class SignalDaemon:
         Returns:
             ExecutionResult if executed, None if skipped
         """
-        if self.executor is None:
-            return None
-
-        # Get current market price
-        current_price = self._get_current_price(signal.symbol)
-        if current_price is None or current_price <= 0:
-            logger.warning(f"Could not get price for {signal.symbol} - skipping triggered pattern")
-            return None
-
-        direction = signal.direction
-        stop_price = signal.stop_price
-        target_price = signal.target_price
-
-        # Validate entry is still viable (price hasn't blown past target)
-        if direction == "CALL":
-            if current_price >= target_price:
-                logger.info(
-                    f"SKIP TRIGGERED: {signal.symbol} {signal.pattern_type} CALL - "
-                    f"price ${current_price:.2f} already at/past target ${target_price:.2f}"
-                )
-                return None
-        else:  # PUT
-            if current_price <= target_price:
-                logger.info(
-                    f"SKIP TRIGGERED: {signal.symbol} {signal.pattern_type} PUT - "
-                    f"price ${current_price:.2f} already at/past target ${target_price:.2f}"
-                )
-                return None
-
-        # "Let the Market Breathe" - Skip intraday patterns if too early in session
-        if not self._is_intraday_entry_allowed(signal):
-            return None
-
-        logger.info(
-            f"TRIGGERED PATTERN: {signal.symbol} {signal.pattern_type} {signal.direction} "
-            f"({signal.timeframe}) - executing at ${current_price:.2f}"
-        )
-
-        try:
-            # Execute via SignalExecutor
-            # Temporarily set status to ALERTED to bypass HISTORICAL_TRIGGERED skip in executor
-            original_status = signal.status
-            signal.status = SignalStatus.ALERTED.value
-
-            result = self.executor.execute_signal(signal, underlying_price=current_price)
-
-            signal.status = original_status  # Restore original status
-
-            if result.state == ExecutionState.ORDER_SUBMITTED:
-                self._execution_count += 1
-                self.signal_store.mark_triggered(signal.signal_key)
-
-                if result.osi_symbol:
-                    self.signal_store.set_executed_osi_symbol(
-                        signal.signal_key, result.osi_symbol
-                    )
-
-                logger.info(
-                    f"TRADE OPENED (TRIGGERED): {signal.symbol} {signal.direction} "
-                    f"{signal.pattern_type} ({signal.timeframe}) - {result.osi_symbol}"
-                )
-
-                # Send Discord entry alert
-                for alerter in self.alerters:
-                    try:
-                        if isinstance(alerter, DiscordAlerter):
-                            alerter.send_entry_alert(signal, result)
-                        elif isinstance(alerter, LoggingAlerter):
-                            alerter.log_execution(result)
-                    except Exception as e:
-                        logger.error(f"Entry alert error: {e}")
-
-                return result
-            else:
-                logger.info(
-                    f"TRIGGERED execution skipped/failed: {signal.symbol} - {result.error}"
-                )
-                return result
-
-        except Exception as e:
-            logger.error(f"Failed to execute triggered pattern: {e}")
-            return None
+        return self._execution_coordinator.execute_triggered_pattern(signal)
 
     def _is_intraday_entry_allowed(self, signal: StoredSignal) -> bool:
         """
         Check if intraday pattern entry is allowed based on "let the market breathe" rules.
 
         Session EQUITY-18: Extended to support 15m, 30m, and 1H timeframes.
-
-        For intraday patterns, we must wait for sufficient bars to close:
-
-        15m timeframe:
-        - 2-bar patterns: Earliest entry at 9:45 AM ET
-        - 3-bar patterns: Earliest entry at 10:00 AM ET
-
-        30m timeframe:
-        - 2-bar patterns: Earliest entry at 10:00 AM ET
-        - 3-bar patterns: Earliest entry at 10:30 AM ET
-
-        1H timeframe:
-        - 2-bar patterns: Earliest entry at 10:30 AM ET
-        - 3-bar patterns: Earliest entry at 11:30 AM ET
-
-        Daily, Weekly, Monthly patterns have no time restriction because
-        larger timeframes carry more significance.
+        Session EQUITY-88: Delegates to ExecutionCoordinator.
 
         Args:
             signal: The signal to check
@@ -1166,62 +968,7 @@ class SignalDaemon:
         Returns:
             True if entry is allowed, False if too early
         """
-        # Only apply time restriction to intraday patterns
-        intraday_timeframes = ('15m', '30m', '1H')
-        if signal.timeframe not in intraday_timeframes:
-            return True
-
-        # Session EQUITY-57: CRITICAL FIX - Must use Eastern Time, not system local time
-        # VPS runs in UTC, so datetime.now().time() returns UTC time, not ET
-        # The time thresholds (10:30, 11:30) are in Eastern Time
-        import pytz
-        eastern = pytz.timezone('America/New_York')
-        current_time = datetime.now(eastern).time()
-
-        # Session EQUITY-18: Time thresholds per timeframe
-        # Based on "Let the Market Breathe" design from HANDOFF.md
-        time_thresholds = {
-            '15m': {
-                '2bar': dt_time(9, 45),   # After first 15m bar closes
-                '3bar': dt_time(10, 0),   # After first two 15m bars close
-            },
-            '30m': {
-                '2bar': dt_time(10, 0),   # After first 30m bar closes
-                '3bar': dt_time(10, 30),  # After first two 30m bars close
-            },
-            '1H': {
-                '2bar': dt_time(10, 30),  # After first 1H bar closes
-                '3bar': dt_time(11, 30),  # After first two 1H bars close
-            },
-        }
-
-        thresholds = time_thresholds[signal.timeframe]
-
-        # Determine if this is a 2-bar or 3-bar pattern by counting components
-        # 3-bar patterns have 3 components: X-Y-Z (e.g., 3-2D-2U, 2D-1-2U, 2U-1-?)
-        # 2-bar patterns have 2 components: X-Y (e.g., 2D-2U, 3-2D)
-        pattern = signal.pattern_type
-        pattern_parts = pattern.split('-')
-        is_3bar_pattern = len(pattern_parts) >= 3
-
-        earliest_time = thresholds['3bar'] if is_3bar_pattern else thresholds['2bar']
-        pattern_type_str = '3-bar' if is_3bar_pattern else '2-bar'
-
-        if current_time < earliest_time:
-            logger.info(
-                f"TIMING FILTER BLOCKED: {signal.symbol} {pattern} ({signal.timeframe}) - "
-                f"{pattern_type_str} pattern before {earliest_time.strftime('%H:%M')} "
-                f"(current: {current_time.strftime('%H:%M')})"
-            )
-            return False
-
-        # Session EQUITY-33: Log when patterns pass the filter for verification
-        logger.info(
-            f"TIMING FILTER PASSED: {signal.symbol} {pattern} ({signal.timeframe}) - "
-            f"{pattern_type_str} at {current_time.strftime('%H:%M')} "
-            f"(threshold: {earliest_time.strftime('%H:%M')})"
-        )
-        return True
+        return self._execution_coordinator.is_intraday_entry_allowed(signal)
 
     def _execute_signals(
         self,
@@ -1230,9 +977,7 @@ class SignalDaemon:
         """
         Execute signals via the executor (Session 83K-48).
 
-        Includes:
-        - "Let the market breathe" filtering for hourly patterns
-        - Discord entry alerts on successful order submission
+        Session EQUITY-88: Delegates to ExecutionCoordinator.
 
         Args:
             signals: Signals to execute
@@ -1240,90 +985,7 @@ class SignalDaemon:
         Returns:
             List of execution results
         """
-        if self.executor is None:
-            return []
-
-        results: List[ExecutionResult] = []
-
-        for signal in signals:
-            # Session EQUITY-29: SETUP signals should NOT execute immediately
-            # They need to wait for entry_monitor to detect trigger break
-            # Only COMPLETED signals (entry already happened) execute immediately
-            if getattr(signal, 'signal_type', 'COMPLETED') == 'SETUP':
-                logger.debug(
-                    f"SETUP signal {signal.signal_key} skipped from immediate execution - "
-                    f"waiting for entry_monitor trigger"
-                )
-                continue
-
-            # Session EQUITY-42: COMPLETED signals already executed by _execute_triggered_pattern()
-            # Skip them here to prevent duplicate execution and duplicate Discord alerts
-            # Bug: run_scan() and run_base_scan() call _execute_triggered_pattern() first,
-            # then call _execute_signals() with the same signals, causing double execution.
-            if getattr(signal, 'signal_type', 'COMPLETED') == 'COMPLETED':
-                logger.debug(
-                    f"COMPLETED signal {signal.signal_key} skipped - "
-                    f"already executed by _execute_triggered_pattern()"
-                )
-                continue
-
-            # "Let the Market Breathe" - Skip intraday patterns if too early in session
-            if not self._is_intraday_entry_allowed(signal):
-                results.append(ExecutionResult(
-                    signal_key=signal.signal_key,
-                    state=ExecutionState.SKIPPED,
-                    error=f"Intraday {signal.timeframe} pattern blocked - too early in session (let market breathe)"
-                ))
-                continue
-
-            try:
-                result = self.executor.execute_signal(signal)
-                results.append(result)
-
-                if result.state == ExecutionState.ORDER_SUBMITTED:
-                    self._execution_count += 1
-                    # Mark signal as triggered in store
-                    self.signal_store.mark_triggered(signal.signal_key)
-                    # Store OSI symbol for closed trade correlation
-                    if result.osi_symbol:
-                        self.signal_store.set_executed_osi_symbol(
-                            signal.signal_key, result.osi_symbol
-                        )
-                    logger.info(
-                        f"Order submitted for {signal.signal_key}: "
-                        f"{result.osi_symbol}"
-                    )
-
-                    # Send Discord entry alert (was missing from this code path!)
-                    for alerter in self.alerters:
-                        try:
-                            if isinstance(alerter, DiscordAlerter):
-                                alerter.send_entry_alert(signal, result)
-                            elif isinstance(alerter, LoggingAlerter):
-                                alerter.log_execution(result)
-                        except Exception as e:
-                            logger.error(f"Entry alert error: {e}")
-
-                elif result.state == ExecutionState.SKIPPED:
-                    logger.debug(
-                        f"Signal skipped: {signal.signal_key} - {result.error}"
-                    )
-                elif result.state == ExecutionState.FAILED:
-                    logger.warning(
-                        f"Execution failed: {signal.signal_key} - {result.error}"
-                    )
-                    self._error_count += 1
-
-            except Exception as e:
-                logger.exception(f"Execution error for {signal.signal_key}: {e}")
-                self._error_count += 1
-                results.append(ExecutionResult(
-                    signal_key=signal.signal_key,
-                    state=ExecutionState.FAILED,
-                    error=str(e)
-                ))
-
-        return results
+        return self._execution_coordinator.execute_signals(signals)
 
     def execute_signals(
         self,
@@ -1333,6 +995,7 @@ class SignalDaemon:
         Public method to execute signals (Session 83K-48).
 
         Allows manual execution of signals from CLI.
+        Session EQUITY-88: Delegates to ExecutionCoordinator.
 
         Args:
             signals: Signals to execute
@@ -1344,7 +1007,7 @@ class SignalDaemon:
             logger.error("Execution not enabled - set SIGNAL_EXECUTION_ENABLED=true")
             return []
 
-        return self._execute_signals(signals)
+        return self._execution_coordinator.execute_signals(signals)
 
     def _create_scan_callback(self, timeframe: str):
         """Create callback function for scheduled scan."""

@@ -1,9 +1,82 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 24, 2026 (Session EQUITY-87)
+**Last Updated:** January 24, 2026 (Session EQUITY-88)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 4 IN PROGRESS (God Class Refactoring)
-**Status:** EQUITY-87 COMPLETE - Phase 2.1 FilterManager extracted, daemon.py down to 1,849 lines
+**Status:** EQUITY-88 COMPLETE - Phase 3.1 ExecutionCoordinator extracted, daemon.py down to 1,512 lines
+
+---
+
+## Session EQUITY-88: Phase 3.1 ExecutionCoordinator Extraction (COMPLETE)
+
+**Date:** January 24, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - ExecutionCoordinator extracted, daemon reduced by 337 lines
+
+### What Was Accomplished
+
+1. **Created ExecutionCoordinator (560 lines)**
+   - New file: `strat/signal_automation/coordinators/execution_coordinator.py`
+   - Extracted methods: `execute_triggered_pattern()`, `execute_signals()`, `is_intraday_entry_allowed()`, `reevaluate_tfc_at_entry()`, `_get_current_price()`
+   - Protocol classes for dependency injection (TFCEvaluator, PriceFetcher)
+   - Callbacks for execution/error count increments
+
+2. **Wired ExecutionCoordinator to Daemon**
+   - Added `_setup_execution_coordinator()` method
+   - Added `_increment_execution_count()` callback
+   - Replaced 5 methods with 4-line delegations each
+   - Removed unused `dt_time` import
+   - daemon.py: 1,849 -> 1,512 lines (-337 lines)
+
+3. **Added 48 New Tests**
+   - Created `tests/test_signal_automation/test_coordinators/test_execution_coordinator.py`
+   - Coverage: initialization, price fetching, intraday timing, TFC re-eval, triggered patterns, signal execution
+   - All edge cases: no executor, errors, timeouts, direction flips
+
+4. **Fixed TFC Re-eval Tests**
+   - Updated fixture to set ExecutionCoordinator's TFC evaluator after mocking scanner
+   - All 14 TFC re-eval tests now pass
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `strat/signal_automation/coordinators/execution_coordinator.py` | NEW | ExecutionCoordinator (560 lines) |
+| `strat/signal_automation/coordinators/__init__.py` | MODIFIED | Added ExecutionCoordinator export |
+| `strat/signal_automation/daemon.py` | MODIFIED | Delegates to ExecutionCoordinator (-337 lines) |
+| `tests/test_signal_automation/test_coordinators/test_execution_coordinator.py` | NEW | 48 tests |
+| `tests/test_signal_automation/test_tfc_reeval.py` | MODIFIED | Fixed fixture for coordinator |
+
+### Test Results
+
+- Signal automation tests: 1,004/1,004 passing (was 956)
+- New tests added: 48 (ExecutionCoordinator)
+- No regressions from refactoring
+
+### Phase 4 Progress
+
+| Phase | Coordinator | Lines | Tests | Session | Status |
+|-------|-------------|-------|-------|---------|--------|
+| 1.1 | AlertManager | 254 | 22 | EQUITY-85 | COMPLETE |
+| 1.2 | HealthMonitor | 291 | 30 | EQUITY-85 | COMPLETE |
+| 1.3 | MarketHoursValidator | 298 | 41 | EQUITY-86 | COMPLETE |
+| 2.1 | FilterManager | 401 | 59 | EQUITY-87 | COMPLETE |
+| 3.1 | ExecutionCoordinator | 560 | 48 | EQUITY-88 | COMPLETE |
+| 3.2 | StaleSetupValidator | TBD | TBD | TBD | PENDING |
+| **Total** | | **1,804** | **200** | | |
+
+### Line Count Progress
+
+| File | Before | After | Reduction |
+|------|--------|-------|-----------|
+| daemon.py | 1,849 | 1,512 | -337 lines |
+| Goal | - | <1,500 | -12 more needed |
+
+### Next Session: EQUITY-89
+
+- Continue Phase 3: StaleSetupValidator extraction (~100 lines)
+- Then Phase 4: PositionMonitor extractions (ExitConditionEvaluator, TrailingStopManager)
+- Target: daemon.py <1,500 lines (need -12 more)
 
 ---
 

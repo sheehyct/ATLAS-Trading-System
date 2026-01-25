@@ -19,6 +19,7 @@ Extracted components:
 from strat.signal_automation.coordinators.alert_manager import AlertManager
 from strat.signal_automation.coordinators.health_monitor import HealthMonitor, DaemonStats
 from strat.signal_automation.coordinators.filter_manager import FilterManager, FilterConfig
+from strat.signal_automation.coordinators.execution_coordinator import ExecutionCoordinator
 
 __all__ = [
     'AlertManager',
@@ -26,4 +27,5 @@ __all__ = [
     'DaemonStats',
     'FilterManager',
     'FilterConfig',
+    'ExecutionCoordinator',
 ]
