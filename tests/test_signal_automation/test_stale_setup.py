@@ -14,7 +14,7 @@ Fix: Check if setup is stale before triggering based on timeframe.
 
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import pytz
 
 from strat.signal_automation.signal_store import StoredSignal, SignalType, SignalStatus
@@ -111,18 +111,19 @@ class TestHourlyStaleSetup:
 class TestDailyStaleSetup:
     """Tests for daily timeframe stale detection."""
 
-    @patch('pandas_market_calendars.get_calendar')
-    def test_fresh_daily_setup_not_stale(self, mock_get_calendar, daemon):
+    def test_fresh_daily_setup_not_stale(self, daemon):
         """Setup from yesterday should NOT be stale (forming bar is today)."""
         et = pytz.timezone('America/New_York')
         now = datetime.now(et)
 
-        # Mock schedule with 2 trading days (setup day + today)
+        # Mock the validator's NYSE calendar
         mock_calendar = Mock()
         mock_schedule = Mock()
-        mock_schedule.__len__ = Mock(return_value=2)
+        mock_schedule.__len__ = Mock(return_value=2)  # 2 trading days (OK)
         mock_calendar.schedule.return_value = mock_schedule
-        mock_get_calendar.return_value = mock_calendar
+
+        # EQUITY-89: Inject mock calendar into validator
+        daemon._stale_validator._nyse_calendar = mock_calendar
 
         # Setup from yesterday
         setup_ts = now - timedelta(days=1)
@@ -132,18 +133,19 @@ class TestDailyStaleSetup:
 
         assert is_stale is False
 
-    @patch('pandas_market_calendars.get_calendar')
-    def test_stale_daily_setup_rejected(self, mock_get_calendar, daemon):
+    def test_stale_daily_setup_rejected(self, daemon):
         """Setup from 3+ trading days ago should be stale (MSTR bug scenario)."""
         et = pytz.timezone('America/New_York')
         now = datetime.now(et)
 
-        # Mock schedule with 4 trading days (too many)
+        # Mock the validator's NYSE calendar
         mock_calendar = Mock()
         mock_schedule = Mock()
-        mock_schedule.__len__ = Mock(return_value=4)
+        mock_schedule.__len__ = Mock(return_value=4)  # 4 trading days (too many)
         mock_calendar.schedule.return_value = mock_schedule
-        mock_get_calendar.return_value = mock_calendar
+
+        # EQUITY-89: Inject mock calendar into validator
+        daemon._stale_validator._nyse_calendar = mock_calendar
 
         # Setup from 3 days ago
         setup_ts = now - timedelta(days=3)
