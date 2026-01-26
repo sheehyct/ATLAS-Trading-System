@@ -111,12 +111,19 @@ def cmd_start(args: argparse.Namespace) -> int:
     # Discord webhook - Session CRYPTO-5
     discord_webhook_url = os.environ.get('DISCORD_WEBHOOK_URL')
 
+    # StatArb configuration - Session EQUITY-92
+    # Enable StatArb with ADA/XRP pair for paper trading data collection
+    statarb_enabled = os.environ.get('STATARB_ENABLED', 'true').lower() == 'true'
+    statarb_pairs = [("ADA-USD", "XRP-USD")]  # Cointegrated pair from research
+
     # Create config
     daemon_config = CryptoDaemonConfig(
         symbols=symbols,
         paper_balance=paper_balance,
         enable_execution=not args.no_execute,
         discord_webhook_url=discord_webhook_url,
+        statarb_enabled=statarb_enabled,
+        statarb_pairs=statarb_pairs,
     )
 
     print(f"Configuration:")
@@ -124,6 +131,10 @@ def cmd_start(args: argparse.Namespace) -> int:
     print(f"  Paper Balance: ${paper_balance:,.2f}")
     print(f"  Execution: {'Enabled' if daemon_config.enable_execution else 'Disabled'}")
     print(f"  Discord Alerts: {'Enabled' if discord_webhook_url else 'Disabled'}")
+    print(f"  StatArb: {'Enabled' if statarb_enabled else 'Disabled'}")
+    if statarb_enabled:
+        pairs_str = ', '.join(f"{p[0]}/{p[1]}" for p in statarb_pairs)
+        print(f"  StatArb Pairs: {pairs_str}")
     print(f"  Scan Interval: {daemon_config.scan_interval}s")
     print(f"  Entry Poll Interval: {daemon_config.entry_poll_interval}s")
     print()
