@@ -1,9 +1,70 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 25, 2026 (Session EQUITY-91)
+**Last Updated:** January 25, 2026 (Session EQUITY-92)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 6 IN PROGRESS (Crypto Architecture Unification)
-**Status:** EQUITY-91 COMPLETE - StatArb foundation complete, daemon integration pending
+**Status:** EQUITY-92 COMPLETE - StatArb daemon integration complete
+
+---
+
+## Session EQUITY-92: StatArb Daemon Integration (Phase 6.3 COMPLETE)
+
+**Date:** January 25, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - StatArb integrated into CryptoSignalDaemon
+
+### What Was Accomplished
+
+1. **Phase 6.3 - Daemon Integration**
+   - Added StatArbSignalGenerator to daemon with graceful import fallback
+   - Added config options: `statarb_enabled`, `statarb_pairs`, `statarb_config`
+   - Implemented STRAT priority conflict resolution (StatArb skips symbols in active STRAT trades)
+   - Added `_check_statarb_signals()` called after STRAT scan in loop
+   - Added `_execute_statarb_entry/exit` with `strategy="statarb"` for P/L tracking
+   - Added StatArb status to `get_status()` and `print_status()`
+   - 28 new tests, all passing
+
+2. **VPS Deployment**
+   - Git pull to VPS (EQUITY-91 + EQUITY-92 changes)
+   - Daemon restarted with new code (StatArb disabled by default)
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `crypto/scanning/daemon.py` | MODIFIED | +316 lines for StatArb integration |
+| `tests/test_crypto/test_daemon_statarb.py` | NEW | 28 tests for StatArb integration |
+
+### Test Results
+
+- StatArb daemon tests: 28/28 passing
+- All daemon tests: 156/156 passing (no regressions)
+
+### Line Count
+
+| Phase | daemon.py Lines |
+|-------|-----------------|
+| Before 6.3 | 1,502 |
+| After 6.3 | 1,818 (+316) |
+| Target (6.4) | <1,200 |
+
+### Phase 6 Progress
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 6.1 | Strategy field addition | COMPLETE |
+| 6.2 | StatArb signal generator | COMPLETE |
+| 6.3 | Daemon integration | COMPLETE |
+| 6.4 | Coordinator extraction | PENDING |
+| 6.5 | Dashboard filter | PENDING |
+
+### Next Session: EQUITY-93
+
+- Phase 6.4: Extract coordinators from daemon (1,818 -> <1,200 lines)
+  - CryptoAlertManager (~150 lines)
+  - CryptoFilterManager (~200 lines)
+  - CryptoHealthMonitor (~150 lines)
+- Phase 6.5: Dashboard strategy filter
 
 ---
 
