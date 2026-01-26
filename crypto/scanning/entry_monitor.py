@@ -464,6 +464,18 @@ class CryptoEntryMonitor:
                 )
 
             if is_triggered:
+                # EQUITY-93B: Skip continuation patterns (2U-2U, 2D-2D) - these should NOT be traded
+                # according to STRAT methodology. Continuations are for context only, not entries.
+                CONTINUATION_PATTERNS = {'2U-2U', '2D-2D'}
+                if actual_pattern in CONTINUATION_PATTERNS:
+                    logger.info(
+                        f"SKIP CONTINUATION: {signal.symbol} {actual_pattern} {actual_direction} "
+                        f"@ ${trigger_level:,.2f} - continuations are not traded"
+                    )
+                    # Remove from monitoring but don't create trigger event
+                    triggered_ids.append(self._generate_signal_id(signal))
+                    continue
+
                 event = CryptoTriggerEvent(
                     signal=signal,
                     trigger_price=trigger_level,

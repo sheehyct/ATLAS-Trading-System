@@ -438,6 +438,40 @@ class CryptoDataLoader:
             'win_rate': win_rate,
         }
 
+    def get_pnl_by_strategy(self) -> Dict:
+        """
+        Get P&L breakdown by trading strategy (EQUITY-93B).
+
+        Fetches P&L grouped by strategy from the VPS /pnl_by_strategy endpoint.
+
+        Returns:
+            Dict with strategy-wise P&L breakdown:
+            {
+                'strat': {'total_pnl': float, 'trade_count': int, 'win_rate': float},
+                'statarb': {'total_pnl': float, 'trade_count': int, 'win_rate': float},
+                'combined': {'total_pnl': float, 'trade_count': int, 'win_rate': float}
+            }
+            Empty default structure on error.
+        """
+        if not self._ensure_connected():
+            logger.warning("Crypto API not available - returning empty P&L by strategy")
+            return {
+                'strat': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0},
+                'statarb': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0},
+                'combined': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0}
+            }
+
+        data = self._fetch('/pnl_by_strategy')
+        if data and isinstance(data, dict):
+            return data
+
+        # Fallback: Return empty structure
+        return {
+            'strat': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0},
+            'statarb': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0},
+            'combined': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0}
+        }
+
 
 # Export for dashboard
 __all__ = ['CryptoDataLoader']

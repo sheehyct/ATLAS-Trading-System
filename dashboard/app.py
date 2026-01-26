@@ -1906,15 +1906,19 @@ def update_crypto_tabs(n_intervals, active_tab):
     Output('strat-analytics-tab-content', 'children'),
     [Input('strat-analytics-tabs', 'active_tab'),
      Input('strat-market-selector', 'value'),
+     Input('strat-account-selector', 'value'),  # EQUITY-93B: Wire account selector
+     Input('strat-strategy-selector', 'value'),  # EQUITY-93B: Wire strategy selector
      Input('strat-analytics-refresh', 'n_intervals')]
 )
-def render_strat_analytics_tab(active_tab, market, n_intervals):
+def render_strat_analytics_tab(active_tab, market, account, strategy, n_intervals):
     """
     Render content for STRAT Analytics sub-tabs.
 
     Args:
         active_tab: Active sub-tab ID
         market: Selected market (options/crypto)
+        account: Selected account for equity options (SMALL/MID/LARGE)
+        strategy: Selected strategy filter (all/strat/statarb)
         n_intervals: Refresh interval count
 
     Returns:
@@ -1927,9 +1931,14 @@ def render_strat_analytics_tab(active_tab, market, n_intervals):
             if loader is None or not loader._connected:
                 return html.Div('Crypto loader not connected', style={'padding': '40px', 'textAlign': 'center'})
         else:
-            loader = options_loader
+            # EQUITY-93B: Reinitialize OptionsDataLoader with selected account
+            selected_account = account or 'SMALL'
+            loader = OptionsDataLoader(account=selected_account)
             if loader is None:
                 return html.Div('Options loader not available', style={'padding': '40px', 'textAlign': 'center'})
+            if not loader._connected:
+                return html.Div(f'Options loader not connected to {selected_account} account: {loader.init_error}',
+                               style={'padding': '40px', 'textAlign': 'center', 'color': '#ed4807'})
 
         # Fetch closed trades for analytics
         # Note: OptionsDataLoader uses days=, CryptoDataLoader uses limit=
@@ -1939,8 +1948,9 @@ def render_strat_analytics_tab(active_tab, market, n_intervals):
             closed_trades = loader.get_closed_trades(days=30) if hasattr(loader, 'get_closed_trades') else []
 
         if active_tab == 'tab-overview':
-            metrics = calculate_metrics(closed_trades)
-            pattern_stats = calculate_pattern_stats(closed_trades)
+            # EQUITY-93B: Pass strategy filter to metrics calculation
+            metrics = calculate_metrics(closed_trades, strategy=strategy or 'all')
+            pattern_stats = calculate_pattern_stats(closed_trades, strategy=strategy or 'all')
             return create_overview_tab(metrics, pattern_stats)
 
         elif active_tab == 'tab-positions':

@@ -120,6 +120,23 @@ def create_strat_analytics_panel():
                         'marginRight': '10px',
                     }
                 ),
+                # Strategy selector (EQUITY-93B: Filter by trading strategy)
+                dbc.Select(
+                    id='strat-strategy-selector',
+                    options=[
+                        {'label': 'All Strategies', 'value': 'all'},
+                        {'label': 'STRAT Patterns', 'value': 'strat'},
+                        {'label': 'StatArb Pairs', 'value': 'statarb'},
+                    ],
+                    value='all',
+                    style={
+                        'backgroundColor': DARK_THEME['input_bg'],
+                        'color': DARK_THEME['text_primary'],
+                        'border': f'1px solid {DARK_THEME["border"]}',
+                        'width': '140px',
+                        'marginRight': '10px',
+                    }
+                ),
                 # Market selector
                 dbc.Select(
                     id='strat-market-selector',
@@ -294,7 +311,7 @@ def _create_win_rate_bars(pattern_stats: Dict) -> html.Div:
     rows = []
     for pattern, stats in sorted_patterns:
         win_rate = stats.get('win_rate', 0)
-        trades = stats.get('trades', 0)
+        trades = stats.get('total_trades', 0)  # Fix: was 'trades', should be 'total_trades'
 
         # Color based on win rate
         bar_color = DARK_THEME['accent_green'] if win_rate >= 50 else DARK_THEME['accent_red']
@@ -1409,16 +1426,21 @@ def _create_equity_chart(history: List[Dict]) -> go.Figure:
 # DATA CALCULATION HELPERS
 # ============================================
 
-def calculate_metrics(trades: List[Dict]) -> Dict:
+def calculate_metrics(trades: List[Dict], strategy: str = 'all') -> Dict:
     """
     Calculate overview metrics from trades.
 
     Args:
         trades: List of closed trades
+        strategy: Strategy filter ('all', 'strat', or 'statarb')
 
     Returns:
         Dictionary with metrics
     """
+    # EQUITY-93B: Filter trades by strategy if specified
+    if strategy and strategy != 'all':
+        trades = [t for t in trades if t.get('strategy') == strategy]
+
     if not trades:
         return {
             'total_trades': 0,
@@ -1452,16 +1474,21 @@ def calculate_metrics(trades: List[Dict]) -> Dict:
     }
 
 
-def calculate_pattern_stats(trades: List[Dict]) -> Dict:
+def calculate_pattern_stats(trades: List[Dict], strategy: str = 'all') -> Dict:
     """
     Calculate statistics grouped by pattern.
 
     Args:
         trades: List of closed trades
+        strategy: Strategy filter ('all', 'strat', or 'statarb')
 
     Returns:
         Dictionary mapping pattern -> stats
     """
+    # EQUITY-93B: Filter trades by strategy if specified
+    if strategy and strategy != 'all':
+        trades = [t for t in trades if t.get('strategy') == strategy]
+
     patterns: Dict[str, Dict] = {}
 
     for trade in trades:

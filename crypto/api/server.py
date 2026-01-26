@@ -208,6 +208,63 @@ def get_trades():
         return jsonify([])
 
 
+@app.route('/pnl_by_strategy')
+def get_pnl_by_strategy():
+    """
+    P&L breakdown by trading strategy (EQUITY-93B).
+
+    Returns:
+        Dictionary with P&L breakdown by strategy:
+        {
+            'strat': {'total_pnl': float, 'trade_count': int, 'win_rate': float},
+            'statarb': {'total_pnl': float, 'trade_count': int, 'win_rate': float},
+            'combined': {'total_pnl': float, 'trade_count': int, 'win_rate': float}
+        }
+    """
+    if _daemon is None or _daemon.paper_trader is None:
+        return jsonify({
+            'strat': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0},
+            'statarb': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0},
+            'combined': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0}
+        })
+
+    try:
+        # Check if paper_trader has get_pnl_by_strategy method
+        if hasattr(_daemon.paper_trader, 'get_pnl_by_strategy'):
+            return jsonify(_daemon.paper_trader.get_pnl_by_strategy())
+
+        # Fallback: Calculate from trade history
+        trades = _daemon.paper_trader.get_trade_history(limit=500)
+        closed_trades = [t for t in trades if t.get('status') == 'CLOSED']
+
+        def calc_strategy_stats(strategy_trades):
+            if not strategy_trades:
+                return {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0}
+            total_pnl = sum(t.get('pnl', 0) or 0 for t in strategy_trades)
+            wins = sum(1 for t in strategy_trades if (t.get('pnl') or 0) > 0)
+            return {
+                'total_pnl': total_pnl,
+                'trade_count': len(strategy_trades),
+                'win_rate': (wins / len(strategy_trades) * 100) if strategy_trades else 0
+            }
+
+        strat_trades = [t for t in closed_trades if t.get('strategy') == 'strat']
+        statarb_trades = [t for t in closed_trades if t.get('strategy') == 'statarb']
+
+        return jsonify({
+            'strat': calc_strategy_stats(strat_trades),
+            'statarb': calc_strategy_stats(statarb_trades),
+            'combined': calc_strategy_stats(closed_trades)
+        })
+    except Exception as e:
+        logger.error(f"Error fetching P&L by strategy: {e}")
+        return jsonify({
+            'strat': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0},
+            'statarb': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0},
+            'combined': {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0}
+        })
+
+
 # =============================================================================
 # SERVER RUNNER
 # =============================================================================
