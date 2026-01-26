@@ -216,7 +216,8 @@ def get_options_loader(account: str) -> Optional[OptionsDataLoader]:
     Get or create OptionsDataLoader for account (singleton per account).
 
     Session DB-2: Prevents creating ~960 abandoned HTTP sessions per 8-hour
-    trading day by reusing loader instances.
+    trading day by reusing loader instances. Also handles reconnection if
+    the cached loader lost connection.
 
     Args:
         account: Alpaca account tier ('SMALL', 'MID', 'LARGE')
@@ -233,7 +234,17 @@ def get_options_loader(account: str) -> Optional[OptionsDataLoader]:
             logger.error(f"Failed to create OptionsDataLoader for {account}: {e}")
             return None
 
-    return _options_loaders.get(account)
+    loader = _options_loaders.get(account)
+
+    # Try to reconnect if not connected
+    if loader is not None and not loader._connected:
+        logger.info(f"Attempting to reconnect OptionsDataLoader for {account} account")
+        if loader.connect():
+            logger.info(f"Successfully reconnected OptionsDataLoader for {account} account")
+        else:
+            logger.warning(f"Failed to reconnect OptionsDataLoader for {account}: {loader.init_error}")
+
+    return loader
 
 try:
     crypto_loader = CryptoDataLoader()
