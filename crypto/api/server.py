@@ -208,6 +208,37 @@ def get_trades():
         return jsonify([])
 
 
+def _transform_pnl_response(raw: dict) -> dict:
+    """
+    Transform PaperTrader format to documented API format.
+
+    Session DB-2: Normalizes response format for API contract compliance.
+
+    PaperTrader returns: {'gross': float, 'fees': float, 'funding': float, 'net': float, 'trades': int}
+    API documents:       {'total_pnl': float, 'trade_count': int, 'win_rate': float}
+
+    Args:
+        raw: Raw response from PaperTrader.get_pnl_by_strategy()
+
+    Returns:
+        Normalized response matching documented API format
+    """
+    def transform_strategy(data: dict) -> dict:
+        if not data:
+            return {'total_pnl': 0, 'trade_count': 0, 'win_rate': 0}
+        return {
+            'total_pnl': data.get('net', 0),
+            'trade_count': data.get('trades', 0),
+            'win_rate': data.get('win_rate', 0),  # Pass through if available
+        }
+
+    return {
+        'strat': transform_strategy(raw.get('strat', {})),
+        'statarb': transform_strategy(raw.get('statarb', {})),
+        'combined': transform_strategy(raw.get('combined', {})),
+    }
+
+
 @app.route('/pnl_by_strategy')
 def get_pnl_by_strategy():
     """
@@ -231,7 +262,9 @@ def get_pnl_by_strategy():
     try:
         # Check if paper_trader has get_pnl_by_strategy method
         if hasattr(_daemon.paper_trader, 'get_pnl_by_strategy'):
-            return jsonify(_daemon.paper_trader.get_pnl_by_strategy())
+            # Session DB-2: Transform to documented API format
+            raw = _daemon.paper_trader.get_pnl_by_strategy()
+            return jsonify(_transform_pnl_response(raw))
 
         # Fallback: Calculate from trade history
         trades = _daemon.paper_trader.get_trade_history(limit=500)

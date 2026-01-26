@@ -198,6 +198,8 @@ class SignalExecutor:
         self._persistence_path = Path(self.config.persistence_path)
         self._persistence_path.mkdir(parents=True, exist_ok=True)
         self._executions_file = self._persistence_path / 'executions.json'
+        # Session DB-2: Trade metadata file for pattern persistence
+        self._trade_metadata_file = self._persistence_path / 'trade_metadata.json'
 
         # Execution tracking
         self._executions: Dict[str, ExecutionResult] = {}
@@ -267,6 +269,61 @@ class SignalExecutor:
             )
         except IOError as e:
             logger.error(f"Error saving executions: {e}")
+
+    def _save_trade_metadata(
+        self,
+        osi_symbol: str,
+        signal: StoredSignal,
+        underlying_price: float
+    ) -> None:
+        """
+        Save trade metadata for pattern persistence.
+
+        Session DB-2: Stores pattern/TFC data at order placement time so dashboard
+        can look up patterns for closed trades even after signals expire.
+
+        Args:
+            osi_symbol: OCC option symbol (key for lookup)
+            signal: The signal that triggered this trade
+            underlying_price: Underlying price at execution
+        """
+        try:
+            # Load existing metadata
+            if self._trade_metadata_file.exists():
+                with open(self._trade_metadata_file, 'r') as f:
+                    metadata = json.load(f)
+            else:
+                metadata = {}
+
+            # Add entry for this trade
+            metadata[osi_symbol] = {
+                'pattern_type': signal.pattern_type,
+                'timeframe': signal.timeframe,
+                'direction': signal.direction,
+                'symbol': signal.symbol,
+                'entry_trigger': signal.entry_trigger,
+                'target_price': signal.target_price,
+                'stop_price': signal.stop_price,
+                'magnitude_pct': signal.magnitude_pct,
+                'risk_reward': signal.risk_reward,
+                'tfc_score': getattr(signal, 'tfc_score', None),
+                'tfc_alignment': getattr(signal, 'tfc_alignment', ''),
+                'underlying_entry_price': underlying_price,
+                'signal_key': signal.signal_key,
+                'executed_at': datetime.now().isoformat(),
+            }
+
+            # Write back
+            with open(self._trade_metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+
+            logger.info(
+                f"Saved trade metadata for {osi_symbol}: "
+                f"pattern={signal.pattern_type}, timeframe={signal.timeframe}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error saving trade metadata for {osi_symbol}: {e}")
 
     # =========================================================================
     # EXECUTION METHODS
@@ -433,6 +490,9 @@ class SignalExecutor:
 
             self._executions[signal_key] = result
             self._save()  # Persist to disk
+
+            # Session DB-2: Save trade metadata for pattern persistence
+            self._save_trade_metadata(contract.osi_symbol, signal, underlying_price)
 
             logger.info(
                 f"Order submitted for {signal_key}: "

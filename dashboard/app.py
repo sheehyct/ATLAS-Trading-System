@@ -35,6 +35,7 @@ import pandas as pd
 import numpy as np
 import logging
 from pathlib import Path
+from typing import Dict, Optional
 
 # Import configuration
 from dashboard.config import (
@@ -202,6 +203,37 @@ try:
 except Exception as e:
     logger.warning(f"OptionsDataLoader initialization failed: {e}")
     options_loader = None
+
+# Session DB-2: Singleton pattern for OptionsDataLoader by account
+# Prevents memory leaks from creating new instances every callback cycle
+_options_loaders: Dict[str, OptionsDataLoader] = {}
+if options_loader is not None:
+    _options_loaders['SMALL'] = options_loader  # Reuse the already-created instance
+
+
+def get_options_loader(account: str) -> Optional[OptionsDataLoader]:
+    """
+    Get or create OptionsDataLoader for account (singleton per account).
+
+    Session DB-2: Prevents creating ~960 abandoned HTTP sessions per 8-hour
+    trading day by reusing loader instances.
+
+    Args:
+        account: Alpaca account tier ('SMALL', 'MID', 'LARGE')
+
+    Returns:
+        OptionsDataLoader instance for the account, or None on failure
+    """
+    if account not in _options_loaders:
+        try:
+            loader = OptionsDataLoader(account=account)
+            _options_loaders[account] = loader
+            logger.info(f"Created OptionsDataLoader singleton for {account} account")
+        except Exception as e:
+            logger.error(f"Failed to create OptionsDataLoader for {account}: {e}")
+            return None
+
+    return _options_loaders.get(account)
 
 try:
     crypto_loader = CryptoDataLoader()
@@ -1931,9 +1963,9 @@ def render_strat_analytics_tab(active_tab, market, account, strategy, n_interval
             if loader is None or not loader._connected:
                 return html.Div('Crypto loader not connected', style={'padding': '40px', 'textAlign': 'center'})
         else:
-            # EQUITY-93B: Reinitialize OptionsDataLoader with selected account
+            # Session DB-2: Use singleton getter instead of creating new instance
             selected_account = account or 'SMALL'
-            loader = OptionsDataLoader(account=selected_account)
+            loader = get_options_loader(selected_account)
             if loader is None:
                 return html.Div('Options loader not available', style={'padding': '40px', 'textAlign': 'center'})
             if not loader._connected:

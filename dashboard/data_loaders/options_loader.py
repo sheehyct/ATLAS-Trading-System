@@ -474,7 +474,10 @@ class OptionsDataLoader:
                 options_only=True
             )
 
-            # Load executions to link patterns
+            # Session DB-2: Load trade metadata (primary source for patterns)
+            trade_metadata = self._load_trade_metadata()
+
+            # Load executions to link patterns (fallback)
             executions = self._load_executions()
 
             # Session EQUITY-55: Load enriched TFC data from backfill script
@@ -501,8 +504,19 @@ class OptionsDataLoader:
                 trade['tfc_score'] = None
                 trade['tfc_alignment'] = ''
 
+                # Session DB-2: Priority 0 - Trade metadata (saved at order placement)
+                # This is the most reliable source as it captures pattern before signal expires
+                if osi_symbol in trade_metadata:
+                    meta = trade_metadata[osi_symbol]
+                    trade['pattern'] = meta.get('pattern_type', 'Unclassified')
+                    trade['timeframe'] = meta.get('timeframe', '-')
+                    trade['tfc_score'] = meta.get('tfc_score')
+                    trade['tfc_alignment'] = meta.get('tfc_alignment', '')
+                    logger.debug(f"Pattern from trade_metadata for {osi_symbol}: {trade['pattern']}")
+
                 # Priority 1: Look up pattern/TFC from signal store (for recent trades)
-                if self.signal_store and osi_symbol:
+                # Only if trade_metadata didn't have it
+                if trade['pattern'] == 'Unclassified' and self.signal_store and osi_symbol:
                     signal = self.signal_store.get_signal_by_osi_symbol(osi_symbol)
                     if signal:
                         trade['pattern'] = signal.pattern_type
@@ -520,7 +534,7 @@ class OptionsDataLoader:
                     if trade['tfc_score'] is None or trade['tfc_score'] == 0:
                         trade['tfc_score'] = enriched.get('tfc_score')
                         trade['tfc_alignment'] = enriched.get('tfc_alignment', '')
-                    # Use enriched pattern if signal store lookup failed
+                    # Use enriched pattern if earlier lookups failed
                     if trade['pattern'] == 'Unclassified' and enriched.get('pattern_type'):
                         trade['pattern'] = enriched['pattern_type']
                         trade['timeframe'] = enriched.get('timeframe', '1D')
@@ -566,6 +580,44 @@ class OptionsDataLoader:
         except Exception as e:
             logger.debug(f"Could not load executions: {e}")
         return {}
+
+    def _load_trade_metadata(self) -> Dict[str, Dict]:
+        """
+        Load trade metadata saved at order placement time.
+
+        Session DB-2: This is the primary source for pattern lookups.
+        Data is saved by executor.py when orders are placed, capturing
+        pattern/TFC info before signals expire.
+
+        Returns:
+            Dict mapping OSI symbol to trade metadata:
+            {
+                'AAPL250117C00250000': {
+                    'pattern_type': '3-1-2U',
+                    'timeframe': '1D',
+                    'tfc_score': 3,
+                    'tfc_alignment': '1M, 1W, 1D',
+                    ...
+                },
+                ...
+            }
+        """
+        try:
+            import json
+            metadata_file = _PROJECT_ROOT / 'data' / 'executions' / 'trade_metadata.json'
+            if not metadata_file.exists():
+                logger.debug(f"No trade_metadata.json file found at {metadata_file}")
+                return {}
+
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+
+            logger.debug(f"Loaded {len(metadata)} trade metadata records")
+            return metadata
+
+        except Exception as e:
+            logger.debug(f"Could not load trade metadata: {e}")
+            return {}
 
     def _load_enriched_tfc_data(self) -> Dict[str, Dict]:
         """
