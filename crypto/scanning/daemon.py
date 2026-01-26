@@ -62,6 +62,23 @@ from crypto.trading.sizing import (
     should_skip_trade,
 )
 
+# StatArb integration - Session EQUITY-92
+try:
+    from crypto.statarb.signal_generator import (
+        StatArbConfig,
+        StatArbSignal,
+        StatArbSignalGenerator,
+        StatArbSignalType,
+    )
+    STATARB_AVAILABLE = True
+except ImportError as _statarb_import_err:
+    StatArbConfig = None  # type: ignore
+    StatArbSignal = None  # type: ignore
+    StatArbSignalGenerator = None  # type: ignore
+    StatArbSignalType = None  # type: ignore
+    STATARB_AVAILABLE = False
+    _statarb_import_error_msg = str(_statarb_import_err)
+
 # Optional Discord alerter import - Session CRYPTO-5
 try:
     from crypto.alerters.discord_alerter import CryptoDiscordAlerter
@@ -128,6 +145,11 @@ class CryptoDaemonConfig:
     tfc_reeval_block_on_flip: bool = True  # Block if TFC direction flipped
     tfc_reeval_log_always: bool = True  # Log comparison even when not blocking
 
+    # StatArb Integration (Session EQUITY-92)
+    statarb_enabled: bool = False  # Disabled by default - enable explicitly
+    statarb_pairs: List[tuple] = field(default_factory=list)  # e.g., [("ADA-USD", "XRP-USD")]
+    statarb_config: Optional[Any] = None  # StatArbConfig instance
+
 
 class CryptoSignalDaemon:
     """
@@ -186,6 +208,10 @@ class CryptoSignalDaemon:
         self._detected_signals: Dict[str, CryptoDetectedSignal] = {}
         self._signals_lock = threading.Lock()
 
+        # STRAT-StatArb conflict tracking (Session EQUITY-92)
+        # Symbols currently in STRAT trades - StatArb must skip these
+        self._strat_active_symbols: set = set()
+
         # Daemon state
         self._running = False
         self._shutdown_event = threading.Event()
@@ -201,10 +227,14 @@ class CryptoSignalDaemon:
         self._execution_count = 0
         self._error_count = 0
 
+        # StatArb signal generator (Session EQUITY-92)
+        self.statarb_generator: Optional[StatArbSignalGenerator] = None
+
         # Initialize components
         self._setup_paper_trader()
         self._setup_entry_monitor()
         self._setup_discord_alerter()  # Session CRYPTO-5
+        self._setup_statarb_generator()  # Session EQUITY-92
 
     # =========================================================================
     # COMPONENT SETUP
@@ -284,6 +314,45 @@ class CryptoSignalDaemon:
             self.discord_alerter.test_connection()
         except Exception as e:
             logger.error(f"Failed to initialize Discord alerter: {e}")
+
+    def _setup_statarb_generator(self) -> None:
+        """Initialize StatArb signal generator if enabled - Session EQUITY-92."""
+        if not self.config.statarb_enabled:
+            logger.debug("StatArb integration disabled")
+            return
+
+        if not STATARB_AVAILABLE:
+            error_msg = globals().get('_statarb_import_error_msg', 'unknown error')
+            logger.warning(f"StatArb integration not available (import failed: {error_msg})")
+            return
+
+        if not self.config.statarb_pairs:
+            logger.warning("StatArb enabled but no pairs configured")
+            return
+
+        try:
+            # Use provided config or create default
+            statarb_config = self.config.statarb_config
+            if statarb_config is None:
+                statarb_config = StatArbConfig()
+
+            # Get initial account value from paper trader
+            account_value = self.config.paper_balance
+            if self.paper_trader:
+                account_value = self.paper_trader.account.current_balance
+
+            self.statarb_generator = StatArbSignalGenerator(
+                pairs=self.config.statarb_pairs,
+                config=statarb_config,
+                account_value=account_value,
+            )
+
+            pairs_str = ", ".join(f"{p[0]}/{p[1]}" for p in self.config.statarb_pairs)
+            logger.info(f"StatArb signal generator initialized (pairs: {pairs_str})")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize StatArb generator: {e}")
+            self.statarb_generator = None
 
     def _start_api_server(self) -> None:
         """Start REST API server in background thread - Session CRYPTO-6."""
@@ -784,6 +853,225 @@ class CryptoSignalDaemon:
             logger.warning(f"Failed to open trade for {signal.symbol}: {e}")
 
     # =========================================================================
+    # STATARB INTEGRATION (Session EQUITY-92)
+    # =========================================================================
+
+    def _update_strat_active_symbols(self) -> None:
+        """Update set of symbols currently in STRAT trades."""
+        if self.paper_trader is None:
+            self._strat_active_symbols = set()
+            return
+
+        # Get all open trades with strategy="strat"
+        strat_trades = self.paper_trader.get_trades_by_strategy("strat")
+        open_trades = [t for t in strat_trades if t.exit_time is None]
+        self._strat_active_symbols = {t.symbol for t in open_trades}
+
+    def _check_statarb_signals(self) -> None:
+        """
+        Check for StatArb signals and execute if no STRAT conflict.
+
+        STRAT has priority - StatArb will not trade symbols that are
+        currently in active STRAT positions.
+        """
+        if self.statarb_generator is None:
+            return
+
+        if self.paper_trader is None:
+            return
+
+        # Update STRAT active symbols before checking
+        self._update_strat_active_symbols()
+
+        # Fetch current prices for statarb pairs
+        prices = {}
+        for sym1, sym2 in self.config.statarb_pairs:
+            try:
+                p1 = self.client.get_current_price(sym1)
+                p2 = self.client.get_current_price(sym2)
+                if p1 and p1 > 0:
+                    prices[sym1] = p1
+                if p2 and p2 > 0:
+                    prices[sym2] = p2
+            except Exception as e:
+                logger.warning(f"Failed to get prices for {sym1}/{sym2}: {e}")
+
+        if not prices:
+            return
+
+        # Update account value for position sizing
+        self.statarb_generator.update_account_value(
+            self.paper_trader.get_available_balance()
+        )
+
+        # Check for signals
+        try:
+            signals = self.statarb_generator.check_for_signals(prices)
+        except Exception as e:
+            logger.error(f"StatArb signal check error: {e}")
+            self._error_count += 1
+            return
+
+        for signal in signals:
+            # STRAT priority: skip if any leg is in active STRAT trade
+            if signal.long_symbol in self._strat_active_symbols:
+                logger.info(
+                    f"STATARB SKIPPED: {signal.long_symbol} in active STRAT trade"
+                )
+                continue
+            if signal.short_symbol in self._strat_active_symbols:
+                logger.info(
+                    f"STATARB SKIPPED: {signal.short_symbol} in active STRAT trade"
+                )
+                continue
+
+            # Execute the signal
+            self._execute_statarb(signal)
+
+    def _execute_statarb(self, signal: "StatArbSignal") -> None:
+        """
+        Execute a StatArb signal via paper trader.
+
+        For entry signals (LONG_SPREAD, SHORT_SPREAD): Opens two trades
+        For exit signals: Closes existing positions
+
+        Args:
+            signal: StatArb signal to execute
+        """
+        if self.paper_trader is None:
+            return
+
+        if signal.signal_type == StatArbSignalType.EXIT:
+            self._execute_statarb_exit(signal)
+        else:
+            self._execute_statarb_entry(signal)
+
+    def _execute_statarb_entry(self, signal: "StatArbSignal") -> None:
+        """Execute StatArb entry (opens two positions)."""
+        if self.paper_trader is None:
+            return
+
+        # Get current prices
+        try:
+            long_price = self.client.get_current_price(signal.long_symbol)
+            short_price = self.client.get_current_price(signal.short_symbol)
+            if not long_price or not short_price:
+                logger.warning(f"StatArb entry skipped: could not get prices")
+                return
+        except Exception as e:
+            logger.warning(f"StatArb entry skipped: {e}")
+            return
+
+        # Get current leverage tier
+        now_et = self._get_current_time_et()
+        max_leverage = get_max_leverage_for_symbol(signal.long_symbol, now_et)
+
+        # Calculate quantities from notional values
+        long_qty = signal.long_notional / long_price if long_price > 0 else 0
+        short_qty = signal.short_notional / short_price if short_price > 0 else 0
+
+        if long_qty <= 0 or short_qty <= 0:
+            logger.warning("StatArb entry skipped: invalid quantities")
+            return
+
+        # Signal type determines direction
+        signal_type_str = signal.signal_type.value  # "long_spread" or "short_spread"
+
+        logger.info(
+            f"STATARB ENTRY: {signal_type_str} Z={signal.zscore:.2f} | "
+            f"LONG {signal.long_symbol} qty={long_qty:.6f} @ ${long_price:,.2f} | "
+            f"SHORT {signal.short_symbol} qty={short_qty:.6f} @ ${short_price:,.2f}"
+        )
+
+        # Open long leg
+        try:
+            long_trade = self.paper_trader.open_trade(
+                symbol=signal.long_symbol,
+                side="BUY",
+                quantity=long_qty,
+                entry_price=long_price,
+                leverage=max_leverage,
+                pattern_type=f"statarb_{signal_type_str}",
+                strategy="statarb",
+            )
+            if long_trade:
+                self._execution_count += 1
+                logger.info(
+                    f"  LONG leg opened: {long_trade.trade_id} {signal.long_symbol}"
+                )
+        except Exception as e:
+            logger.error(f"StatArb long leg failed: {e}")
+
+        # Open short leg
+        try:
+            short_trade = self.paper_trader.open_trade(
+                symbol=signal.short_symbol,
+                side="SELL",
+                quantity=short_qty,
+                entry_price=short_price,
+                leverage=max_leverage,
+                pattern_type=f"statarb_{signal_type_str}",
+                strategy="statarb",
+            )
+            if short_trade:
+                self._execution_count += 1
+                logger.info(
+                    f"  SHORT leg opened: {short_trade.trade_id} {signal.short_symbol}"
+                )
+        except Exception as e:
+            logger.error(f"StatArb short leg failed: {e}")
+
+        # Send Discord alert if configured
+        if self.discord_alerter and self.config.alert_on_trade_entry:
+            try:
+                # Create a simple alert message for statarb
+                self.discord_alerter._send_message(
+                    f"**STATARB ENTRY** | Z={signal.zscore:.2f}\n"
+                    f"LONG {signal.long_symbol} @ ${long_price:,.2f}\n"
+                    f"SHORT {signal.short_symbol} @ ${short_price:,.2f}"
+                )
+            except Exception as alert_err:
+                logger.warning(f"Failed to send statarb entry alert: {alert_err}")
+
+    def _execute_statarb_exit(self, signal: "StatArbSignal") -> None:
+        """Execute StatArb exit (closes both legs)."""
+        if self.paper_trader is None:
+            return
+
+        # Find and close statarb trades for these symbols
+        statarb_trades = self.paper_trader.get_trades_by_strategy("statarb")
+        open_trades = [t for t in statarb_trades if t.exit_time is None]
+
+        closed_count = 0
+        for trade in open_trades:
+            if trade.symbol in (signal.long_symbol, signal.short_symbol):
+                try:
+                    current_price = self.client.get_current_price(trade.symbol)
+                    if current_price and current_price > 0:
+                        # Set exit reason on trade object before closing
+                        trade.exit_reason = "statarb_zscore_reversion"
+                        self.paper_trader.close_trade(
+                            trade.trade_id,
+                            exit_price=current_price,
+                        )
+                        closed_count += 1
+                        logger.info(
+                            f"STATARB EXIT: {trade.symbol} @ ${current_price:,.2f} "
+                            f"(Z={signal.zscore:.2f}, held {signal.bars_held} bars)"
+                        )
+                except Exception as e:
+                    logger.error(f"StatArb exit failed for {trade.symbol}: {e}")
+
+        if closed_count > 0 and self.discord_alerter and self.config.alert_on_trade_exit:
+            try:
+                self.discord_alerter._send_message(
+                    f"**STATARB EXIT** | Z={signal.zscore:.2f} | "
+                    f"Closed {closed_count} position(s)"
+                )
+            except Exception as alert_err:
+                logger.warning(f"Failed to send statarb exit alert: {alert_err}")
+
+    # =========================================================================
     # SCANNING
     # =========================================================================
 
@@ -1153,7 +1441,13 @@ class CryptoSignalDaemon:
                 if self.is_maintenance_window():
                     logger.info("Maintenance window - skipping scan")
                 else:
+                    # STRAT pattern scanning (primary strategy)
                     self.run_scan_and_monitor()
+
+                    # StatArb signal checking (Session EQUITY-92)
+                    # Runs after STRAT so _strat_active_symbols is updated
+                    if self.statarb_generator is not None:
+                        self._check_statarb_signals()
 
                 # Clean up expired signals
                 self._cleanup_expired_signals()
@@ -1349,6 +1643,11 @@ class CryptoSignalDaemon:
         if is_intraday:
             time_to_close = time_until_intraday_close_et(now_et).total_seconds()
 
+        # StatArb status (Session EQUITY-92)
+        statarb_stats = {}
+        if self.statarb_generator is not None:
+            statarb_stats = self.statarb_generator.get_status()
+
         return {
             "running": self._running,
             "start_time": (
@@ -1369,6 +1668,8 @@ class CryptoSignalDaemon:
             "scan_interval": self.config.scan_interval,
             "entry_monitor": entry_stats,
             "paper_trader": paper_stats,
+            "statarb": statarb_stats,  # Session EQUITY-92
+            "strat_active_symbols": list(self._strat_active_symbols),
         }
 
     def get_detected_signals(self) -> List[CryptoDetectedSignal]:
@@ -1497,5 +1798,21 @@ class CryptoSignalDaemon:
             print(f"  Realized P&L: ${pt.get('realized_pnl', 0):,.2f}")
             print(f"  Open Trades: {pt.get('open_trades', 0)}")
             print(f"  Closed Trades: {pt.get('closed_trades', 0)}")
+
+        # StatArb status (Session EQUITY-92)
+        if status.get("statarb"):
+            sa = status["statarb"]
+            print()
+            print("StatArb:")
+            print(f"  Pairs: {', '.join(sa.get('pairs', []))}")
+            print(f"  Positions: {sa.get('positions', 0)}")
+            zscores = sa.get('zscores', {})
+            if zscores:
+                for pair, z in zscores.items():
+                    z_str = f"{z:.2f}" if z is not None else "N/A"
+                    print(f"  Z-score ({pair}): {z_str}")
+            strat_active = status.get('strat_active_symbols', [])
+            if strat_active:
+                print(f"  STRAT Active: {', '.join(strat_active)}")
 
         print("=" * 70)
