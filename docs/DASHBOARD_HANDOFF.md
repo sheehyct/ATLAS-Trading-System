@@ -11,12 +11,33 @@
 | Dashboard URL | http://localhost:8050 |
 | Run Command | `set PYTHONPATH=. && python -m dashboard.app` |
 | Main Entry | `dashboard/app.py` |
-| Last Session | DB-1 (2026-01-26) |
-| Next Session | DB-2 |
+| Last Session | DB-2 (2026-01-26) |
+| Next Session | DB-3 |
 
 ---
 
 ## Session History
+
+### DB-2 (2026-01-26) - Pattern Persistence & Loader Fixes
+**Commits:** `3c28d3f`, `d84b19a`
+
+**Completed:**
+- Issue 3 (High): Pattern persistence - save metadata at order placement
+  - `executor.py`: Added `_save_trade_metadata()` method
+  - `options_loader.py`: Added `_load_trade_metadata()` as primary lookup source
+- Issue 1 (Medium): OptionsDataLoader singleton pattern
+  - `app.py`: Added `get_options_loader()` with per-account caching
+  - Added reconnection logic for cached loaders that lost connection
+- Issue 2 (Medium): API response format normalization
+  - `server.py`: Added `_transform_pnl_response()` to normalize PaperTrader format
+
+**Pattern Lookup Priority (Updated):**
+1. `trade_metadata.json` (saved at order placement - most reliable)
+2. Signal store lookup (recent trades where signal hasn't expired)
+3. `enriched_trades.json` (backfill data)
+4. Parse from signal_key in executions.json (fallback)
+
+---
 
 ### DB-1 (2026-01-26) - EQUITY-93B
 **Commit:** `dc2b632`
@@ -24,183 +45,168 @@
 **Completed:**
 - Wired account selector to STRAT Analytics callback
 - Added strategy selector dropdown (All/STRAT/StatArb)
-- Fixed win rate "(0)" bug - `'trades'` → `'total_trades'` key
+- Fixed win rate "(0)" bug - `'trades'` -> `'total_trades'` key
 - Blocked continuation patterns (2U-2U, 2D-2D) in entry_monitor
 - Added `/pnl_by_strategy` endpoint to crypto API
 - Added `get_pnl_by_strategy()` to crypto_loader
-
-**Issues Identified (Code Review):**
-1. OptionsDataLoader reinstantiation (see Known Issues)
-2. API response format inconsistency (see Known Issues)
 
 ---
 
 ## Known Issues (Priority Order)
 
-### Issue 1: OptionsDataLoader Reinstantiation
-**Priority:** Medium | **Severity:** Memory Leak | **Session:** DB-1
-
-**Location:** `dashboard/app.py` line 1936
+### Issue 1: Equity Curve UI/UX
+**Priority:** Medium | **Severity:** Poor UX | **Session:** DB-2
 
 **Problem:**
-```python
-def render_strat_analytics_tab(active_tab, market, account, strategy, n_intervals):
-    # Creates NEW instance every 30 seconds!
-    loader = OptionsDataLoader(account=selected_account)
-```
-
-**Impact:**
-- New HTTP session created every 30-second callback
-- ~960 abandoned sessions per 8-hour trading day
-- Memory leak (16-32MB/day)
-- Potential Alpaca rate limiting
-
-**Proposed Fix (Singleton Pattern):**
-```python
-# At module level
-_options_loaders: Dict[str, OptionsDataLoader] = {}
-
-def get_options_loader(account: str) -> OptionsDataLoader:
-    """Get or create OptionsDataLoader for account (singleton per account)."""
-    if account not in _options_loaders:
-        _options_loaders[account] = OptionsDataLoader(account=account)
-    return _options_loaders[account]
-
-# In callback
-loader = get_options_loader(selected_account)  # Reuses existing
-```
-
----
-
-### Issue 2: API Response Format Inconsistency
-**Priority:** Medium | **Severity:** API Contract Violation | **Session:** DB-1
-
-**Location:** `crypto/api/server.py` lines 211-265
-
-**Problem:**
-```
-Documented format:    {'total_pnl': float, 'trade_count': int, 'win_rate': float}
-Actual PaperTrader:   {'gross': float, 'fees': float, 'funding': float, 'net': float, 'trades': int}
-```
-
-**Impact:**
-- Clients expecting documented format get KeyError
-- Dashboard may silently fail to display strategy P/L
+The 90-day equity curve chart is difficult to read:
+- Chart is too wide/thin (aspect ratio)
+- Axis labels are small and hard to read
+- Grid lines lack contrast
+- No clear visual hierarchy
+- Missing key stats (total return %, max drawdown, etc.)
 
 **Proposed Fix:**
-```python
-def _transform_pnl_response(raw: Dict) -> Dict:
-    """Transform PaperTrader format to documented API format."""
-    def transform_strategy(data: Dict) -> Dict:
-        return {
-            'total_pnl': data.get('net', 0),
-            'trade_count': data.get('trades', 0),
-            'win_rate': 0,  # Calculate from trade history
-        }
-    return {
-        'strat': transform_strategy(raw.get('strat', {})),
-        'statarb': transform_strategy(raw.get('statarb', {})),
-        'combined': transform_strategy(raw.get('combined', {})),
-    }
-```
+- Increase chart height for better aspect ratio
+- Add summary stats card above chart (Total Return, Max DD, Sharpe)
+- Improve axis label sizing and contrast
+- Add hover tooltips with daily P/L values
+- Consider adding drawdown overlay or separate panel
+
+**Location:** `dashboard/components/strat_analytics_panel.py` or callback in `app.py`
 
 ---
 
-### Issue 3: Options Trades Show "Unclassified" Pattern
-**Priority:** High | **Severity:** Data Loss | **Session:** DB-1
+### Issue 2: Overall Dashboard Polish
+**Priority:** Low | **Severity:** UX | **Session:** DB-2
 
 **Problem:**
-Alpaca API doesn't store STRAT pattern metadata. When fetching closed trades, pattern context is lost.
+Multiple pages need UI improvements for professional appearance:
 
-**Current Workaround (Fragile):**
-1. Look up in `signal_store` by OSI symbol
-2. Fall back to `enriched_trades.json` from backfill script
-3. Default to "Unclassified"
+| Page | Issues |
+|------|--------|
+| Overview | Metrics cards could use better spacing/hierarchy |
+| Open Positions | Progress bars need better labeling |
+| Patterns | Pattern stats table needs better formatting |
+| TFC | Alignment scores visualization unclear |
+| Closed Trades | Table needs pagination for many trades |
+| Pending Patterns | Status indicators need color coding |
+| Equity Curve | See Issue 1 above |
 
-**Proposed Fix (DB-2):**
-Store pattern metadata locally when trades are entered:
-```
-Signal Triggered → Save to data/trade_metadata.json → Order placed with Alpaca
-                          ↓
-Dashboard fetches closed trades → Look up pattern from trade_metadata.json
-```
+---
 
-**Files to Modify:**
-- `strat/signal_automation/executor.py` - Save metadata on order placement
-- `dashboard/data_loaders/options_loader.py` - Load from metadata store first
+### Issue 3: Account Selector Not Persisted
+**Priority:** Low | **Severity:** Minor UX | **Session:** DB-2
+
+**Problem:**
+When switching between tabs, the account/market/strategy selectors reset to defaults instead of persisting user's last selection.
+
+**Proposed Fix:**
+Use `dcc.Store` to persist selector state across tab switches.
+
+---
+
+## Future Enhancements
+
+### STRAT Analytics Page
+
+| Enhancement | Description | Priority |
+|-------------|-------------|----------|
+| Win rate by pattern | Show win rate breakdown per pattern type | Medium |
+| Time-based filtering | Add date range selector for analysis period | Medium |
+| Export to CSV | Download closed trades data | Low |
+| P/L by day of week | Show which days perform best | Low |
+| Position sizing analysis | Show if TFC-based sizing improves returns | Medium |
+
+### Equity Curve Page
+
+| Enhancement | Description | Priority |
+|-------------|-------------|----------|
+| Benchmark comparison | Overlay SPY buy-and-hold for comparison | High |
+| Drawdown chart | Add separate drawdown visualization | Medium |
+| Rolling Sharpe | Show 30-day rolling Sharpe ratio | Low |
+| Trade markers | Mark entry/exit points on equity curve | Medium |
+
+### Open Positions Page
+
+| Enhancement | Description | Priority |
+|-------------|-------------|----------|
+| Real-time P/L | WebSocket updates for live P/L | High |
+| Greeks display | Show delta/theta/vega for options | Medium |
+| Risk warnings | Highlight positions near stop loss | High |
+| Quick close button | One-click position close | Medium |
+
+### Regime Detection Page
+
+| Enhancement | Description | Priority |
+|-------------|-------------|----------|
+| Historical regime view | Show regime history over time | Medium |
+| Regime-filtered returns | Show strategy returns by regime | High |
+| VIX overlay | Show VIX alongside regime detection | Low |
+
+### Portfolio Overview Page
+
+| Enhancement | Description | Priority |
+|-------------|-------------|----------|
+| Asset allocation pie | Visual breakdown of positions | Medium |
+| Sector exposure | Show sector concentration | Low |
+| Correlation matrix | Position correlation visualization | Low |
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        dashboard/app.py                          │
-│  - Main Dash application                                         │
-│  - All callbacks defined here                                    │
-│  - Initializes data loaders at startup                          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Data Loaders                                 │
-├─────────────────────────────────────────────────────────────────┤
-│ options_loader.py    │ Alpaca API + SignalStore + enriched.json │
-│ crypto_loader.py     │ VPS REST API (http://178.156.223.251:8080)│
-│ regime_loader.py     │ Academic jump model calculations         │
-│ live_loader.py       │ Real-time Alpaca positions               │
-│ backtest_loader.py   │ Local results directory                  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Components                                  │
-├─────────────────────────────────────────────────────────────────┤
-│ strat_analytics_panel.py  │ STRAT Analytics tab (Options/Crypto)│
-│ options_panel.py          │ Options-specific displays           │
-│ crypto_panel.py           │ Crypto-specific displays            │
-│ regime_panel.py           │ Regime detection visualizations     │
-│ portfolio_panel.py        │ Portfolio overview                  │
-│ risk_panel.py             │ Risk management displays            │
-└─────────────────────────────────────────────────────────────────┘
++---------------------------------------------------------------------+
+|                        dashboard/app.py                              |
+|  - Main Dash application                                             |
+|  - All callbacks defined here                                        |
+|  - Initializes data loaders at startup                               |
+|  - get_options_loader() singleton (DB-2)                             |
++---------------------------------------------------------------------+
+                              |
+                              v
++---------------------------------------------------------------------+
+|                     Data Loaders                                     |
++---------------------------------------------------------------------+
+| options_loader.py    | Alpaca API + SignalStore + trade_metadata    |
+| crypto_loader.py     | VPS REST API (http://178.156.223.251:8080)   |
+| regime_loader.py     | Academic jump model calculations              |
+| live_loader.py       | Real-time Alpaca positions                    |
+| backtest_loader.py   | Local results directory                       |
++---------------------------------------------------------------------+
+                              |
+                              v
++---------------------------------------------------------------------+
+|                      Components                                      |
++---------------------------------------------------------------------+
+| strat_analytics_panel.py  | STRAT Analytics tab (Options/Crypto)    |
+| options_panel.py          | Options-specific displays                |
+| crypto_panel.py           | Crypto-specific displays                 |
+| regime_panel.py           | Regime detection visualizations          |
+| portfolio_panel.py        | Portfolio overview                        |
+| risk_panel.py             | Risk management displays                  |
++---------------------------------------------------------------------+
 ```
 
 ---
 
-## Data Flow: STRAT Analytics Tab
+## Data Flow: Pattern Lookup (DB-2)
 
 ```
-User selects: Market=Crypto, Account=SMALL, Strategy=StatArb
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ Callback: render_strat_analytics_tab()                          │
-│ Inputs: active_tab, market, account, strategy, n_intervals      │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┴───────────────────┐
-          ▼                                       ▼
-    market='options'                        market='crypto'
-          │                                       │
-          ▼                                       ▼
-  OptionsDataLoader(account)              crypto_loader (global)
-          │                                       │
-          ▼                                       ▼
-  Alpaca API + SignalStore               VPS /trades endpoint
-          │                                       │
-          └───────────────────┬───────────────────┘
-                              ▼
-                    get_closed_trades()
-                              │
-                              ▼
-              Filter by strategy if != 'all'
-                              │
-                              ▼
-         calculate_metrics(trades, strategy)
-         calculate_pattern_stats(trades, strategy)
-                              │
-                              ▼
-                   Render tab content
+ORDER PLACEMENT:
+Signal Triggered -> executor._save_trade_metadata() -> trade_metadata.json
+                                                              |
+                                                              v
+                                            data/executions/trade_metadata.json
+                                                              |
+DASHBOARD LOAD:                                               |
+get_closed_trades() -> _load_trade_metadata() ----------------+
+                    -> signal_store lookup (fallback)
+                    -> enriched_trades.json (fallback)
+                    -> parse signal_key (last resort)
+                                |
+                                v
+                         Pattern displayed
 ```
 
 ---
@@ -247,13 +253,10 @@ if loader is None or not loader._connected:
 trade['pattern'] = trade.get('pattern_type') or trade.get('pattern') or 'Unclassified'
 ```
 
-### 5. STRAT Patterns - Continuation vs Reversal
+### 5. Singleton Reconnection (DB-2)
 ```python
-# These should NOT be traded (continuation patterns)
-CONTINUATION_PATTERNS = {'2U-2U', '2D-2D'}
-
-# These ARE traded (reversal patterns)
-REVERSAL_PATTERNS = {'2U-2D', '2D-2U', '3-2U', '3-2D', ...}
+# get_options_loader() now handles reconnection automatically
+loader = get_options_loader(account)  # Will retry connect if cached loader disconnected
 ```
 
 ---
@@ -262,12 +265,12 @@ REVERSAL_PATTERNS = {'2U-2D', '2D-2U', '3-2U', '3-2D', ...}
 
 | File | Purpose | Key Functions |
 |------|---------|---------------|
-| `dashboard/app.py` | Main app, callbacks | `render_strat_analytics_tab()` |
+| `dashboard/app.py` | Main app, callbacks | `render_strat_analytics_tab()`, `get_options_loader()` |
 | `dashboard/components/strat_analytics_panel.py` | STRAT Analytics UI | `calculate_metrics()`, `calculate_pattern_stats()` |
-| `dashboard/data_loaders/options_loader.py` | Alpaca + patterns | `get_closed_trades()`, `_load_enriched_tfc_data()` |
+| `dashboard/data_loaders/options_loader.py` | Alpaca + patterns | `get_closed_trades()`, `_load_trade_metadata()` |
 | `dashboard/data_loaders/crypto_loader.py` | VPS API | `get_closed_trades()`, `get_pnl_by_strategy()` |
-| `crypto/api/server.py` | VPS REST API | `/trades`, `/pnl_by_strategy` |
-| `crypto/scanning/entry_monitor.py` | Entry trigger logic | Continuation pattern blocking |
+| `strat/signal_automation/executor.py` | Order execution | `execute_signal()`, `_save_trade_metadata()` |
+| `crypto/api/server.py` | VPS REST API | `/trades`, `/pnl_by_strategy`, `_transform_pnl_response()` |
 
 ---
 
@@ -282,6 +285,7 @@ REVERSAL_PATTERNS = {'2U-2D', '2D-2U', '3-2U', '3-2D', ...}
 - [ ] Check browser console for JavaScript errors
 - [ ] Verify no Python exceptions in terminal
 - [ ] Check metrics display non-zero values where expected
+- [ ] Verify equity curve renders with reasonable aspect ratio
 
 ### Syntax Validation:
 ```bash
@@ -293,22 +297,17 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 
 ---
 
-## Next Session: DB-2
+## Next Session: DB-3
 
-### Primary Goal
-Implement real-time trade metadata storage for options:
-- Save pattern/TFC to `data/trade_metadata.json` when orders placed
-- Load from metadata store as primary source in options_loader
+### Suggested Focus: UI/UX Polish
+1. Fix equity curve aspect ratio and readability
+2. Add summary stats card to equity curve page
+3. Improve overall visual hierarchy across pages
 
-### Secondary Goals
-- Fix OptionsDataLoader reinstantiation (singleton pattern)
-- Fix API response format inconsistency
-
-### Files to Modify
-- `strat/signal_automation/executor.py` (~30 lines)
-- `dashboard/data_loaders/options_loader.py` (~40 lines)
-- `dashboard/app.py` (~20 lines for singleton fix)
-- `crypto/api/server.py` (~30 lines for format fix)
+### Alternative Focus: Real-time Features
+1. WebSocket integration for live P/L updates
+2. Position risk warnings (near stop loss)
+3. Quick position close functionality
 
 ---
 
@@ -317,9 +316,10 @@ Implement real-time trade metadata storage for options:
 | Session | Focus |
 |---------|-------|
 | DB-1 | STRAT Analytics selectors, continuation blocking |
-| DB-2 | Trade metadata store, loader fixes |
-| DB-3+ | Future dashboard work |
+| DB-2 | Trade metadata store, loader fixes, singleton pattern |
+| DB-3 | UI/UX polish (equity curve, overall styling) |
+| DB-4+ | Future dashboard work |
 
 ---
 
-*Last Updated: 2026-01-26 (DB-1)*
+*Last Updated: 2026-01-26 (DB-2)*
