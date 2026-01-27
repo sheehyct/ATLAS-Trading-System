@@ -91,16 +91,16 @@ class TestLeverageTierConstants:
         for symbol in INTRADAY_LEVERAGE:
             assert SWING_LEVERAGE[symbol] < INTRADAY_LEVERAGE[symbol]
 
-    def test_swing_btc_eth_have_4x(self):
-        """BTC and ETH should have 4x swing leverage."""
-        assert SWING_LEVERAGE["BTC"] == 4.0
+    def test_swing_btc_eth_leverage(self):
+        """BTC and ETH swing leverage - verified Jan 24, 2026."""
+        assert SWING_LEVERAGE["BTC"] == 4.1
         assert SWING_LEVERAGE["ETH"] == 4.0
 
-    def test_swing_alts_have_3x(self):
-        """SOL, XRP, ADA should have 3x swing leverage."""
-        assert SWING_LEVERAGE["SOL"] == 3.0
-        assert SWING_LEVERAGE["XRP"] == 3.0
-        assert SWING_LEVERAGE["ADA"] == 3.0
+    def test_swing_alts_leverage(self):
+        """SOL, XRP, ADA swing leverage - verified Jan 24, 2026."""
+        assert SWING_LEVERAGE["SOL"] == 2.7
+        assert SWING_LEVERAGE["XRP"] == 2.6
+        assert SWING_LEVERAGE["ADA"] == 3.4
 
 
 # =============================================================================

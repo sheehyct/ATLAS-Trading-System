@@ -47,10 +47,10 @@ class TestGetLeverageForTier:
         leverage = get_leverage_for_tier("BTC-USD", "intraday")
         assert leverage == 10.0
 
-    def test_btc_swing_4x(self):
-        """BTC swing should be 4x."""
+    def test_btc_swing_leverage(self):
+        """BTC swing leverage - verified Jan 24, 2026."""
         leverage = get_leverage_for_tier("BTC-USD", "swing")
-        assert leverage == 4.0
+        assert leverage == 4.1
 
     def test_eth_intraday_10x(self):
         """ETH intraday should be 10x."""
@@ -62,10 +62,10 @@ class TestGetLeverageForTier:
         leverage = get_leverage_for_tier("SOL-USD", "intraday")
         assert leverage == 5.0
 
-    def test_ada_swing_3x(self):
-        """ADA swing should be 3x."""
+    def test_ada_swing_leverage(self):
+        """ADA swing leverage - verified Jan 24, 2026."""
         leverage = get_leverage_for_tier("ADA-USD", "swing")
-        assert leverage == 3.0
+        assert leverage == 3.4
 
     def test_symbol_without_suffix(self):
         """Symbol without -USD suffix should work."""
@@ -75,7 +75,7 @@ class TestGetLeverageForTier:
     def test_unknown_tier_defaults_to_swing(self):
         """Unknown tier should default to swing."""
         leverage = get_leverage_for_tier("BTC", "unknown_tier")
-        assert leverage == 4.0  # BTC swing
+        assert leverage == 4.1  # BTC swing (verified Jan 24, 2026)
 
     def test_unknown_symbol_defaults_to_4x(self):
         """Unknown symbol should default to 4x."""

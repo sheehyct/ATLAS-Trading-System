@@ -637,22 +637,22 @@ class TestCheckTriggersOppositeDirection:
         # Pattern becomes 2-bar (prior was type 3, now 2D)
         assert "2D" in event._actual_pattern
 
-    def test_short_signal_breaks_up(
+    def test_short_signal_breaks_up_continuation_filtered(
         self, entry_monitor, mock_signal_setup_short, mock_coinbase_client
     ):
-        """Test signal expecting SHORT but price breaks UP."""
-        # Signal expects SHORT but price breaks above setup_bar_high
+        """Test signal expecting SHORT but price breaks UP - continuation filtered.
+
+        Prior bar was 2U, opposite break creates 2U-2U continuation pattern.
+        Per STRAT methodology, continuations are NOT traded and should be filtered.
+        """
         mock_coinbase_client.get_current_price.side_effect = None
         mock_coinbase_client.get_current_price.return_value = 3600.0  # Above 3550 high
         entry_monitor.add_signal(mock_signal_setup_short)
 
         triggered = entry_monitor.check_triggers()
 
-        assert len(triggered) == 1
-        event = triggered[0]
-        assert event._actual_direction == "LONG"  # Changed to LONG
-        # Prior bar was 2U, so pattern becomes 2U-2U
-        assert "2U" in event._actual_pattern
+        # 2U-2U is a continuation pattern - should be filtered (not traded)
+        assert len(triggered) == 0
 
 
 class TestCheckTriggersNoTrigger:
@@ -687,9 +687,12 @@ class TestCheckTriggersNoTrigger:
 class TestCheckTriggersOutsideBar:
     """Tests for outside bar (breaks both bounds) scenario."""
 
-    def test_outside_bar_no_trigger(self, entry_monitor, mock_coinbase_client):
-        """Test normal short trigger when price breaks low."""
-        # Create a signal with normal bounds
+    def test_opposite_break_continuation_filtered(self, entry_monitor, mock_coinbase_client):
+        """Test LONG signal with 2D prior bar breaks down - continuation filtered.
+
+        Prior bar was 2D, opposite break creates 2D-2D continuation pattern.
+        Per STRAT methodology, continuations are NOT traded and should be filtered.
+        """
         signal = CryptoDetectedSignal(
             pattern_type="2D-1-?",
             direction="LONG",
@@ -708,14 +711,13 @@ class TestCheckTriggersOutsideBar:
         )
         entry_monitor.add_signal(signal)
 
-        # Price breaks low (normal short trigger)
+        # Price breaks low - opposite of LONG signal
         mock_coinbase_client.get_current_price.side_effect = None
         mock_coinbase_client.get_current_price.return_value = 49900.0  # Breaks low
 
-        # The outside bar case (broke_up AND broke_down) is logically impossible
-        # for a single price point. This test verifies normal break behavior.
+        # 2D-2D is a continuation pattern - should be filtered (not traded)
         triggered = entry_monitor.check_triggers()
-        assert len(triggered) == 1  # Normal short trigger
+        assert len(triggered) == 0
 
 
 class TestCheckTriggersMultiple:

@@ -42,12 +42,12 @@ class TestFeeConstants:
     """Tests for fee constant definitions."""
 
     def test_taker_fee_rate(self):
-        """Taker fee should be 0.02% (0.0002)."""
-        assert TAKER_FEE_RATE == 0.0002
+        """Taker fee should be 0.07% (0.0007) - verified Jan 24, 2026."""
+        assert TAKER_FEE_RATE == 0.0007
 
-    def test_maker_fee_rate_zero(self):
-        """Maker fee should be 0.00%."""
-        assert MAKER_FEE_RATE == 0.0
+    def test_maker_fee_rate(self):
+        """Maker fee should be 0.065% (0.00065) - verified Jan 24, 2026."""
+        assert MAKER_FEE_RATE == 0.00065
 
     def test_min_fee_per_contract(self):
         """Minimum fee should be $0.15 per contract."""
@@ -84,27 +84,27 @@ class TestFeeConstants:
 class TestCalculateFee:
     """Tests for calculate_fee function."""
 
-    def test_percentage_fee_dominates_large_trades(self):
-        """For large trades, percentage fee should dominate."""
-        # $50,000 notional * 0.02% = $10
+    def test_large_trade_fee(self):
+        """Large trade fee is percentage + fixed per contract."""
+        # $50,000 * 0.07% = $35.00
         # 5 contracts * $0.15 = $0.75
-        # Max = $10
+        # Total = $35.75
         fee = calculate_fee(notional_value=50000, num_contracts=5, is_maker=False)
-        assert fee == 10.0
+        assert fee == pytest.approx(35.75)
 
-    def test_minimum_fee_dominates_small_trades(self):
-        """For small trades, minimum fee should dominate."""
-        # $1,000 notional * 0.02% = $0.20
+    def test_small_trade_fee(self):
+        """Small trade fee still includes both components."""
+        # $1,000 * 0.07% = $0.70
         # 10 contracts * $0.15 = $1.50
-        # Max = $1.50
+        # Total = $2.20
         fee = calculate_fee(notional_value=1000, num_contracts=10, is_maker=False)
-        assert fee == 1.50
+        assert fee == pytest.approx(2.20)
 
-    def test_maker_fee_is_zero(self):
-        """Maker orders should have zero percentage fee."""
+    def test_maker_fee_uses_maker_rate(self):
+        """Maker orders use 0.065% rate plus fixed fee."""
         fee = calculate_fee(notional_value=50000, num_contracts=1, is_maker=True)
-        # Only minimum fee applies: 1 * $0.15 = $0.15
-        assert fee == 0.15
+        # $50,000 * 0.065% + 1 * $0.15 = $32.50 + $0.15 = $32.65
+        assert fee == pytest.approx(32.65)
 
     def test_zero_notional_returns_zero(self):
         """Zero notional should return zero fee."""
@@ -121,22 +121,19 @@ class TestCalculateFee:
         fee = calculate_fee(notional_value=1000, num_contracts=0, is_maker=False)
         assert fee == 0.0
 
-    def test_single_contract_minimum(self):
-        """Single contract should have at least $0.15 fee."""
+    def test_single_contract_fee(self):
+        """Single contract includes percentage + fixed fee."""
         fee = calculate_fee(notional_value=100, num_contracts=1, is_maker=False)
-        # $100 * 0.02% = $0.02
+        # $100 * 0.07% = $0.07
         # 1 * $0.15 = $0.15
-        # Max = $0.15
-        assert fee == 0.15
+        # Total = $0.22
+        assert fee == pytest.approx(0.22)
 
-    def test_breakeven_point(self):
-        """Find the breakeven point where fees are equal."""
-        # For 1 contract: $0.15 minimum
-        # Percentage fee = notional * 0.0002
-        # $0.15 = notional * 0.0002
-        # notional = $750
+    def test_additive_fee_formula(self):
+        """Fee is always percentage + fixed (additive, not max)."""
+        # $750 * 0.07% + 1 * $0.15 = $0.525 + $0.15 = $0.675
         fee_at_750 = calculate_fee(notional_value=750, num_contracts=1, is_maker=False)
-        assert fee_at_750 == pytest.approx(0.15, rel=0.01)
+        assert fee_at_750 == pytest.approx(0.675, abs=0.01)
 
 
 # =============================================================================
@@ -160,19 +157,20 @@ class TestCalculateRoundTripFee:
         exit_fee = calculate_fee(50000, 5, is_maker=False)
         assert round_trip == entry_fee + exit_fee
 
-    def test_both_maker_minimal_fees(self):
-        """Both maker orders should only pay minimum fees."""
+    def test_both_maker_round_trip(self):
+        """Both maker orders pay maker rate + fixed fee each side."""
         round_trip = calculate_round_trip_fee(50000, 5, entry_is_maker=True, exit_is_maker=True)
-        # 5 contracts * $0.15 * 2 = $1.50
-        assert round_trip == 1.50
+        # Each side: $50,000 * 0.065% + 5 * $0.15 = $32.50 + $0.75 = $33.25
+        # Round trip = $33.25 * 2 = $66.50
+        assert round_trip == pytest.approx(66.50)
 
     def test_small_trade_round_trip(self):
-        """Small trade round trip example from docstring."""
+        """Small trade round trip with additive fee formula."""
         # $5000 notional, 12 contracts
         round_trip = calculate_round_trip_fee(5000, 12, entry_is_maker=False, exit_is_maker=False)
-        # Each side: max(5000 * 0.0002, 12 * 0.15) = max(1.00, 1.80) = 1.80
-        # Round trip = 1.80 * 2 = 3.60
-        assert round_trip == pytest.approx(3.60, rel=0.01)
+        # Each side: $5000 * 0.07% + 12 * $0.15 = $3.50 + $1.80 = $5.30
+        # Round trip = $5.30 * 2 = $10.60
+        assert round_trip == pytest.approx(10.60, rel=0.01)
 
 
 # =============================================================================
@@ -186,9 +184,9 @@ class TestCalculateBreakevenMove:
     def test_breakeven_calculation(self):
         """Breakeven move should equal fees / notional."""
         breakeven = calculate_breakeven_move(5000, 12, entry_is_maker=False, exit_is_maker=False)
-        # From previous test: round trip = $3.60
-        # Breakeven = $3.60 / $5000 = 0.00072
-        assert breakeven == pytest.approx(0.00072, rel=0.01)
+        # From previous test: round trip = $10.60
+        # Breakeven = $10.60 / $5000 = 0.00212
+        assert breakeven == pytest.approx(0.00212, rel=0.01)
 
     def test_zero_notional_returns_zero(self):
         """Zero notional should return zero breakeven."""
@@ -373,10 +371,10 @@ class TestCreateFixedPctFeeFunc:
         assert pos_fee == neg_fee
 
     def test_default_rate(self):
-        """Default rate should be 0.0002 (0.02%)."""
+        """Default rate should be 0.0007 (0.07%) - taker rate."""
         fee_func = create_fixed_pct_fee_func()
         fee = fee_func(0, 0, 10000)
-        assert fee == 2.0  # 0.02% of 10000
+        assert fee == 7.0  # 0.07% of 10000
 
 
 # =============================================================================

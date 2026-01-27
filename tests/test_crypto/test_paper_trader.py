@@ -144,8 +144,9 @@ class TestSimulatedTradeClose:
 
         assert trade.status == "CLOSED"
         assert trade.exit_price == 51000.0
-        assert trade.pnl == 10.0  # (51000 - 50000) * 0.01
-        assert trade.pnl_percent == pytest.approx(2.0)  # 2% gain
+        assert trade.gross_pnl == 10.0  # (51000 - 50000) * 0.01
+        # Net PnL reduced by exit fee: (510 * 0.0007) + 0.15 = 0.507
+        assert trade.pnl == pytest.approx(9.493, abs=0.01)
 
     def test_close_losing_buy(self):
         """Test closing a losing BUY trade."""
@@ -159,8 +160,9 @@ class TestSimulatedTradeClose:
         )
         trade.close(49000.0)  # Exit at $49000
 
-        assert trade.pnl == -10.0  # (49000 - 50000) * 0.01
-        assert trade.pnl_percent == pytest.approx(-2.0)
+        assert trade.gross_pnl == -10.0  # (49000 - 50000) * 0.01
+        # Net PnL worsened by exit fee: (490 * 0.0007) + 0.15 = 0.493
+        assert trade.pnl == pytest.approx(-10.493, abs=0.01)
 
     def test_close_winning_sell(self):
         """Test closing a winning SELL trade."""
@@ -174,8 +176,9 @@ class TestSimulatedTradeClose:
         )
         trade.close(49000.0)  # Exit at $49000 (price went down = profit)
 
-        assert trade.pnl == 10.0  # (50000 - 49000) * 0.01
-        assert trade.pnl_percent == pytest.approx(2.0)
+        assert trade.gross_pnl == 10.0  # (50000 - 49000) * 0.01
+        # Net PnL reduced by exit fee: (490 * 0.0007) + 0.15 = 0.493
+        assert trade.pnl == pytest.approx(9.507, abs=0.01)
 
     def test_close_losing_sell(self):
         """Test closing a losing SELL trade."""
@@ -189,8 +192,9 @@ class TestSimulatedTradeClose:
         )
         trade.close(51000.0)  # Exit at $51000 (price went up = loss)
 
-        assert trade.pnl == -10.0
-        assert trade.pnl_percent == pytest.approx(-2.0)
+        assert trade.gross_pnl == -10.0
+        # Net PnL worsened by exit fee: (510 * 0.0007) + 0.15 = 0.507
+        assert trade.pnl == pytest.approx(-10.507, abs=0.01)
 
     def test_close_sets_exit_time(self):
         """Test close sets exit_time."""
@@ -401,8 +405,9 @@ class TestOpenTrade:
             entry_price=50000.0,
             leverage=4.0,
         )
-        # Margin = 0.01 * 50000 / 4 = 125
-        assert paper_trader.account.reserved_margin == 125.0
+        # Margin = fill_price * qty / leverage (fill includes 5bps slippage)
+        # fill = 50000 * 1.0005 = 50025, margin = 50025 * 0.01 / 4 = 125.0625
+        assert paper_trader.account.reserved_margin == pytest.approx(125.0625, abs=0.01)
 
     def test_open_trade_insufficient_margin(self, paper_trader):
         """Test opening trade fails with insufficient margin."""
@@ -462,7 +467,7 @@ class TestOpenTrade:
         assert trade.entry_bar_type == "2U"
 
     def test_open_trade_initializes_intrabar(self, paper_trader):
-        """Test intrabar high/low initialized to entry price."""
+        """Test intrabar high/low initialized to fill price (includes slippage)."""
         trade = paper_trader.open_trade(
             symbol="BTC-USD",
             side="BUY",
@@ -470,8 +475,9 @@ class TestOpenTrade:
             entry_price=50000.0,
         )
 
-        assert trade.intrabar_high == 50000.0
-        assert trade.intrabar_low == 50000.0
+        # Intrabar initialized to fill price (entry_price includes slippage)
+        assert trade.intrabar_high == trade.entry_price
+        assert trade.intrabar_low == trade.entry_price
 
 
 class TestCloseTrade:
@@ -522,9 +528,10 @@ class TestCloseTrade:
         )
         paper_trader.close_trade(trade.trade_id, exit_price=51000.0)
 
-        # P&L = (51000 - 50000) * 0.01 = $10
-        assert paper_trader.account.current_balance == initial_balance + 10.0
-        assert paper_trader.account.realized_pnl == 10.0
+        # Gross ~$9.50 but net reduced by entry fee, exit fee, and slippage
+        assert paper_trader.account.current_balance > initial_balance
+        assert paper_trader.account.realized_pnl > 0
+        assert paper_trader.account.realized_pnl == pytest.approx(8.49, abs=0.1)
 
     def test_close_trade_not_found(self, paper_trader):
         """Test closing non-existent trade."""
@@ -592,8 +599,8 @@ class TestGetAvailableBalance:
             entry_price=50000.0,
             leverage=4.0,
         )
-        # Margin = 500 / 4 = 125
-        assert paper_trader.get_available_balance() == 875.0
+        # Available = (balance - entry_fee) - margin (both use slippage-adjusted fill)
+        assert paper_trader.get_available_balance() == pytest.approx(874.44, abs=0.1)
 
 
 # =============================================================================
@@ -687,9 +694,10 @@ class TestGetAccountSummary:
 
         summary = paper_trader.get_account_summary()
 
-        assert summary["realized_pnl"] == 20.0  # (52000-50000)*0.01
-        assert summary["current_balance"] == 1020.0
-        assert summary["return_percent"] == 2.0
+        # Gross ~$19.49 reduced by entry/exit fees and slippage
+        assert summary["realized_pnl"] == pytest.approx(18.48, abs=0.1)
+        assert summary["current_balance"] == pytest.approx(1018.48, abs=0.1)
+        assert summary["return_percent"] == pytest.approx(1.85, abs=0.1)
         assert summary["closed_trades"] == 1
 
 
@@ -736,7 +744,7 @@ class TestPerformanceMetrics:
                 quantity=0.01,
                 entry_price=50000.0,
             )
-            paper_trader.close_trade(trade.trade_id, exit_price=51000.0)  # +$10
+            paper_trader.close_trade(trade.trade_id, exit_price=51000.0)  # +$10 gross
 
         # 1 loser
         trade = paper_trader.open_trade(
@@ -745,7 +753,7 @@ class TestPerformanceMetrics:
             quantity=0.01,
             entry_price=50000.0,
         )
-        paper_trader.close_trade(trade.trade_id, exit_price=49000.0)  # -$10
+        paper_trader.close_trade(trade.trade_id, exit_price=49000.0)  # -$10 gross
 
         metrics = paper_trader.get_performance_metrics()
 
@@ -753,14 +761,15 @@ class TestPerformanceMetrics:
         assert metrics["winning_trades"] == 2
         assert metrics["losing_trades"] == 1
         assert metrics["win_rate"] == pytest.approx(66.67, rel=0.01)
-        assert metrics["gross_profit"] == 20.0
-        assert metrics["gross_loss"] == 10.0
-        assert metrics["profit_factor"] == 2.0
+        # "gross_profit"/"gross_loss" are sums of net PnL (after fees/slippage)
+        assert metrics["gross_profit"] == pytest.approx(16.98, abs=0.1)
+        assert metrics["gross_loss"] == pytest.approx(11.49, abs=0.1)
+        assert metrics["profit_factor"] == pytest.approx(1.48, abs=0.1)
 
     def test_metrics_expectancy(self, paper_trader):
         """Test expectancy calculation."""
         # Create predictable trades for expectancy check
-        # 2 winners at $10 each, 1 loser at $10
+        # 2 winners, 1 loser (net PnL reduced by fees/slippage)
         for i in range(2):
             trade = paper_trader.open_trade(
                 symbol="BTC-USD",
@@ -781,8 +790,8 @@ class TestPerformanceMetrics:
         metrics = paper_trader.get_performance_metrics()
 
         # Expectancy = (win_rate * avg_win) - (loss_rate * avg_loss)
-        # = (0.67 * 10) - (0.33 * 10) = 3.33
-        assert metrics["expectancy"] == pytest.approx(3.33, rel=0.1)
+        # With fees: (0.67 * ~8.49) - (0.33 * ~11.49) = ~1.83
+        assert metrics["expectancy"] == pytest.approx(1.83, abs=0.1)
 
 
 class TestTradeHistory:
@@ -1033,8 +1042,9 @@ class TestEdgeCases:
             leverage=0.5,  # Would make margin > notional
         )
 
-        # Margin = 50 / max(1, 0.5) = 50 (not 100)
-        assert trade.margin_reserved == 50.0
+        # Margin = fill_price * qty / max(1, 0.5)
+        # fill = 50000 * 1.0005 = 50025, margin = 50025 * 0.001 / 1 = 50.025
+        assert trade.margin_reserved == pytest.approx(50.025, abs=0.01)
 
     def test_negative_risk_multiplier(self, paper_trader):
         """Test negative risk multiplier is treated as zero."""

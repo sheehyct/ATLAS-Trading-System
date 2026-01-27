@@ -1,9 +1,67 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 25, 2026 (Session EQUITY-92)
+**Last Updated:** January 27, 2026 (Session EQUITY-93)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 6 IN PROGRESS (Crypto Architecture Unification)
-**Status:** EQUITY-92 COMPLETE - StatArb daemon integration complete
+**Status:** EQUITY-93 COMPLETE - All crypto tests fixed (30 failures resolved)
+
+---
+
+## Session EQUITY-93: Crypto Test Fixes + Project Audit (COMPLETE)
+
+**Date:** January 27, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - 30 failing crypto tests fixed, 824/824 passing
+
+### What Was Accomplished
+
+1. **Comprehensive Project Audit**
+   - Multi-agent audit of full codebase (3,896 tests, architecture, docs)
+   - Identified 30 failing crypto tests across 5 test files
+   - Identified StatArb backtesting gap (7 files, 0 tests)
+   - Audit saved to plan file for reference
+
+2. **Fixed 12 Paper Trader Test Failures**
+   - Root cause: Tests expected zero-fee PnL but production applies Coinbase CFM fees
+   - Fee model: (notional x 0.07%) + $0.15/contract + 5bps slippage
+   - Updated assertions to use `gross_pnl` and `pytest.approx` for net values
+
+3. **Fixed 11 Fee Calculation Test Failures**
+   - Root cause: Fee constants updated (taker 0.02% -> 0.07%, maker 0% -> 0.065%)
+   - Formula changed from `max(percentage, minimum)` to `percentage + fixed` (additive)
+   - Updated all expected values and docstrings
+
+4. **Fixed 5 Leverage Tier Test Failures**
+   - Root cause: Swing leverage updated from Coinbase CFM platform Jan 24
+   - BTC: 4.0 -> 4.1, SOL: 3.0 -> 2.7, ADA: 3.0 -> 3.4, XRP: 2.6
+   - Updated test_beta.py (2) and test_derivatives.py (3)
+
+5. **Fixed 2 Entry Monitor Test Failures**
+   - Root cause: Continuation pattern filter (2U-2U, 2D-2D) added in EQUITY-93B
+   - Per STRAT methodology, continuations are not traded
+   - Updated tests to expect 0 triggers for continuation patterns
+
+### Files Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `tests/test_crypto/test_paper_trader.py` | MODIFIED | 12 assertions updated for fee/slippage model |
+| `tests/test_crypto/test_fees.py` | MODIFIED | 11 assertions updated for new fee formula |
+| `tests/test_crypto/test_beta.py` | MODIFIED | 2 leverage tier values updated |
+| `tests/test_crypto/test_derivatives.py` | MODIFIED | 3 leverage tier values updated |
+| `tests/test_crypto/test_entry_monitor.py` | MODIFIED | 2 tests updated for continuation filter |
+
+### Test Results
+
+- Crypto tests: 824/824 passing (was 794/824)
+- All 30 failures resolved
+- No production code changes (test-only fixes)
+
+### Next Session: EQUITY-94
+
+- Phase 6.4: Extract crypto coordinators (1,818 -> <1,200 lines)
+- Phase 6.5: Dashboard strategy filter
+- StatArb backtesting tests (7 untested files)
 
 ---
 
