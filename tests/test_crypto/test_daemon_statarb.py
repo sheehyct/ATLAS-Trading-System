@@ -379,7 +379,7 @@ class TestCheckStatArbSignals:
             "check_for_signals",
             return_value=[mock_signal],
         ):
-            with patch.object(daemon, "_execute_statarb") as mock_exec:
+            with patch.object(daemon.statarb_executor, "_execute") as mock_exec:
                 daemon._check_statarb_signals()
                 mock_exec.assert_called_once_with(mock_signal)
 

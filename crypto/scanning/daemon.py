@@ -12,6 +12,13 @@ Key Differences from Equities Daemon:
 - Simpler architecture (no APScheduler, threading-based)
 - No options, direct futures execution
 
+Coordinators (Phase 6.4 - EQUITY-94):
+- CryptoHealthMonitor: Health checks, status reporting
+- CryptoEntryValidator: Stale setup detection, TFC re-evaluation
+- CryptoStatArbExecutor: StatArb signal checking and execution
+- CryptoFilterManager: Signal quality filtering, deduplication
+- CryptoAlertManager: Discord alerting
+
 Usage:
     from crypto.scanning.daemon import CryptoSignalDaemon
 
@@ -36,17 +43,23 @@ try:
     import pytz
     ET_TIMEZONE = pytz.timezone("America/New_York")
 except ImportError:
-    # Fallback if pytz not available
     ET_TIMEZONE = None
 
 from crypto import config
 from crypto.config import (
     get_current_leverage_tier,
     get_max_leverage_for_symbol,
-    is_intraday_window,
     time_until_intraday_close_et,
 )
 from crypto.exchange.coinbase_client import CoinbaseClient
+from crypto.scanning.coordinators.alert_manager import CryptoAlertManager
+from crypto.scanning.coordinators.entry_validator import CryptoEntryValidator
+from crypto.scanning.coordinators.filter_manager import CryptoFilterManager
+from crypto.scanning.coordinators.health_monitor import (
+    CryptoDaemonStats,
+    CryptoHealthMonitor,
+)
+from crypto.scanning.coordinators.statarb_executor import CryptoStatArbExecutor
 from crypto.scanning.entry_monitor import (
     CryptoEntryMonitor,
     CryptoEntryMonitorConfig,
@@ -61,31 +74,6 @@ from crypto.trading.sizing import (
     calculate_position_size_leverage_first,
     should_skip_trade,
 )
-
-# StatArb integration - Session EQUITY-92
-try:
-    from crypto.statarb.signal_generator import (
-        StatArbConfig,
-        StatArbSignal,
-        StatArbSignalGenerator,
-        StatArbSignalType,
-    )
-    STATARB_AVAILABLE = True
-except ImportError as _statarb_import_err:
-    StatArbConfig = None  # type: ignore
-    StatArbSignal = None  # type: ignore
-    StatArbSignalGenerator = None  # type: ignore
-    StatArbSignalType = None  # type: ignore
-    STATARB_AVAILABLE = False
-    _statarb_import_error_msg = str(_statarb_import_err)
-
-# Optional Discord alerter import - Session CRYPTO-5
-try:
-    from crypto.alerters.discord_alerter import CryptoDiscordAlerter
-except Exception as _discord_import_err:
-    CryptoDiscordAlerter = None  # type: ignore
-    # Log will be available after logger is configured
-    _discord_import_error_msg = str(_discord_import_err)
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +147,7 @@ class CryptoSignalDaemon:
     - CryptoSignalScanner for pattern detection (15-min intervals)
     - CryptoEntryMonitor for trigger polling (1-min intervals)
     - PaperTrader for simulated execution
+    - Coordinators for health, validation, filtering, alerting, StatArb
 
     24/7 operation with Friday maintenance window handling.
 
@@ -202,22 +191,13 @@ class CryptoSignalDaemon:
         self.paper_trader = paper_trader
         self.position_monitor: Optional[CryptoPositionMonitor] = None
         self.entry_monitor: Optional[CryptoEntryMonitor] = None
-        self.discord_alerter: Optional[CryptoDiscordAlerter] = None  # Session CRYPTO-5
-
-        # Signal tracking
-        self._detected_signals: Dict[str, CryptoDetectedSignal] = {}
-        self._signals_lock = threading.Lock()
-
-        # STRAT-StatArb conflict tracking (Session EQUITY-92)
-        # Symbols currently in STRAT trades - StatArb must skip these
-        self._strat_active_symbols: set = set()
 
         # Daemon state
         self._running = False
         self._shutdown_event = threading.Event()
         self._scan_thread: Optional[threading.Thread] = None
         self._health_thread: Optional[threading.Thread] = None
-        self._api_thread: Optional[threading.Thread] = None  # Session CRYPTO-6
+        self._api_thread: Optional[threading.Thread] = None
 
         # Statistics
         self._start_time: Optional[datetime] = None
@@ -227,14 +207,16 @@ class CryptoSignalDaemon:
         self._execution_count = 0
         self._error_count = 0
 
-        # StatArb signal generator (Session EQUITY-92)
-        self.statarb_generator: Optional[StatArbSignalGenerator] = None
-
         # Initialize components
         self._setup_paper_trader()
         self._setup_entry_monitor()
-        self._setup_discord_alerter()  # Session CRYPTO-5
-        self._setup_statarb_generator()  # Session EQUITY-92
+
+        # Initialize coordinators (Phase 6.4 - EQUITY-94)
+        self._setup_filter_manager()
+        self._setup_alert_manager()
+        self._setup_entry_validator()
+        self._setup_health_monitor()
+        self._setup_statarb_executor()
 
     # =========================================================================
     # COMPONENT SETUP
@@ -271,7 +253,7 @@ class CryptoSignalDaemon:
             maintenance_window_enabled=self.config.maintenance_window_enabled,
             signal_expiry_hours=self.config.signal_expiry_hours,
             on_trigger=self._on_trigger,
-            on_poll=self._on_poll,  # Session CRYPTO-5: 60s position checks
+            on_poll=self._on_poll,
         )
 
         self.entry_monitor = CryptoEntryMonitor(
@@ -283,86 +265,82 @@ class CryptoSignalDaemon:
         )
 
     def _on_poll(self) -> None:
-        """
-        Callback on each entry monitor poll cycle - Session CRYPTO-5.
-
-        Used for more frequent position monitoring (60s instead of 5min health loop).
-        """
+        """Callback on each entry monitor poll cycle (60s position checks)."""
         if self.position_monitor:
             closed_count = self.check_positions()
             if closed_count > 0:
                 logger.info(f"Poll position check: closed {closed_count} trade(s)")
 
-    def _setup_discord_alerter(self) -> None:
-        """Initialize Discord alerter if webhook URL provided - Session CRYPTO-5."""
-        if not self.config.discord_webhook_url:
-            logger.debug("Discord alerter not configured (no webhook URL)")
-            return
+    def _setup_filter_manager(self) -> None:
+        """Initialize filter manager coordinator."""
+        self.filter_manager = CryptoFilterManager(
+            min_magnitude_pct=self.config.min_magnitude_pct,
+            min_risk_reward=self.config.min_risk_reward,
+            signal_expiry_hours=self.config.signal_expiry_hours,
+        )
 
-        if CryptoDiscordAlerter is None:
-            error_msg = globals().get('_discord_import_error_msg', 'unknown error')
-            logger.warning(f"Discord alerter not available (import failed: {error_msg})")
-            return
+    def _setup_alert_manager(self) -> None:
+        """Initialize alert manager coordinator."""
+        self.alert_manager = CryptoAlertManager(
+            webhook_url=self.config.discord_webhook_url,
+            alert_on_signal_detection=self.config.alert_on_signal_detection,
+            alert_on_trigger=self.config.alert_on_trigger,
+            alert_on_trade_entry=self.config.alert_on_trade_entry,
+            alert_on_trade_exit=self.config.alert_on_trade_exit,
+        )
+        # Backward compatibility: expose alerter for API server access
+        self.discord_alerter = self.alert_manager.alerter
 
-        try:
-            self.discord_alerter = CryptoDiscordAlerter(
-                webhook_url=self.config.discord_webhook_url,
-                username='ATLAS Crypto Bot',
-            )
-            logger.info("Discord alerter initialized")
-            # Send startup connection message (Session CRYPTO-10)
-            self.discord_alerter.test_connection()
-        except Exception as e:
-            logger.error(f"Failed to initialize Discord alerter: {e}")
+    def _setup_entry_validator(self) -> None:
+        """Initialize entry validator coordinator."""
+        self.entry_validator = CryptoEntryValidator(
+            tfc_reeval_enabled=self.config.tfc_reeval_enabled,
+            tfc_reeval_min_strength=self.config.tfc_reeval_min_strength,
+            tfc_reeval_block_on_flip=self.config.tfc_reeval_block_on_flip,
+            tfc_reeval_log_always=self.config.tfc_reeval_log_always,
+        )
+        self.entry_validator.set_tfc_evaluator(self.scanner)
+        self.entry_validator.set_error_callback(self._increment_error_count)
 
-    def _setup_statarb_generator(self) -> None:
-        """Initialize StatArb signal generator if enabled - Session EQUITY-92."""
+    def _setup_health_monitor(self) -> None:
+        """Initialize health monitor coordinator."""
+        self.health_monitor = CryptoHealthMonitor(
+            get_stats=self._get_daemon_stats,
+            get_current_time_et=self._get_current_time_et,
+            health_check_interval=self.config.health_check_interval,
+        )
+
+    def _setup_statarb_executor(self) -> None:
+        """Initialize StatArb executor coordinator if enabled."""
         if not self.config.statarb_enabled:
+            self.statarb_executor: Optional[CryptoStatArbExecutor] = None
             logger.debug("StatArb integration disabled")
             return
 
-        if not STATARB_AVAILABLE:
-            error_msg = globals().get('_statarb_import_error_msg', 'unknown error')
-            logger.warning(f"StatArb integration not available (import failed: {error_msg})")
-            return
-
-        if not self.config.statarb_pairs:
-            logger.warning("StatArb enabled but no pairs configured")
-            return
-
-        try:
-            # Use provided config or create default
-            statarb_config = self.config.statarb_config
-            if statarb_config is None:
-                statarb_config = StatArbConfig()
-
-            # Get initial account value from paper trader
-            account_value = self.config.paper_balance
-            if self.paper_trader:
-                account_value = self.paper_trader.account.current_balance
-
-            self.statarb_generator = StatArbSignalGenerator(
-                pairs=self.config.statarb_pairs,
-                config=statarb_config,
-                account_value=account_value,
+        self.statarb_executor = CryptoStatArbExecutor(
+            client=self.client,
+            statarb_pairs=self.config.statarb_pairs,
+            statarb_config=self.config.statarb_config,
+            paper_balance=self.config.paper_balance,
+            paper_trader=self.paper_trader,
+            get_current_time_et=self._get_current_time_et,
+            on_execution=self._increment_execution_count,
+            on_error=self._increment_error_count,
+        )
+        if self.alert_manager.is_configured:
+            self.statarb_executor.set_alerter(
+                self.alert_manager.alerter,
+                alert_on_entry=self.config.alert_on_trade_entry,
+                alert_on_exit=self.config.alert_on_trade_exit,
             )
 
-            pairs_str = ", ".join(f"{p[0]}/{p[1]}" for p in self.config.statarb_pairs)
-            logger.info(f"StatArb signal generator initialized (pairs: {pairs_str})")
-
-        except Exception as e:
-            logger.error(f"Failed to initialize StatArb generator: {e}")
-            self.statarb_generator = None
-
     def _start_api_server(self) -> None:
-        """Start REST API server in background thread - Session CRYPTO-6."""
+        """Start REST API server in background thread."""
         try:
             from crypto.api.server import init_api, run_api
 
-            # Initialize API with daemon reference
             init_api(self)
 
-            # Start API in background thread
             self._api_thread = threading.Thread(
                 target=run_api,
                 kwargs={
@@ -380,6 +358,18 @@ class CryptoSignalDaemon:
             logger.error(f"Failed to start API server: {e}")
 
     # =========================================================================
+    # STATISTICS CALLBACKS
+    # =========================================================================
+
+    def _increment_execution_count(self) -> None:
+        """Callback for coordinators to increment execution count."""
+        self._execution_count += 1
+
+    def _increment_error_count(self) -> None:
+        """Callback for coordinators to increment error count."""
+        self._error_count += 1
+
+    # =========================================================================
     # TRIGGER HANDLING
     # =========================================================================
 
@@ -392,7 +382,6 @@ class CryptoSignalDaemon:
         """
         self._trigger_count += 1
         signal = event.signal
-        # Use actual direction from entry monitor (may differ if setup changed direction)
         actual_direction = getattr(event, '_actual_direction', signal.direction)
 
         logger.info(
@@ -400,14 +389,14 @@ class CryptoSignalDaemon:
             f"@ ${event.current_price:,.2f} (trigger: ${event.trigger_price:,.2f})"
         )
 
-        # Session EQUITY-59: Check if setup is stale before executing
-        is_stale, stale_reason = self._is_setup_stale(signal)
+        # Stale setup check (delegated to entry_validator)
+        is_stale, stale_reason = self.entry_validator.is_setup_stale(signal)
         if is_stale:
             logger.warning(f"STALE SETUP REJECTED: {stale_reason}")
             return
 
-        # Session EQUITY-67: TFC re-evaluation at entry (ported from equity daemon)
-        should_block, block_reason = self._reevaluate_tfc_at_entry(signal)
+        # TFC re-evaluation (delegated to entry_validator)
+        should_block, block_reason = self.entry_validator.reevaluate_tfc_at_entry(signal)
         if should_block:
             logger.warning(f"TFC REEVAL BLOCKED: {signal.symbol} {signal.pattern_type} - {block_reason}")
             return
@@ -427,239 +416,16 @@ class CryptoSignalDaemon:
             except Exception as e:
                 logger.error(f"Custom trigger callback error: {e}")
 
-        # Send Discord trigger alert - Session CRYPTO-5 (controlled by config)
-        if self.discord_alerter and self.config.alert_on_trigger:
-            try:
-                self.discord_alerter.send_trigger_alert(event)
-            except Exception as e:
-                logger.error(f"Discord trigger alert error: {e}")
+        # Send Discord trigger alert (delegated to alert_manager)
+        self.alert_manager.send_trigger_alert(event)
 
     def _get_current_time_et(self) -> datetime:
         """Get current time in ET timezone."""
         now_utc = datetime.now(timezone.utc)
         if ET_TIMEZONE is not None:
             return now_utc.astimezone(ET_TIMEZONE)
-        # Fallback: approximate ET as UTC-5 (ignores DST)
         from datetime import timedelta
         return now_utc - timedelta(hours=5)
-
-    def _is_setup_stale(self, signal: CryptoDetectedSignal) -> tuple[bool, str]:
-        """
-        Check if a SETUP signal is stale (forming bar period has passed).
-
-        Session EQUITY-59: Port of EQUITY-46 stale setup validation for crypto.
-        Adapted for 24/7 crypto markets (no NYSE calendar needed).
-
-        A setup is only valid during the "forming bar" period. Once that period ends:
-        - If trigger was hit -> pattern COMPLETED (entry happened)
-        - If trigger NOT hit -> pattern EVOLVED (new bar inserted, setup stale)
-
-        Staleness windows for crypto 24/7 markets:
-        - 1H: 2 hours (1 bar + 1 buffer)
-        - 4H: 8 hours (2x bar width)
-        - 1D: 48 hours (2 calendar days)
-        - 1W: 336 hours (2 weeks)
-
-        Args:
-            signal: The detected signal to check
-
-        Returns:
-            Tuple of (is_stale: bool, reason: str)
-        """
-        from datetime import timedelta
-
-        # Only check SETUP signals (COMPLETED are already validated)
-        if signal.signal_type == "COMPLETED":
-            return False, ""
-
-        # Need setup_bar_timestamp to check staleness
-        setup_ts = getattr(signal, 'setup_bar_timestamp', None)
-        if setup_ts is None:
-            # Try to get from context
-            if hasattr(signal, 'context') and signal.context:
-                setup_ts = getattr(signal.context, 'setup_bar_timestamp', None)
-
-        if setup_ts is None:
-            logger.warning(
-                f"STALE CHECK SKIPPED: {signal.symbol} {signal.pattern_type} has no setup_bar_timestamp"
-            )
-            return False, ""
-
-        # Get current time in UTC for comparison
-        now = datetime.now(timezone.utc)
-
-        # Ensure setup_ts is in UTC for comparison
-        if setup_ts.tzinfo is None:
-            setup_ts = setup_ts.replace(tzinfo=timezone.utc)
-        else:
-            # Convert to UTC if already has timezone (e.g., ET)
-            setup_ts = setup_ts.astimezone(timezone.utc)
-
-        # Calculate staleness based on timeframe
-        timeframe = signal.timeframe.upper() if signal.timeframe else ""
-
-        # Staleness windows for 24/7 crypto markets
-        # Note: Using 2x bar width allows for market volatility during bar formation
-        # and accounts for the fact that triggers may fire late in the forming bar.
-        # This is intentionally looser than strict 1-bar validity to avoid
-        # rejecting valid setups that trigger near bar boundaries.
-        staleness_hours = {
-            '1H': 2,     # 2 hours (1 bar + buffer for late triggers)
-            '4H': 8,     # 8 hours (2x bar width)
-            '1D': 48,    # 48 hours (2 calendar days)
-            '1W': 336,   # 2 weeks
-            '1M': 1440,  # ~2 months (60 days)
-        }
-
-        hours = staleness_hours.get(timeframe, 2)  # Default to 2 hours
-        valid_until = setup_ts + timedelta(hours=hours)
-
-        if now > valid_until:
-            age_hours = (now - setup_ts).total_seconds() / 3600
-            return True, (
-                f"Setup expired: {signal.symbol} {signal.pattern_type} ({timeframe}) "
-                f"detected {age_hours:.1f}h ago, max validity {hours}h"
-            )
-
-        return False, ""
-
-    def _reevaluate_tfc_at_entry(
-        self, signal: CryptoDetectedSignal
-    ) -> tuple[bool, str]:
-        """
-        Re-evaluate TFC alignment at entry time and check if entry should be blocked.
-
-        Session EQUITY-67: Port of EQUITY-49 TFC re-evaluation for crypto.
-
-        TFC can change between pattern detection and entry trigger (hours/days later).
-        This method:
-        1. Re-evaluates TFC using current market data
-        2. Compares with original TFC at detection time
-        3. Logs the comparison for audit trail
-        4. Optionally blocks entry if TFC degraded significantly or flipped direction
-
-        Args:
-            signal: The detected signal about to be executed
-
-        Returns:
-            Tuple of (should_block: bool, reason: str)
-        """
-        # Check if TFC re-evaluation is enabled
-        if not self.config.tfc_reeval_enabled:
-            return False, ""
-
-        # Get original TFC data from signal context
-        original_strength = 0
-        original_alignment = ""
-        original_passes = False
-
-        if signal.context:
-            original_strength = signal.context.tfc_score or 0
-            original_alignment = signal.context.tfc_alignment or ""
-            original_passes = signal.context.tfc_passes or False
-
-        # Determine original direction from alignment string
-        original_tfc_direction = ""
-        if original_alignment and "BULLISH" in original_alignment.upper():
-            original_tfc_direction = "bullish"
-        elif original_alignment and "BEARISH" in original_alignment.upper():
-            original_tfc_direction = "bearish"
-        elif not original_alignment:
-            logger.debug(
-                f"TFC REEVAL: {signal.symbol} {signal.pattern_type} has no original TFC alignment - "
-                f"direction flip detection will be skipped"
-            )
-
-        # Re-evaluate TFC using current market data
-        # LONG = 1 (want 2U bars), SHORT = -1 (want 2D bars)
-        direction_int = 1 if signal.direction == "LONG" else -1
-
-        try:
-            current_tfc = self.scanner.evaluate_tfc(
-                symbol=signal.symbol,
-                detection_timeframe=signal.timeframe,
-                direction=direction_int,
-            )
-        except (ConnectionError, TimeoutError, ValueError) as e:
-            # Expected errors: network issues, data issues - log and proceed
-            logger.warning(
-                f"TFC REEVAL ERROR (recoverable): {signal.symbol} {signal.pattern_type} - "
-                f"{type(e).__name__}: {e} (proceeding with entry)"
-            )
-            self._error_count += 1
-            return False, ""
-        except Exception as e:
-            # Unexpected error - log as error, increment counter, but still proceed
-            # (fail-open to avoid blocking all entries on system errors)
-            logger.error(
-                f"TFC REEVAL UNEXPECTED ERROR: {signal.symbol} {signal.pattern_type} - "
-                f"{type(e).__name__}: {e} (proceeding with entry)"
-            )
-            self._error_count += 1
-            return False, ""
-
-        # Validate returned assessment
-        if current_tfc is None or not hasattr(current_tfc, "strength"):
-            logger.error(
-                f"TFC REEVAL: Invalid assessment returned for {signal.symbol} - proceeding with entry"
-            )
-            self._error_count += 1
-            return False, ""
-
-        current_strength = current_tfc.strength if current_tfc.strength is not None else 0
-        current_alignment = (
-            current_tfc.alignment_label()
-            if hasattr(current_tfc, "alignment_label")
-            else f"{current_strength}/?"
-        )
-        current_passes = getattr(current_tfc, "passes_flexible", False)
-        current_direction = getattr(current_tfc, "direction", "") or ""
-
-        # Calculate strength change
-        strength_delta = current_strength - original_strength
-
-        # Detect direction flip (e.g., bullish -> bearish)
-        direction_flipped = False
-        if original_tfc_direction and current_direction:
-            direction_flipped = original_tfc_direction != current_direction
-        elif not original_tfc_direction and current_direction:
-            # Can't detect flip without original direction - log at debug level
-            logger.debug(
-                f"TFC REEVAL: {signal.symbol} {signal.pattern_type} - direction flip detection skipped "
-                f"(no original TFC direction in signal)"
-            )
-
-        # Build comparison log message
-        comparison = (
-            f"TFC REEVAL: {signal.symbol} {signal.pattern_type} {signal.direction} | "
-            f"Original: {original_alignment or 'N/A'} (score={original_strength}, passes={original_passes}) | "
-            f"Current: {current_alignment} (score={current_strength}, passes={current_passes}) | "
-            f"Delta: {strength_delta:+d} | "
-            f"Flipped: {direction_flipped}"
-        )
-
-        # Always log if configured
-        if self.config.tfc_reeval_log_always:
-            if strength_delta < 0 or direction_flipped:
-                logger.warning(comparison)
-            else:
-                logger.info(comparison)
-
-        # Determine if entry should be blocked
-        should_block = False
-        block_reason = ""
-
-        # Block if direction flipped (most severe)
-        if direction_flipped and self.config.tfc_reeval_block_on_flip:
-            should_block = True
-            block_reason = f"TFC direction flipped from {original_tfc_direction} to {current_direction}"
-
-        # Block if strength dropped below minimum threshold
-        elif current_strength < self.config.tfc_reeval_min_strength:
-            should_block = True
-            block_reason = f"TFC strength {current_strength} < min threshold {self.config.tfc_reeval_min_strength}"
-
-        return should_block, block_reason
 
     def _execute_trade(self, event: CryptoTriggerEvent) -> None:
         """
@@ -668,8 +434,6 @@ class CryptoSignalDaemon:
         Uses intraday leverage (10x) during 6PM-4PM ET window,
         swing leverage (4x) during 4PM-6PM ET gap.
 
-        Only one position per symbol allowed - skips if position already exists.
-
         Args:
             event: Trigger event
         """
@@ -677,37 +441,25 @@ class CryptoSignalDaemon:
             return
 
         signal = event.signal
-        # Use actual direction from entry monitor if pattern changed (Session CRYPTO-8)
-        # This handles cases where SETUP (X-1-?) became 2-bar pattern (X-2D)
         direction = getattr(event, '_actual_direction', signal.direction)
         actual_pattern = getattr(event, '_actual_pattern', signal.pattern_type)
 
-        # Session CRYPTO-MONITOR-2 FIX: Recalculate stop/target when direction flips
-        # For bidirectional setups (3-?), the signal has LONG values. If triggering SHORT
-        # (or vice versa), we need the correct stop/target for the actual direction.
+        # Recalculate stop/target when direction flips
         stop_price = signal.stop_price
         target_price = signal.target_price
 
         if direction != signal.direction and signal.setup_bar_high > 0 and signal.setup_bar_low > 0:
-            # Direction flipped - recalculate for actual direction
             bar_range = signal.setup_bar_high - signal.setup_bar_low
             if direction == "SHORT":
-                # Flipped to SHORT: stop at high, target below entry
                 stop_price = signal.setup_bar_high
                 target_price = event.current_price - bar_range
             else:
-                # Flipped to LONG: stop at low, target above entry
                 stop_price = signal.setup_bar_low
                 target_price = event.current_price + bar_range
             logger.info(
                 f"DIRECTION FLIPPED: {signal.direction} -> {direction}, "
                 f"recalculated stop=${stop_price:,.2f} target=${target_price:,.2f}"
             )
-
-        # Session CRYPTO-MONITOR-2: REMOVED position limit
-        # Previously only allowed one position per symbol, but this prevented
-        # multiple valid signals from executing and limited our ability to
-        # analyze trade accuracy. Now allowing multiple positions per symbol.
 
         # Get current leverage tier based on time
         now_et = self._get_current_time_et()
@@ -718,7 +470,7 @@ class CryptoSignalDaemon:
             f"Leverage tier: {tier} ({max_leverage}x) for {signal.symbol}"
         )
 
-        # Session EQUITY-59: Always validate trade inputs (bug prevention)
+        # Validate trade inputs
         if event.current_price <= 0 or stop_price <= 0:
             logger.warning("SKIPPING TRADE: Invalid entry or stop price")
             return
@@ -726,17 +478,15 @@ class CryptoSignalDaemon:
             logger.warning("SKIPPING TRADE: Stop distance is zero")
             return
 
-        # Session EQUITY-59: Skip leverage-constraint check when using leverage-first sizing
+        # Leverage constraint check (skip when using leverage-first sizing)
         if not config.LEVERAGE_FIRST_SIZING:
-            # Check if trade should be skipped due to leverage constraints
             skip, reason = should_skip_trade(
                 account_value=self.paper_trader.account.current_balance,
                 risk_percent=config.DEFAULT_RISK_PERCENT,
                 entry_price=event.current_price,
-                stop_price=stop_price,  # Use corrected stop
+                stop_price=stop_price,
                 max_leverage=max_leverage,
             )
-
             if skip:
                 logger.warning(f"SKIPPING TRADE: {reason}")
                 return
@@ -750,10 +500,9 @@ class CryptoSignalDaemon:
             )
             return
 
-        # Calculate position size with time-based leverage (Session EQUITY-34: use available balance)
+        # Calculate position size
         available_balance = self.paper_trader.get_available_balance()
 
-        # Session EQUITY-59: Use leverage-first sizing for full capital deployment
         if config.LEVERAGE_FIRST_SIZING:
             position_size, implied_leverage, actual_risk = calculate_position_size_leverage_first(
                 account_value=available_balance,
@@ -771,10 +520,9 @@ class CryptoSignalDaemon:
                 account_value=available_balance,
                 risk_percent=config.DEFAULT_RISK_PERCENT,
                 entry_price=event.current_price,
-                stop_price=stop_price,  # Use corrected stop
+                stop_price=stop_price,
                 max_leverage=max_leverage,
             )
-            # Apply continuity-based risk multiplier (only for risk-based sizing)
             position_size *= risk_multiplier
             actual_risk *= risk_multiplier
 
@@ -782,7 +530,6 @@ class CryptoSignalDaemon:
             logger.warning("Position size is zero or negative - skipping trade")
             return
 
-        # Map direction to side (BUY for LONG, SELL for SHORT)
         side = "BUY" if direction == "LONG" else "SELL"
 
         # Log intraday window info
@@ -793,8 +540,7 @@ class CryptoSignalDaemon:
                 f"until 4PM ET close requirement"
             )
 
-        # Execute via paper trader with stop/target for position monitoring
-        # Session EQUITY-67: Determine entry bar type from direction for pattern invalidation
+        # Execute via paper trader
         entry_bar_type = "2U" if direction == "LONG" else "2D"
 
         try:
@@ -803,20 +549,18 @@ class CryptoSignalDaemon:
                 side=side,
                 quantity=position_size,
                 entry_price=event.current_price,
-                stop_price=stop_price,  # Use corrected stop
-                target_price=target_price,  # Use corrected target
+                stop_price=stop_price,
+                target_price=target_price,
                 timeframe=signal.timeframe,
-                pattern_type=actual_pattern,  # Use resolved pattern
-                tfc_score=signal.context.tfc_score,  # Session CRYPTO-9
+                pattern_type=actual_pattern,
+                tfc_score=signal.context.tfc_score,
                 risk_multiplier=risk_multiplier,
-                leverage=implied_leverage,  # Session EQUITY-34: margin tracking
-                # Session EQUITY-67: Pattern invalidation tracking
+                leverage=implied_leverage,
                 entry_bar_type=entry_bar_type,
                 entry_bar_high=signal.setup_bar_high,
                 entry_bar_low=signal.setup_bar_low,
             )
 
-            # Session EQUITY-34: Check if trade was rejected due to insufficient margin
             if trade is None:
                 logger.warning(
                     f"Trade rejected: insufficient margin for {signal.symbol}"
@@ -833,301 +577,24 @@ class CryptoSignalDaemon:
                 f"  Stop: ${stop_price:,.2f} | Target: ${target_price:,.2f}"
             )
 
-            # Send Discord entry alert (Session CRYPTO-MONITOR-2: pass corrected values)
-            if self.discord_alerter and self.config.alert_on_trade_entry:
-                try:
-                    self.discord_alerter.send_entry_alert(
-                        signal=signal,
-                        entry_price=event.current_price,
-                        quantity=position_size,
-                        leverage=implied_leverage,
-                        pattern_override=actual_pattern,
-                        direction_override=direction,
-                        stop_override=stop_price,
-                        target_override=target_price,
-                    )
-                except Exception as alert_err:
-                    logger.warning(f"Failed to send entry alert: {alert_err}")
+            # Send Discord entry alert (delegated to alert_manager)
+            self.alert_manager.send_entry_alert(
+                signal=signal,
+                entry_price=event.current_price,
+                quantity=position_size,
+                leverage=implied_leverage,
+                pattern_override=actual_pattern,
+                direction_override=direction,
+                stop_override=stop_price,
+                target_override=target_price,
+            )
 
         except Exception as e:
             logger.warning(f"Failed to open trade for {signal.symbol}: {e}")
 
     # =========================================================================
-    # STATARB INTEGRATION (Session EQUITY-92)
-    # =========================================================================
-
-    def _update_strat_active_symbols(self) -> None:
-        """Update set of symbols currently in STRAT trades."""
-        if self.paper_trader is None:
-            self._strat_active_symbols = set()
-            return
-
-        # Get all open trades with strategy="strat"
-        strat_trades = self.paper_trader.get_trades_by_strategy("strat")
-        open_trades = [t for t in strat_trades if t.exit_time is None]
-        self._strat_active_symbols = {t.symbol for t in open_trades}
-
-    def _check_statarb_signals(self) -> None:
-        """
-        Check for StatArb signals and execute if no STRAT conflict.
-
-        STRAT has priority - StatArb will not trade symbols that are
-        currently in active STRAT positions.
-        """
-        if self.statarb_generator is None:
-            return
-
-        if self.paper_trader is None:
-            return
-
-        # Update STRAT active symbols before checking
-        self._update_strat_active_symbols()
-
-        # Fetch current prices for statarb pairs
-        prices = {}
-        for sym1, sym2 in self.config.statarb_pairs:
-            try:
-                p1 = self.client.get_current_price(sym1)
-                p2 = self.client.get_current_price(sym2)
-                if p1 and p1 > 0:
-                    prices[sym1] = p1
-                if p2 and p2 > 0:
-                    prices[sym2] = p2
-            except Exception as e:
-                logger.warning(f"Failed to get prices for {sym1}/{sym2}: {e}")
-
-        if not prices:
-            return
-
-        # Update account value for position sizing
-        self.statarb_generator.update_account_value(
-            self.paper_trader.get_available_balance()
-        )
-
-        # Check for signals
-        try:
-            signals = self.statarb_generator.check_for_signals(prices)
-        except Exception as e:
-            logger.error(f"StatArb signal check error: {e}")
-            self._error_count += 1
-            return
-
-        for signal in signals:
-            # STRAT priority: skip if any leg is in active STRAT trade
-            if signal.long_symbol in self._strat_active_symbols:
-                logger.info(
-                    f"STATARB SKIPPED: {signal.long_symbol} in active STRAT trade"
-                )
-                continue
-            if signal.short_symbol in self._strat_active_symbols:
-                logger.info(
-                    f"STATARB SKIPPED: {signal.short_symbol} in active STRAT trade"
-                )
-                continue
-
-            # Execute the signal
-            self._execute_statarb(signal)
-
-    def _execute_statarb(self, signal: "StatArbSignal") -> None:
-        """
-        Execute a StatArb signal via paper trader.
-
-        For entry signals (LONG_SPREAD, SHORT_SPREAD): Opens two trades
-        For exit signals: Closes existing positions
-
-        Args:
-            signal: StatArb signal to execute
-        """
-        if self.paper_trader is None:
-            return
-
-        if signal.signal_type == StatArbSignalType.EXIT:
-            self._execute_statarb_exit(signal)
-        else:
-            self._execute_statarb_entry(signal)
-
-    def _execute_statarb_entry(self, signal: "StatArbSignal") -> None:
-        """Execute StatArb entry (opens two positions)."""
-        if self.paper_trader is None:
-            return
-
-        # Get current prices
-        try:
-            long_price = self.client.get_current_price(signal.long_symbol)
-            short_price = self.client.get_current_price(signal.short_symbol)
-            if not long_price or not short_price:
-                logger.warning(f"StatArb entry skipped: could not get prices")
-                return
-        except Exception as e:
-            logger.warning(f"StatArb entry skipped: {e}")
-            return
-
-        # Get current leverage tier
-        now_et = self._get_current_time_et()
-        max_leverage = get_max_leverage_for_symbol(signal.long_symbol, now_et)
-
-        # Calculate quantities from notional values
-        long_qty = signal.long_notional / long_price if long_price > 0 else 0
-        short_qty = signal.short_notional / short_price if short_price > 0 else 0
-
-        if long_qty <= 0 or short_qty <= 0:
-            logger.warning("StatArb entry skipped: invalid quantities")
-            return
-
-        # Signal type determines direction
-        signal_type_str = signal.signal_type.value  # "long_spread" or "short_spread"
-
-        logger.info(
-            f"STATARB ENTRY: {signal_type_str} Z={signal.zscore:.2f} | "
-            f"LONG {signal.long_symbol} qty={long_qty:.6f} @ ${long_price:,.2f} | "
-            f"SHORT {signal.short_symbol} qty={short_qty:.6f} @ ${short_price:,.2f}"
-        )
-
-        # Open long leg
-        try:
-            long_trade = self.paper_trader.open_trade(
-                symbol=signal.long_symbol,
-                side="BUY",
-                quantity=long_qty,
-                entry_price=long_price,
-                leverage=max_leverage,
-                pattern_type=f"statarb_{signal_type_str}",
-                strategy="statarb",
-            )
-            if long_trade:
-                self._execution_count += 1
-                logger.info(
-                    f"  LONG leg opened: {long_trade.trade_id} {signal.long_symbol}"
-                )
-        except Exception as e:
-            logger.error(f"StatArb long leg failed: {e}")
-
-        # Open short leg
-        try:
-            short_trade = self.paper_trader.open_trade(
-                symbol=signal.short_symbol,
-                side="SELL",
-                quantity=short_qty,
-                entry_price=short_price,
-                leverage=max_leverage,
-                pattern_type=f"statarb_{signal_type_str}",
-                strategy="statarb",
-            )
-            if short_trade:
-                self._execution_count += 1
-                logger.info(
-                    f"  SHORT leg opened: {short_trade.trade_id} {signal.short_symbol}"
-                )
-        except Exception as e:
-            logger.error(f"StatArb short leg failed: {e}")
-
-        # Send Discord alert if configured
-        if self.discord_alerter and self.config.alert_on_trade_entry:
-            try:
-                # Create a simple alert message for statarb
-                self.discord_alerter._send_message(
-                    f"**STATARB ENTRY** | Z={signal.zscore:.2f}\n"
-                    f"LONG {signal.long_symbol} @ ${long_price:,.2f}\n"
-                    f"SHORT {signal.short_symbol} @ ${short_price:,.2f}"
-                )
-            except Exception as alert_err:
-                logger.warning(f"Failed to send statarb entry alert: {alert_err}")
-
-    def _execute_statarb_exit(self, signal: "StatArbSignal") -> None:
-        """Execute StatArb exit (closes both legs)."""
-        if self.paper_trader is None:
-            return
-
-        # Find and close statarb trades for these symbols
-        statarb_trades = self.paper_trader.get_trades_by_strategy("statarb")
-        open_trades = [t for t in statarb_trades if t.exit_time is None]
-
-        closed_count = 0
-        for trade in open_trades:
-            if trade.symbol in (signal.long_symbol, signal.short_symbol):
-                try:
-                    current_price = self.client.get_current_price(trade.symbol)
-                    if current_price and current_price > 0:
-                        # Set exit reason on trade object before closing
-                        trade.exit_reason = "statarb_zscore_reversion"
-                        self.paper_trader.close_trade(
-                            trade.trade_id,
-                            exit_price=current_price,
-                        )
-                        closed_count += 1
-                        logger.info(
-                            f"STATARB EXIT: {trade.symbol} @ ${current_price:,.2f} "
-                            f"(Z={signal.zscore:.2f}, held {signal.bars_held} bars)"
-                        )
-                except Exception as e:
-                    logger.error(f"StatArb exit failed for {trade.symbol}: {e}")
-
-        if closed_count > 0 and self.discord_alerter and self.config.alert_on_trade_exit:
-            try:
-                self.discord_alerter._send_message(
-                    f"**STATARB EXIT** | Z={signal.zscore:.2f} | "
-                    f"Closed {closed_count} position(s)"
-                )
-            except Exception as alert_err:
-                logger.warning(f"Failed to send statarb exit alert: {alert_err}")
-
-    # =========================================================================
     # SCANNING
     # =========================================================================
-
-    def _passes_filters(self, signal: CryptoDetectedSignal) -> bool:
-        """
-        Check if signal passes quality filters.
-
-        Args:
-            signal: Signal to check
-
-        Returns:
-            True if passes all filters
-        """
-        # Magnitude filter
-        if signal.magnitude_pct < self.config.min_magnitude_pct:
-            return False
-
-        # Risk:Reward filter
-        if signal.risk_reward < self.config.min_risk_reward:
-            return False
-
-        # Skip signals with maintenance gaps
-        if signal.has_maintenance_gap:
-            logger.debug(f"Skipping signal with maintenance gap: {signal.symbol}")
-            return False
-
-        return True
-
-    def _generate_signal_id(self, signal: CryptoDetectedSignal) -> str:
-        """Generate unique ID for deduplication.
-
-        CRYPTO-MONITOR-1 FIX: Use setup_bar_timestamp instead of detected_time.
-        This ensures:
-        - Same bar across scans -> same ID -> deduplicated
-        - Different bars -> different IDs -> kept as separate setups
-        """
-        # Use setup_bar_timestamp for deduplication (bar-based, not scan-based)
-        bar_ts = signal.setup_bar_timestamp
-        if bar_ts is not None and hasattr(bar_ts, 'isoformat'):
-            ts_str = bar_ts.isoformat()
-        elif bar_ts is not None:
-            ts_str = str(bar_ts)
-        else:
-            # Fallback to detected_time if no setup_bar_timestamp
-            ts_str = signal.detected_time.isoformat()
-
-        return (
-            f"{signal.symbol}_{signal.timeframe}_{signal.pattern_type}_"
-            f"{signal.direction}_{ts_str}"
-        )
-
-    def _is_duplicate(self, signal: CryptoDetectedSignal) -> bool:
-        """Check if signal is a duplicate."""
-        signal_id = self._generate_signal_id(signal)
-        with self._signals_lock:
-            return signal_id in self._detected_signals
 
     def run_scan(self) -> List[CryptoDetectedSignal]:
         """
@@ -1147,18 +614,16 @@ class CryptoSignalDaemon:
                 signals = self.scanner.scan_all_timeframes(symbol)
 
                 for signal in signals:
-                    # Apply filters
-                    if not self._passes_filters(signal):
+                    # Apply filters (delegated to filter_manager)
+                    if not self.filter_manager.passes_filters(signal):
                         continue
 
-                    # Check for duplicate
-                    if self._is_duplicate(signal):
+                    # Check for duplicate (delegated to filter_manager)
+                    if self.filter_manager.is_duplicate(signal):
                         continue
 
-                    # Store signal
-                    signal_id = self._generate_signal_id(signal)
-                    with self._signals_lock:
-                        self._detected_signals[signal_id] = signal
+                    # Store signal (delegated to filter_manager)
+                    self.filter_manager.store_signal(signal)
 
                     new_signals.append(signal)
                     self._signal_count += 1
@@ -1169,12 +634,8 @@ class CryptoSignalDaemon:
                         f"[{signal.signal_type}]"
                     )
 
-                    # Send Discord signal alert - Session CRYPTO-5 (controlled by config)
-                    if self.discord_alerter and self.config.alert_on_signal_detection:
-                        try:
-                            self.discord_alerter.send_signal_alert(signal)
-                        except Exception as e:
-                            logger.error(f"Discord signal alert error: {e}")
+                    # Send Discord signal alert (delegated to alert_manager)
+                    self.alert_manager.send_signal_alert(signal)
 
             except Exception as e:
                 logger.error(f"Error scanning {symbol}: {e}")
@@ -1191,32 +652,19 @@ class CryptoSignalDaemon:
         """
         Run scan, execute TRIGGERED patterns, and add SETUP signals to entry monitor.
 
-        TRIGGERED patterns (signal_type="COMPLETED") are patterns where the entry
-        bar has already formed - these should execute immediately at market price.
-
-        SETUP patterns are waiting for a price break - these go to entry_monitor.
-
         Returns:
             List of new signals found
         """
         new_signals = self.run_scan()
 
-        # Session CRYPTO-MONITOR-3: Execute TRIGGERED patterns immediately
-        # These are patterns where entry condition was already met (e.g., 3-1-2D
-        # where the 2D bar broke the inside bar). Previously these were discarded!
-        #
-        # IMPORTANT: Track executed symbols to prevent:
-        # 1. Duplicate trades on same symbol/timeframe
-        # 2. Conflicting trades (LONG and SHORT on same symbol)
+        # Execute TRIGGERED patterns immediately
         triggered_count = 0
-        executed_symbols = set()  # Track symbol+timeframe to avoid duplicates
+        executed_symbols = set()
 
         for signal in new_signals:
             if signal.signal_type == "COMPLETED":
-                # Create unique key for this signal
                 signal_key = f"{signal.symbol}_{signal.timeframe}"
 
-                # Skip if we already executed a trade for this symbol/timeframe
                 if signal_key in executed_symbols:
                     logger.debug(
                         f"Skipping duplicate TRIGGERED: {signal.symbol} "
@@ -1224,7 +672,6 @@ class CryptoSignalDaemon:
                     )
                     continue
 
-                # Execute and mark as done
                 self._execute_triggered_pattern(signal)
                 executed_symbols.add(signal_key)
                 triggered_count += 1
@@ -1243,9 +690,6 @@ class CryptoSignalDaemon:
     def _execute_triggered_pattern(self, signal: CryptoDetectedSignal) -> None:
         """
         Execute a TRIGGERED pattern immediately at market price.
-
-        Session CRYPTO-MONITOR-3: Patterns where entry bar has formed should
-        execute at current market price, not be discarded.
 
         Args:
             signal: TRIGGERED signal (signal_type="COMPLETED")
@@ -1293,7 +737,7 @@ class CryptoSignalDaemon:
             f"({signal.timeframe}) - executing at ${current_price:,.2f}"
         )
 
-        # Session EQUITY-59: Always validate trade inputs (bug prevention)
+        # Validate trade inputs
         if current_price <= 0 or stop_price <= 0:
             logger.warning("SKIPPING TRIGGERED: Invalid entry or stop price")
             return
@@ -1301,9 +745,8 @@ class CryptoSignalDaemon:
             logger.warning("SKIPPING TRIGGERED: Stop distance is zero")
             return
 
-        # Session EQUITY-59: Skip leverage-constraint check when using leverage-first sizing
+        # Leverage constraint check
         if not config.LEVERAGE_FIRST_SIZING:
-            # Check if trade should be skipped due to leverage constraints
             skip, reason = should_skip_trade(
                 account_value=self.paper_trader.account.current_balance,
                 risk_percent=config.DEFAULT_RISK_PERCENT,
@@ -1311,7 +754,6 @@ class CryptoSignalDaemon:
                 stop_price=stop_price,
                 max_leverage=max_leverage,
             )
-
             if skip:
                 logger.warning(f"SKIPPING TRIGGERED: {reason}")
                 return
@@ -1322,10 +764,9 @@ class CryptoSignalDaemon:
             logger.info("Skipping triggered trade: timeframe continuity failed")
             return
 
-        # Calculate position size using available balance (Session EQUITY-34)
+        # Calculate position size
         available_balance = self.paper_trader.get_available_balance()
 
-        # Session EQUITY-59: Use leverage-first sizing for full capital deployment
         if config.LEVERAGE_FIRST_SIZING:
             position_size, implied_leverage, actual_risk = calculate_position_size_leverage_first(
                 account_value=available_balance,
@@ -1346,7 +787,6 @@ class CryptoSignalDaemon:
                 stop_price=stop_price,
                 max_leverage=max_leverage,
             )
-            # Apply continuity-based risk multiplier (only for risk-based sizing)
             position_size *= risk_multiplier
             actual_risk *= risk_multiplier
 
@@ -1369,10 +809,9 @@ class CryptoSignalDaemon:
                 pattern_type=signal.pattern_type,
                 tfc_score=signal.context.tfc_score,
                 risk_multiplier=risk_multiplier,
-                leverage=implied_leverage,  # Session EQUITY-34: margin tracking
+                leverage=implied_leverage,
             )
 
-            # Session EQUITY-34: Check if trade was rejected due to insufficient margin
             if trade is None:
                 logger.warning(
                     f"Trade rejected: insufficient margin for {signal.symbol}"
@@ -1390,17 +829,13 @@ class CryptoSignalDaemon:
                 f"Target: ${target_price:,.2f}"
             )
 
-            # Send Discord alert
-            if self.discord_alerter and self.config.alert_on_trade_entry:
-                try:
-                    self.discord_alerter.send_entry_alert(
-                        signal=signal,
-                        entry_price=current_price,
-                        quantity=position_size,
-                        leverage=implied_leverage,
-                    )
-                except Exception as alert_err:
-                    logger.warning(f"Failed to send entry alert: {alert_err}")
+            # Send Discord alert (delegated to alert_manager)
+            self.alert_manager.send_entry_alert(
+                signal=signal,
+                entry_price=current_price,
+                quantity=position_size,
+                leverage=implied_leverage,
+            )
 
         except Exception as e:
             logger.error(f"Failed to execute triggered pattern: {e}")
@@ -1437,69 +872,26 @@ class CryptoSignalDaemon:
 
         while not self._shutdown_event.is_set():
             try:
-                # Check maintenance window
                 if self.is_maintenance_window():
                     logger.info("Maintenance window - skipping scan")
                 else:
                     # STRAT pattern scanning (primary strategy)
                     self.run_scan_and_monitor()
 
-                    # StatArb signal checking (Session EQUITY-92)
-                    # Runs after STRAT so _strat_active_symbols is updated
-                    if self.statarb_generator is not None:
-                        self._check_statarb_signals()
+                    # StatArb signal checking (delegated to statarb_executor)
+                    if self.statarb_executor is not None:
+                        self.statarb_executor.check_and_execute()
 
-                # Clean up expired signals
-                self._cleanup_expired_signals()
+                # Clean up expired signals (delegated to filter_manager)
+                self.filter_manager.cleanup_expired_signals()
 
             except Exception as e:
                 logger.error(f"Scan loop error: {e}")
                 self._error_count += 1
 
-            # Wait for next scan (interruptible)
             self._shutdown_event.wait(timeout=self.config.scan_interval)
 
         logger.info("Scan loop stopped")
-
-    def _cleanup_expired_signals(self) -> None:
-        """Remove signals older than expiry threshold."""
-        now = datetime.now(timezone.utc)
-        expired_ids = []
-
-        with self._signals_lock:
-            for signal_id, signal in self._detected_signals.items():
-                detected_time = signal.detected_time
-                if detected_time.tzinfo is None:
-                    detected_time = detected_time.replace(tzinfo=timezone.utc)
-
-                age_hours = (now - detected_time).total_seconds() / 3600
-                if age_hours > self.config.signal_expiry_hours:
-                    expired_ids.append(signal_id)
-
-            for signal_id in expired_ids:
-                del self._detected_signals[signal_id]
-
-        if expired_ids:
-            logger.debug(f"Cleaned up {len(expired_ids)} expired signals")
-
-    def _health_loop(self) -> None:
-        """Background health check loop for status logging."""
-        # Note: Position monitoring moved to entry monitor poll (60s) in Session CRYPTO-5
-        while not self._shutdown_event.is_set():
-            try:
-                status = self.get_status()
-                logger.info(
-                    f"HEALTH: scans={status['scan_count']}, "
-                    f"signals={status['signal_count']}, "
-                    f"triggers={status['trigger_count']}, "
-                    f"executions={status['execution_count']}, "
-                    f"errors={status['error_count']}"
-                )
-            except Exception as e:
-                logger.error(f"Health check error: {e}")
-
-            # Wait for next check (interruptible)
-            self._shutdown_event.wait(timeout=self.config.health_check_interval)
 
     # =========================================================================
     # DAEMON CONTROL
@@ -1515,7 +907,6 @@ class CryptoSignalDaemon:
         os_signal.signal(os_signal.SIGINT, handle_shutdown)
         os_signal.signal(os_signal.SIGTERM, handle_shutdown)
 
-        # Windows-specific
         if sys.platform == "win32":
             try:
                 os_signal.signal(os_signal.SIGBREAK, handle_shutdown)
@@ -1538,7 +929,6 @@ class CryptoSignalDaemon:
         self._running = True
         self._shutdown_event.clear()
 
-        # Setup signal handlers
         self._setup_signal_handlers()
 
         # Start entry monitor
@@ -1553,14 +943,17 @@ class CryptoSignalDaemon:
         self._scan_thread.start()
         logger.info(f"Scan loop started (interval: {self.config.scan_interval}s)")
 
-        # Start health check thread
+        # Start health check thread (delegated to health_monitor)
         self._health_thread = threading.Thread(
-            target=self._health_loop, daemon=True, name="CryptoHealthLoop"
+            target=self.health_monitor.run_health_loop,
+            args=(self._shutdown_event,),
+            daemon=True,
+            name="CryptoHealthLoop",
         )
         self._health_thread.start()
         logger.info("Health check loop started")
 
-        # Start REST API server (Session CRYPTO-6)
+        # Start REST API server
         if self.config.api_enabled:
             self._start_api_server()
 
@@ -1588,20 +981,16 @@ class CryptoSignalDaemon:
 
         logger.info("Stopping crypto signal daemon...")
 
-        # Signal shutdown
         self._shutdown_event.set()
 
-        # Stop entry monitor
         if self.entry_monitor is not None:
             self.entry_monitor.stop()
 
-        # Wait for threads
         if self._scan_thread and self._scan_thread.is_alive():
             self._scan_thread.join(timeout=5)
         if self._health_thread and self._health_thread.is_alive():
             self._health_thread.join(timeout=5)
 
-        # Final status
         logger.info(f"Final stats: {self.get_status()}")
 
         self._running = False
@@ -1616,17 +1005,8 @@ class CryptoSignalDaemon:
     # STATUS AND STATISTICS
     # =========================================================================
 
-    def get_status(self) -> Dict[str, Any]:
-        """Get daemon status and statistics."""
-        uptime = None
-        if self._start_time:
-            uptime = (
-                datetime.now(timezone.utc) - self._start_time
-            ).total_seconds()
-
-        with self._signals_lock:
-            signals_in_store = len(self._detected_signals)
-
+    def _get_daemon_stats(self) -> CryptoDaemonStats:
+        """Collect daemon statistics for health monitor."""
         entry_stats = {}
         if self.entry_monitor:
             entry_stats = self.entry_monitor.get_stats()
@@ -1635,47 +1015,39 @@ class CryptoSignalDaemon:
         if self.paper_trader:
             paper_stats = self.paper_trader.get_account_summary()
 
-        # Get current leverage tier
-        now_et = self._get_current_time_et()
-        tier = get_current_leverage_tier(now_et)
-        is_intraday = is_intraday_window(now_et)
-        time_to_close = None
-        if is_intraday:
-            time_to_close = time_until_intraday_close_et(now_et).total_seconds()
-
-        # StatArb status (Session EQUITY-92)
         statarb_stats = {}
-        if self.statarb_generator is not None:
-            statarb_stats = self.statarb_generator.get_status()
+        if self.statarb_executor is not None and self.statarb_executor.generator is not None:
+            statarb_stats = self.statarb_executor.get_status()
 
-        return {
-            "running": self._running,
-            "start_time": (
-                self._start_time.isoformat() if self._start_time else None
-            ),
-            "uptime_seconds": uptime,
-            "scan_count": self._scan_count,
-            "signal_count": self._signal_count,
-            "trigger_count": self._trigger_count,
-            "execution_count": self._execution_count,
-            "error_count": self._error_count,
-            "signals_in_store": signals_in_store,
-            "maintenance_window": self.is_maintenance_window(),
-            "leverage_tier": tier,
-            "intraday_available": is_intraday,
-            "intraday_close_seconds": time_to_close,
-            "symbols": self.config.symbols,
-            "scan_interval": self.config.scan_interval,
-            "entry_monitor": entry_stats,
-            "paper_trader": paper_stats,
-            "statarb": statarb_stats,  # Session EQUITY-92
-            "strat_active_symbols": list(self._strat_active_symbols),
-        }
+        strat_active = []
+        if self.statarb_executor is not None:
+            strat_active = list(self.statarb_executor._strat_active_symbols)
+
+        return CryptoDaemonStats(
+            running=self._running,
+            start_time=self._start_time,
+            scan_count=self._scan_count,
+            signal_count=self._signal_count,
+            trigger_count=self._trigger_count,
+            execution_count=self._execution_count,
+            error_count=self._error_count,
+            signals_in_store=self.filter_manager.signals_in_store,
+            maintenance_window=self.is_maintenance_window(),
+            symbols=list(self.config.symbols),
+            scan_interval=self.config.scan_interval,
+            entry_stats=entry_stats,
+            paper_stats=paper_stats,
+            statarb_stats=statarb_stats,
+            strat_active_symbols=strat_active,
+        )
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get daemon status and statistics (delegated to health_monitor)."""
+        return self.health_monitor.get_status()
 
     def get_detected_signals(self) -> List[CryptoDetectedSignal]:
         """Get all detected signals currently in store."""
-        with self._signals_lock:
-            return list(self._detected_signals.values())
+        return self.filter_manager.get_detected_signals()
 
     def get_pending_setups(self) -> List[CryptoDetectedSignal]:
         """Get SETUP signals waiting for trigger."""
@@ -1684,7 +1056,7 @@ class CryptoSignalDaemon:
         return self.entry_monitor.get_pending_signals()
 
     # =========================================================================
-    # POSITION MONITORING (Session CRYPTO-4)
+    # POSITION MONITORING
     # =========================================================================
 
     def check_positions(self) -> int:
@@ -1698,121 +1070,103 @@ class CryptoSignalDaemon:
             logger.debug("Position monitor not initialized")
             return 0
 
-        # Check for exit conditions
         exit_signals = self.position_monitor.check_exits()
 
         if not exit_signals:
             return 0
 
-        # Execute exits
         closed = self.position_monitor.execute_all_exits(exit_signals)
 
-        # Send Discord exit alerts for each closed trade (Session CRYPTO-7)
-        if self.discord_alerter and self.config.alert_on_trade_exit and closed:
-            for trade in closed:
-                try:
-                    # Calculate P&L
-                    if trade.side == "BUY":  # LONG
-                        pnl = (trade.exit_price - trade.entry_price) * trade.quantity
-                        pnl_pct = ((trade.exit_price / trade.entry_price) - 1) * 100
-                    else:  # SHORT
-                        pnl = (trade.entry_price - trade.exit_price) * trade.quantity
-                        pnl_pct = ((trade.entry_price / trade.exit_price) - 1) * 100
-
-                    # Session CRYPTO-MONITOR-3: Include pattern context for traceability
-                    self.discord_alerter.send_exit_alert(
-                        symbol=trade.symbol,
-                        direction="LONG" if trade.side == "BUY" else "SHORT",
-                        exit_reason=trade.exit_reason or "Unknown",
-                        entry_price=trade.entry_price,
-                        exit_price=trade.exit_price,
-                        pnl=pnl,
-                        pnl_pct=pnl_pct,
-                        pattern_type=trade.pattern_type,
-                        timeframe=trade.timeframe,
-                        entry_time=trade.entry_time,
-                        exit_time=trade.exit_time,
-                    )
-                except Exception as alert_err:
-                    logger.warning(f"Failed to send exit alert: {alert_err}")
+        # Send Discord exit alerts (delegated to alert_manager)
+        if closed:
+            self.alert_manager.send_exit_alerts(closed)
 
         return len(closed)
 
     def get_open_positions(self) -> List[Dict[str, Any]]:
-        """
-        Get all open positions with current P&L.
-
-        Returns:
-            List of position dicts with P&L info
-        """
+        """Get all open positions with current P&L."""
         if self.position_monitor is None:
             return []
         return self.position_monitor.get_open_positions_with_pnl()
 
     def print_status(self) -> None:
-        """Print current daemon status."""
-        status = self.get_status()
+        """Print current daemon status (delegated to health_monitor)."""
+        self.health_monitor.print_status()
 
-        print("\n" + "=" * 70)
-        print("CRYPTO SIGNAL DAEMON STATUS")
-        print("=" * 70)
-        print(f"Running: {status['running']}")
-        print(f"Uptime: {status['uptime_seconds']:.0f}s" if status["uptime_seconds"] else "Not started")
-        print(f"Maintenance Window: {status['maintenance_window']}")
-        print()
+    # =========================================================================
+    # BACKWARD COMPATIBILITY DELEGATES (Phase 6.4)
+    # Thin wrappers preserving old API while logic lives in coordinators.
+    # =========================================================================
 
-        # Leverage tier info
-        tier = status.get('leverage_tier', 'swing')
-        is_intraday = status.get('intraday_available', False)
-        time_to_close = status.get('intraday_close_seconds')
-        print(f"Leverage Tier: {tier.upper()} ({'10x' if tier == 'intraday' else '4x'})")
-        if is_intraday and time_to_close:
-            hours = time_to_close / 3600
-            print(f"  Intraday Window: {hours:.1f}h until 4PM ET close")
-        elif not is_intraday:
-            print(f"  Note: In 4-6PM ET gap (swing only)")
-        print()
+    @property
+    def _detected_signals(self) -> Dict[str, CryptoDetectedSignal]:
+        """Backward compat: signal store now in filter_manager."""
+        return self.filter_manager._detected_signals
 
-        print(f"Scans: {status['scan_count']}")
-        print(f"Signals Detected: {status['signal_count']}")
-        print(f"Triggers Fired: {status['trigger_count']}")
-        print(f"Executions: {status['execution_count']}")
-        print(f"Errors: {status['error_count']}")
-        print()
-        print(f"Signals in Store: {status['signals_in_store']}")
-        print(f"Symbols: {', '.join(status['symbols'])}")
-        print(f"Scan Interval: {status['scan_interval']}s")
+    @property
+    def _signals_lock(self):
+        """Backward compat: signals lock now in filter_manager."""
+        return self.filter_manager._signals_lock
 
-        if status.get("entry_monitor"):
-            em = status["entry_monitor"]
-            print()
-            print(f"Entry Monitor:")
-            print(f"  Pending Signals: {em.get('pending_signals', 0)}")
-            print(f"  Total Triggers: {em.get('trigger_count', 0)}")
+    @property
+    def _strat_active_symbols(self) -> set:
+        """Backward compat: STRAT active symbols now in statarb_executor."""
+        if self.statarb_executor is not None:
+            return self.statarb_executor._strat_active_symbols
+        return set()
 
-        if status.get("paper_trader"):
-            pt = status["paper_trader"]
-            print()
-            print(f"Paper Trader:")
-            print(f"  Balance: ${pt.get('current_balance', 0):,.2f}")
-            print(f"  Realized P&L: ${pt.get('realized_pnl', 0):,.2f}")
-            print(f"  Open Trades: {pt.get('open_trades', 0)}")
-            print(f"  Closed Trades: {pt.get('closed_trades', 0)}")
+    @property
+    def statarb_generator(self):
+        """Backward compat: StatArb generator now in statarb_executor."""
+        if self.statarb_executor is not None:
+            return self.statarb_executor.generator
+        return None
 
-        # StatArb status (Session EQUITY-92)
-        if status.get("statarb"):
-            sa = status["statarb"]
-            print()
-            print("StatArb:")
-            print(f"  Pairs: {', '.join(sa.get('pairs', []))}")
-            print(f"  Positions: {sa.get('positions', 0)}")
-            zscores = sa.get('zscores', {})
-            if zscores:
-                for pair, z in zscores.items():
-                    z_str = f"{z:.2f}" if z is not None else "N/A"
-                    print(f"  Z-score ({pair}): {z_str}")
-            strat_active = status.get('strat_active_symbols', [])
-            if strat_active:
-                print(f"  STRAT Active: {', '.join(strat_active)}")
+    def _passes_filters(self, signal: CryptoDetectedSignal) -> bool:
+        """Backward compat: delegated to filter_manager."""
+        return self.filter_manager.passes_filters(signal)
 
-        print("=" * 70)
+    def _generate_signal_id(self, signal: CryptoDetectedSignal) -> str:
+        """Backward compat: delegated to filter_manager."""
+        return self.filter_manager.generate_signal_id(signal)
+
+    def _is_duplicate(self, signal: CryptoDetectedSignal) -> bool:
+        """Backward compat: delegated to filter_manager."""
+        return self.filter_manager.is_duplicate(signal)
+
+    def _cleanup_expired_signals(self) -> None:
+        """Backward compat: delegated to filter_manager."""
+        self.filter_manager.cleanup_expired_signals()
+
+    def _is_setup_stale(self, signal: CryptoDetectedSignal) -> tuple:
+        """Backward compat: delegated to entry_validator."""
+        return self.entry_validator.is_setup_stale(signal)
+
+    def _reevaluate_tfc_at_entry(self, signal: CryptoDetectedSignal) -> tuple:
+        """Backward compat: delegated to entry_validator."""
+        return self.entry_validator.reevaluate_tfc_at_entry(signal)
+
+    def _update_strat_active_symbols(self) -> None:
+        """Backward compat: delegated to statarb_executor."""
+        if self.statarb_executor is not None:
+            self.statarb_executor.update_strat_active_symbols()
+
+    def _check_statarb_signals(self) -> None:
+        """Backward compat: delegated to statarb_executor."""
+        if self.statarb_executor is not None:
+            self.statarb_executor.check_and_execute()
+
+    def _execute_statarb(self, signal) -> None:
+        """Backward compat: delegated to statarb_executor."""
+        if self.statarb_executor is not None:
+            self.statarb_executor._execute(signal)
+
+    def _execute_statarb_entry(self, signal) -> None:
+        """Backward compat: delegated to statarb_executor."""
+        if self.statarb_executor is not None:
+            self.statarb_executor._execute_entry(signal)
+
+    def _execute_statarb_exit(self, signal) -> None:
+        """Backward compat: delegated to statarb_executor."""
+        if self.statarb_executor is not None:
+            self.statarb_executor._execute_exit(signal)
