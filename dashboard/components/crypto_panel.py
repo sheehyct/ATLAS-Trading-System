@@ -189,7 +189,27 @@ def create_crypto_panel():
         ], className='mb-4'),
 
         # ============================================
-        # ROW 3: Tabs (Signals | Closed Trades | Performance)
+        # ROW 3: Strategy P&L Breakdown (Phase 6.5)
+        # ============================================
+        dbc.Row([
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader([
+                        html.I(className='fas fa-layer-group me-2',
+                               style={'color': DARK_THEME['accent_cyan']}),
+                        'P&L by Strategy'
+                    ], style=_header_style()),
+                    dbc.CardBody(
+                        id='crypto-strategy-pnl',
+                        children=[_create_loading_placeholder('Loading strategy data...')],
+                        style=_body_style()
+                    )
+                ], style=_card_style(), className='shadow')
+            ], width=12)
+        ], className='mb-4'),
+
+        # ============================================
+        # ROW 4: Tabs (Signals | Closed Trades | Performance)
         # ============================================
         dbc.Row([
             dbc.Col([
@@ -197,8 +217,26 @@ def create_crypto_panel():
                     dbc.CardHeader([
                         html.I(className='fas fa-crosshairs me-2',
                                style={'color': DARK_THEME['accent_yellow']}),
-                        'Trading Activity'
-                    ], style=_header_style()),
+                        'Trading Activity',
+                        # Strategy filter dropdown (Phase 6.5)
+                        dbc.Select(
+                            id='crypto-strategy-filter',
+                            options=[
+                                {'label': 'All Strategies', 'value': 'all'},
+                                {'label': 'STRAT Patterns', 'value': 'strat'},
+                                {'label': 'StatArb Pairs', 'value': 'statarb'},
+                            ],
+                            value='all',
+                            size='sm',
+                            style={
+                                'width': '160px',
+                                'marginLeft': 'auto',
+                                'backgroundColor': DARK_THEME['input_bg'],
+                                'color': DARK_THEME['text_primary'],
+                                'border': f'1px solid {DARK_THEME["border"]}',
+                            }
+                        )
+                    ], style={**_header_style(), 'display': 'flex', 'alignItems': 'center'}),
                     dbc.CardBody([
                         dbc.Tabs([
                             dbc.Tab(
@@ -1119,6 +1157,93 @@ def create_performance_metrics(metrics: Dict) -> html.Div:
     ], style={'padding': '1rem'})
 
 
+def create_strategy_pnl_display(pnl_by_strategy: Dict) -> html.Div:
+    """
+    Create strategy P&L breakdown display (Phase 6.5).
+
+    Shows side-by-side comparison of STRAT vs StatArb performance.
+
+    Args:
+        pnl_by_strategy: Dict from crypto_loader.get_pnl_by_strategy()
+            Expected format:
+            {
+                'strat': {'total_pnl': float, 'trade_count': int, 'win_rate': float},
+                'statarb': {'total_pnl': float, 'trade_count': int, 'win_rate': float},
+                'combined': {'total_pnl': float, 'trade_count': int, 'win_rate': float}
+            }
+
+    Returns:
+        HTML Div with strategy P&L cards
+    """
+    if not pnl_by_strategy:
+        return _create_api_error_placeholder('Strategy data not available')
+
+    strat = pnl_by_strategy.get('strat', {})
+    statarb = pnl_by_strategy.get('statarb', {})
+    combined = pnl_by_strategy.get('combined', {})
+
+    def _strategy_card(name: str, data: Dict, icon: str, color: str) -> dbc.Col:
+        """Create a single strategy card."""
+        pnl = data.get('total_pnl', 0)
+        trades = data.get('trade_count', 0)
+        win_rate = data.get('win_rate', 0)
+
+        pnl_color = DARK_THEME['accent_green'] if pnl >= 0 else DARK_THEME['accent_red']
+
+        return dbc.Col([
+            html.Div([
+                # Header
+                html.Div([
+                    html.I(className=f'fas {icon} me-2', style={'color': color}),
+                    html.Span(name, style={
+                        'fontWeight': 'bold',
+                        'color': DARK_THEME['text_primary']
+                    })
+                ], style={'marginBottom': '0.75rem'}),
+
+                # P&L
+                html.Div([
+                    html.Small('Total P&L', style={'color': DARK_THEME['text_secondary']}),
+                    html.H4(f'${pnl:+,.2f}', style={
+                        'color': pnl_color,
+                        'marginBottom': '0.5rem'
+                    })
+                ]),
+
+                # Stats row
+                dbc.Row([
+                    dbc.Col([
+                        html.Small('Trades', style={'color': DARK_THEME['text_muted']}),
+                        html.Div(str(trades), style={
+                            'color': DARK_THEME['text_primary'],
+                            'fontWeight': 'bold'
+                        })
+                    ], width=6),
+                    dbc.Col([
+                        html.Small('Win Rate', style={'color': DARK_THEME['text_muted']}),
+                        html.Div(f'{win_rate:.1f}%', style={
+                            'color': DARK_THEME['text_primary'],
+                            'fontWeight': 'bold'
+                        })
+                    ], width=6),
+                ])
+            ], style={
+                'padding': '1rem',
+                'backgroundColor': DARK_THEME['card_header'],
+                'borderRadius': '8px',
+                'border': f'1px solid {DARK_THEME["border"]}'
+            })
+        ], width=12, md=4, className='mb-3')
+
+    return html.Div([
+        dbc.Row([
+            _strategy_card('STRAT Patterns', strat, 'fa-chess-knight', DARK_THEME['accent_yellow']),
+            _strategy_card('StatArb Pairs', statarb, 'fa-balance-scale', DARK_THEME['accent_blue']),
+            _strategy_card('Combined', combined, 'fa-chart-line', DARK_THEME['accent_cyan']),
+        ], justify='center')
+    ], style={'padding': '0.5rem'})
+
+
 # ============================================
 # EXPORTS
 # ============================================
@@ -1131,4 +1256,5 @@ __all__ = [
     'create_signals_table',
     'create_closed_trades_table',
     'create_performance_metrics',
+    'create_strategy_pnl_display',
 ]

@@ -9,6 +9,7 @@ dependencies = [
     "alpaca-py>=0.42.0",
     "dash>=2.14.0",
     "dash-bootstrap-components>=1.5.0",
+    "dash-tvlwc>=0.1.0",
     "datashader>=0.18.2",
     "holidays>=0.79",
     "hvplot>=0.12.0",

@@ -4,6 +4,7 @@
 # Web framework
 dash>=2.14.0
 dash-bootstrap-components>=1.5.0
+dash-tvlwc>=0.1.0
 plotly>=6.2.0
 
 # Data handling

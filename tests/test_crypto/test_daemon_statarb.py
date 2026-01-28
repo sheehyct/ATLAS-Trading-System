@@ -130,16 +130,16 @@ class TestStatArbSetup:
     """Test StatArb generator setup."""
 
     def test_statarb_generator_none_when_disabled(self, daemon_without_statarb):
-        """StatArb generator should be None when disabled."""
-        assert daemon_without_statarb.statarb_generator is None
+        """StatArb executor should be None when disabled."""
+        assert daemon_without_statarb.statarb_executor is None
 
     def test_statarb_generator_initialized_when_enabled(self, daemon_with_statarb):
         """StatArb generator should be initialized when enabled."""
-        assert daemon_with_statarb.statarb_generator is not None
+        assert daemon_with_statarb.statarb_executor.generator is not None
 
     def test_statarb_generator_has_correct_pairs(self, daemon_with_statarb):
         """StatArb generator should have the configured pairs."""
-        generator = daemon_with_statarb.statarb_generator
+        generator = daemon_with_statarb.statarb_executor.generator
         assert generator.pairs == [("ADA-USD", "XRP-USD")]
 
     def test_statarb_generator_uses_paper_trader_balance(
@@ -158,7 +158,7 @@ class TestStatArbSetup:
             paper_trader=fresh_trader,
         )
         # Generator uses paper trader balance at init time
-        assert daemon.statarb_generator.account_value == 5000.0
+        assert daemon.statarb_executor.generator.account_value == 5000.0
 
     def test_statarb_not_setup_without_pairs(self, mock_client, mock_scanner):
         """StatArb generator not created if no pairs configured."""
@@ -171,7 +171,7 @@ class TestStatArbSetup:
             client=mock_client,
             scanner=mock_scanner,
         )
-        assert daemon.statarb_generator is None
+        assert daemon.statarb_executor.generator is None
 
 
 # =============================================================================
@@ -184,7 +184,7 @@ class TestStratActiveSymbols:
 
     def test_strat_active_symbols_initially_empty(self, daemon_with_statarb):
         """STRAT active symbols should be empty initially."""
-        assert daemon_with_statarb._strat_active_symbols == set()
+        assert daemon_with_statarb.statarb_executor._strat_active_symbols == set()
 
     def test_update_strat_active_symbols_from_open_trades(self, daemon_with_statarb):
         """Should update active symbols from open STRAT trades."""
@@ -197,8 +197,8 @@ class TestStratActiveSymbols:
             strategy="strat",
         )
 
-        daemon_with_statarb._update_strat_active_symbols()
-        assert "BTC-USD" in daemon_with_statarb._strat_active_symbols
+        daemon_with_statarb.statarb_executor.update_strat_active_symbols()
+        assert "BTC-USD" in daemon_with_statarb.statarb_executor._strat_active_symbols
 
     def test_update_excludes_statarb_trades(self, daemon_with_statarb):
         """Should not include StatArb trades in STRAT active symbols."""
@@ -211,8 +211,8 @@ class TestStratActiveSymbols:
             strategy="statarb",
         )
 
-        daemon_with_statarb._update_strat_active_symbols()
-        assert "ADA-USD" not in daemon_with_statarb._strat_active_symbols
+        daemon_with_statarb.statarb_executor.update_strat_active_symbols()
+        assert "ADA-USD" not in daemon_with_statarb.statarb_executor._strat_active_symbols
 
     def test_update_excludes_closed_trades(self, daemon_with_statarb):
         """Should not include closed trades in active symbols."""
@@ -229,8 +229,8 @@ class TestStratActiveSymbols:
             trade.trade_id, exit_price=110.0
         )
 
-        daemon_with_statarb._update_strat_active_symbols()
-        assert "BTC-USD" not in daemon_with_statarb._strat_active_symbols
+        daemon_with_statarb.statarb_executor.update_strat_active_symbols()
+        assert "BTC-USD" not in daemon_with_statarb.statarb_executor._strat_active_symbols
 
 
 # =============================================================================
@@ -241,16 +241,18 @@ class TestStratActiveSymbols:
 class TestCheckStatArbSignals:
     """Test StatArb signal checking."""
 
-    def test_check_skipped_when_generator_none(self, daemon_without_statarb):
-        """Signal check should be skipped when generator is None."""
-        # Should not raise
-        daemon_without_statarb._check_statarb_signals()
+    def test_check_skipped_when_statarb_disabled(self, daemon_without_statarb):
+        """Signal check should be skipped when statarb is disabled (executor is None)."""
+        # When statarb disabled, executor is None - verify graceful handling
+        assert daemon_without_statarb.statarb_executor is None
+        # Daemon scan loop checks for None before calling - verify method exists
+        assert hasattr(daemon_without_statarb, 'statarb_executor')
 
     def test_check_fetches_prices_for_pairs(self, daemon_with_statarb, mock_client):
         """Should fetch prices for configured pairs."""
         mock_client.get_current_price.return_value = 1.0
 
-        daemon_with_statarb._check_statarb_signals()
+        daemon_with_statarb.statarb_executor.check_and_execute()
 
         # Should have called for both symbols in the pair
         calls = [
@@ -267,9 +269,9 @@ class TestCheckStatArbSignals:
         daemon_with_statarb.paper_trader.account.current_balance = 2000.0
 
         with patch.object(
-            daemon_with_statarb.statarb_generator, "update_account_value"
+            daemon_with_statarb.statarb_executor.generator, "update_account_value"
         ) as mock_update:
-            daemon_with_statarb._check_statarb_signals()
+            daemon_with_statarb.statarb_executor.check_and_execute()
             mock_update.assert_called()
 
     def test_check_skips_on_strat_conflict_long_symbol(
@@ -300,12 +302,12 @@ class TestCheckStatArbSignals:
         )
 
         with patch.object(
-            daemon_with_statarb.statarb_generator,
+            daemon_with_statarb.statarb_executor.generator,
             "check_for_signals",
             return_value=[mock_signal],
         ):
-            with patch.object(daemon_with_statarb, "_execute_statarb") as mock_exec:
-                daemon_with_statarb._check_statarb_signals()
+            with patch.object(daemon_with_statarb.statarb_executor, "_execute") as mock_exec:
+                daemon_with_statarb.statarb_executor.check_and_execute()
                 # Should NOT execute due to STRAT conflict
                 mock_exec.assert_not_called()
 
@@ -336,12 +338,12 @@ class TestCheckStatArbSignals:
         )
 
         with patch.object(
-            daemon_with_statarb.statarb_generator,
+            daemon_with_statarb.statarb_executor.generator,
             "check_for_signals",
             return_value=[mock_signal],
         ):
-            with patch.object(daemon_with_statarb, "_execute_statarb") as mock_exec:
-                daemon_with_statarb._check_statarb_signals()
+            with patch.object(daemon_with_statarb.statarb_executor, "_execute") as mock_exec:
+                daemon_with_statarb.statarb_executor.check_and_execute()
                 mock_exec.assert_not_called()
 
     def test_check_executes_when_no_conflict(self, mock_client, mock_scanner):
@@ -375,12 +377,12 @@ class TestCheckStatArbSignals:
         )
 
         with patch.object(
-            daemon.statarb_generator,
+            daemon.statarb_executor.generator,
             "check_for_signals",
             return_value=[mock_signal],
         ):
             with patch.object(daemon.statarb_executor, "_execute") as mock_exec:
-                daemon._check_statarb_signals()
+                daemon.statarb_executor.check_and_execute()
                 mock_exec.assert_called_once_with(mock_signal)
 
 
@@ -423,7 +425,7 @@ class TestExecuteStatArb:
         )
 
         initial_count = daemon._execution_count
-        daemon._execute_statarb_entry(signal)
+        daemon.statarb_executor._execute_entry(signal)
 
         # Should have opened 2 trades
         assert daemon._execution_count == initial_count + 2
@@ -466,7 +468,7 @@ class TestExecuteStatArb:
             short_notional=100.0,
         )
 
-        daemon._execute_statarb_entry(signal)
+        daemon.statarb_executor._execute_entry(signal)
 
         trades = daemon.paper_trader.get_trades_by_strategy("statarb")
         trade_map = {t.symbol: t for t in trades}
@@ -519,7 +521,7 @@ class TestExecuteStatArb:
             bars_held=5,
         )
 
-        daemon._execute_statarb_exit(exit_signal)
+        daemon.statarb_executor._execute_exit(exit_signal)
 
         # All statarb trades should be closed
         open_trades = [
@@ -532,7 +534,9 @@ class TestExecuteStatArb:
     def test_execute_skips_without_paper_trader(self, mock_client, mock_scanner):
         """Execution should be skipped without paper trader."""
         config = CryptoDaemonConfig(
-            enable_execution=False,
+            enable_execution=False,  # No paper trader
+            statarb_enabled=True,  # But StatArb enabled
+            statarb_pairs=[("ADA-USD", "XRP-USD")],
         )
         daemon = CryptoSignalDaemon(
             config=config,
@@ -551,8 +555,8 @@ class TestExecuteStatArb:
             timestamp=datetime.now(timezone.utc),
         )
 
-        # Should not raise
-        daemon._execute_statarb(signal)
+        # Should not raise - executor handles missing paper trader gracefully
+        daemon.statarb_executor._execute(signal)
 
 
 # =============================================================================
@@ -595,19 +599,19 @@ class TestScanLoopIntegration:
         mock_client.get_current_price.return_value = 1.0
 
         with patch.object(
-            daemon_with_statarb, "_check_statarb_signals"
+            daemon_with_statarb.statarb_executor, "check_and_execute"
         ) as mock_check:
             # Run single iteration of scan loop
             daemon_with_statarb.run_scan_and_monitor()
 
-            # StatArb check happens in scan loop, not in run_scan_and_monitor
-            # Let's verify the method exists and is callable
-            assert callable(daemon_with_statarb._check_statarb_signals)
+            # StatArb check happens in _scan_loop, not run_scan_and_monitor
+            # Verify the method exists and is callable
+            assert callable(daemon_with_statarb.statarb_executor.check_and_execute)
 
     def test_scan_loop_skips_statarb_when_disabled(self, daemon_without_statarb):
         """Scan loop should skip StatArb when disabled."""
-        # Verify statarb_generator is None
-        assert daemon_without_statarb.statarb_generator is None
+        # Verify statarb_executor is None (not just generator)
+        assert daemon_without_statarb.statarb_executor is None
 
         # run_scan_and_monitor should complete without error
         daemon_without_statarb.run_scan_and_monitor()

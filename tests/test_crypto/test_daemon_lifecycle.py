@@ -324,13 +324,13 @@ class TestPassesFilters:
             has_maintenance_gap=False,
         )
 
-        assert daemon_minimal._passes_filters(signal) is True
+        assert daemon_minimal.filter_manager.passes_filters(signal) is True
 
     def test_fails_magnitude_filter(self, daemon_minimal):
         """Signal with low magnitude should fail."""
         signal = create_test_signal(magnitude_pct=0.05)
 
-        assert daemon_minimal._passes_filters(signal) is False
+        assert daemon_minimal.filter_manager.passes_filters(signal) is False
 
     def test_fails_risk_reward_filter(self, mock_client, mock_scanner):
         """Signal with low R:R should fail when threshold is set."""
@@ -347,13 +347,13 @@ class TestPassesFilters:
                 daemon = CryptoSignalDaemon(config=config)
 
                 signal = create_test_signal(risk_reward=0.3)  # Below 0.5 threshold
-                assert daemon._passes_filters(signal) is False
+                assert daemon.filter_manager.passes_filters(signal) is False
 
     def test_fails_maintenance_gap_filter(self, daemon_minimal):
         """Signal with maintenance gap should fail."""
         signal = create_test_signal(has_maintenance_gap=True)
 
-        assert daemon_minimal._passes_filters(signal) is False
+        assert daemon_minimal.filter_manager.passes_filters(signal) is False
 
     def test_custom_magnitude_threshold(self, mock_client, mock_scanner):
         """Custom magnitude threshold should be respected."""
@@ -369,10 +369,10 @@ class TestPassesFilters:
                 daemon = CryptoSignalDaemon(config=config)
 
                 signal = create_test_signal(magnitude_pct=4.0)  # Below 5.0
-                assert daemon._passes_filters(signal) is False
+                assert daemon.filter_manager.passes_filters(signal) is False
 
                 signal = create_test_signal(magnitude_pct=6.0)  # Above 5.0
-                assert daemon._passes_filters(signal) is True
+                assert daemon.filter_manager.passes_filters(signal) is True
 
     def test_custom_risk_reward_threshold(self, mock_client, mock_scanner):
         """Custom R:R threshold should be respected."""
@@ -388,10 +388,10 @@ class TestPassesFilters:
                 daemon = CryptoSignalDaemon(config=config)
 
                 signal = create_test_signal(risk_reward=2.5)  # Below 3.0
-                assert daemon._passes_filters(signal) is False
+                assert daemon.filter_manager.passes_filters(signal) is False
 
                 signal = create_test_signal(risk_reward=3.5)  # Above 3.0
-                assert daemon._passes_filters(signal) is True
+                assert daemon.filter_manager.passes_filters(signal) is True
 
 
 # =============================================================================
@@ -411,7 +411,7 @@ class TestSignalDeduplication:
             direction="LONG",
         )
 
-        signal_id = daemon_minimal._generate_signal_id(signal)
+        signal_id = daemon_minimal.filter_manager.generate_signal_id(signal)
 
         assert "BTC-PERP-INTX" in signal_id
         assert "1h" in signal_id
@@ -423,7 +423,7 @@ class TestSignalDeduplication:
         setup_ts = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         signal = create_test_signal(setup_bar_timestamp=setup_ts)
 
-        signal_id = daemon_minimal._generate_signal_id(signal)
+        signal_id = daemon_minimal.filter_manager.generate_signal_id(signal)
 
         assert "2025-01-15" in signal_id
 
@@ -435,7 +435,7 @@ class TestSignalDeduplication:
         if hasattr(signal, 'setup_bar_timestamp'):
             signal.setup_bar_timestamp = None
 
-        signal_id = daemon_minimal._generate_signal_id(signal)
+        signal_id = daemon_minimal.filter_manager.generate_signal_id(signal)
 
         assert "2025-01-16" in signal_id
 
@@ -445,9 +445,9 @@ class TestSignalDeduplication:
         signal2 = create_test_signal(symbol="ETH-PERP-INTX", direction="LONG")
         signal3 = create_test_signal(symbol="BTC-PERP-INTX", direction="SHORT")
 
-        id1 = daemon_minimal._generate_signal_id(signal1)
-        id2 = daemon_minimal._generate_signal_id(signal2)
-        id3 = daemon_minimal._generate_signal_id(signal3)
+        id1 = daemon_minimal.filter_manager.generate_signal_id(signal1)
+        id2 = daemon_minimal.filter_manager.generate_signal_id(signal2)
+        id3 = daemon_minimal.filter_manager.generate_signal_id(signal3)
 
         assert id1 != id2
         assert id1 != id3
@@ -459,8 +459,8 @@ class TestSignalDeduplication:
         signal1 = create_test_signal(setup_bar_timestamp=setup_ts)
         signal2 = create_test_signal(setup_bar_timestamp=setup_ts)
 
-        id1 = daemon_minimal._generate_signal_id(signal1)
-        id2 = daemon_minimal._generate_signal_id(signal2)
+        id1 = daemon_minimal.filter_manager.generate_signal_id(signal1)
+        id2 = daemon_minimal.filter_manager.generate_signal_id(signal2)
 
         assert id1 == id2
 
@@ -468,19 +468,19 @@ class TestSignalDeduplication:
         """New signal should not be duplicate."""
         signal = create_test_signal()
 
-        assert daemon_minimal._is_duplicate(signal) is False
+        assert daemon_minimal.filter_manager.is_duplicate(signal) is False
 
     def test_is_duplicate_after_storing(self, daemon_minimal):
         """Signal should be duplicate after storing."""
         signal = create_test_signal()
 
         # Store the signal
-        signal_id = daemon_minimal._generate_signal_id(signal)
-        with daemon_minimal._signals_lock:
-            daemon_minimal._detected_signals[signal_id] = signal
+        signal_id = daemon_minimal.filter_manager.generate_signal_id(signal)
+        with daemon_minimal.filter_manager._signals_lock:
+            daemon_minimal.filter_manager._detected_signals[signal_id] = signal
 
         # Now it should be duplicate
-        assert daemon_minimal._is_duplicate(signal) is True
+        assert daemon_minimal.filter_manager.is_duplicate(signal) is True
 
 
 # =============================================================================
@@ -568,7 +568,7 @@ class TestIsSetupStale:
         """COMPLETED signals should never be stale."""
         signal = create_test_signal(signal_type="COMPLETED")
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         assert is_stale is False
         assert reason == ""
@@ -580,7 +580,7 @@ class TestIsSetupStale:
         if hasattr(signal, 'context') and signal.context:
             signal.context.setup_bar_timestamp = None
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         assert is_stale is False
 
@@ -594,7 +594,7 @@ class TestIsSetupStale:
             setup_bar_timestamp=setup_ts,
         )
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         assert is_stale is False
 
@@ -608,7 +608,7 @@ class TestIsSetupStale:
             setup_bar_timestamp=setup_ts,
         )
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         assert is_stale is True
         assert "expired" in reason.lower()
@@ -623,7 +623,7 @@ class TestIsSetupStale:
             setup_bar_timestamp=setup_ts,
         )
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         assert is_stale is False
 
@@ -637,7 +637,7 @@ class TestIsSetupStale:
             setup_bar_timestamp=setup_ts,
         )
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         assert is_stale is True
         assert "expired" in reason.lower()
@@ -652,7 +652,7 @@ class TestIsSetupStale:
             setup_bar_timestamp=setup_ts,
         )
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         assert is_stale is False
 
@@ -666,7 +666,7 @@ class TestIsSetupStale:
             setup_bar_timestamp=setup_ts,
         )
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         assert is_stale is True
         assert "expired" in reason.lower()
@@ -681,7 +681,7 @@ class TestIsSetupStale:
             setup_bar_timestamp=setup_ts,
         )
 
-        is_stale, reason = daemon_minimal._is_setup_stale(signal)
+        is_stale, reason = daemon_minimal.entry_validator.is_setup_stale(signal)
 
         # Default is 2 hours, so 3 hours should be stale
         assert is_stale is True
@@ -976,15 +976,15 @@ class TestSignalCleanup:
         old_signal = create_test_signal(detected_time=old_time)
 
         # Store it
-        signal_id = daemon_minimal._generate_signal_id(old_signal)
-        with daemon_minimal._signals_lock:
-            daemon_minimal._detected_signals[signal_id] = old_signal
+        signal_id = daemon_minimal.filter_manager.generate_signal_id(old_signal)
+        with daemon_minimal.filter_manager._signals_lock:
+            daemon_minimal.filter_manager._detected_signals[signal_id] = old_signal
 
         # Run cleanup
-        daemon_minimal._cleanup_expired_signals()
+        daemon_minimal.filter_manager.cleanup_expired_signals()
 
         # Should be removed
-        assert len(daemon_minimal._detected_signals) == 0
+        assert len(daemon_minimal.filter_manager._detected_signals) == 0
 
     def test_cleanup_keeps_fresh_signals(self, daemon_minimal):
         """Cleanup should keep signals within expiry window."""
@@ -992,22 +992,22 @@ class TestSignalCleanup:
         fresh_signal = create_test_signal()
 
         # Store it
-        signal_id = daemon_minimal._generate_signal_id(fresh_signal)
-        with daemon_minimal._signals_lock:
-            daemon_minimal._detected_signals[signal_id] = fresh_signal
+        signal_id = daemon_minimal.filter_manager.generate_signal_id(fresh_signal)
+        with daemon_minimal.filter_manager._signals_lock:
+            daemon_minimal.filter_manager._detected_signals[signal_id] = fresh_signal
 
         # Run cleanup
-        daemon_minimal._cleanup_expired_signals()
+        daemon_minimal.filter_manager.cleanup_expired_signals()
 
         # Should still be there
-        assert len(daemon_minimal._detected_signals) == 1
+        assert len(daemon_minimal.filter_manager._detected_signals) == 1
 
     def test_cleanup_handles_empty_store(self, daemon_minimal):
         """Cleanup should handle empty signal store."""
         # Should not raise
-        daemon_minimal._cleanup_expired_signals()
+        daemon_minimal.filter_manager.cleanup_expired_signals()
 
-        assert len(daemon_minimal._detected_signals) == 0
+        assert len(daemon_minimal.filter_manager._detected_signals) == 0
 
 
 # =============================================================================

@@ -1939,17 +1939,51 @@ def update_crypto_overview(n_intervals, active_tab):
 
 
 @app.callback(
+    Output('crypto-strategy-pnl', 'children'),
+    [Input('crypto-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_crypto_strategy_pnl(n_intervals, active_tab):
+    """
+    Update crypto strategy P&L breakdown (Phase 6.5).
+
+    Shows STRAT vs StatArb P&L comparison.
+    """
+    try:
+        if active_tab != 'crypto-tab':
+            from dash import no_update
+            return no_update
+
+        if crypto_loader is None:
+            from dashboard.components.crypto_panel import _create_api_error_placeholder
+            return _create_api_error_placeholder('Crypto loader not available')
+
+        # Fetch strategy P&L data
+        pnl_by_strategy = crypto_loader.get_pnl_by_strategy()
+
+        from dashboard.components.crypto_panel import create_strategy_pnl_display
+        return create_strategy_pnl_display(pnl_by_strategy)
+
+    except Exception as e:
+        logger.error(f"Error updating crypto strategy P&L: {e}")
+        from dashboard.components.crypto_panel import _create_api_error_placeholder
+        return _create_api_error_placeholder(f'Error: {str(e)[:50]}')
+
+
+@app.callback(
     [Output('crypto-signals-container', 'children'),
      Output('crypto-closed-container', 'children'),
      Output('crypto-performance-container', 'children')],
     [Input('crypto-refresh-interval', 'n_intervals'),
-     Input('tabs', 'active_tab')]
+     Input('tabs', 'active_tab'),
+     Input('crypto-strategy-filter', 'value')]
 )
-def update_crypto_tabs(n_intervals, active_tab):
+def update_crypto_tabs(n_intervals, active_tab, strategy_filter):
     """
     Update crypto tab content: signals, closed trades, performance.
 
     Only updates when crypto tab is active to save resources.
+    Filters closed trades by strategy when filter is applied (Phase 6.5).
     """
     try:
         # Skip update if not on crypto tab
@@ -1973,6 +2007,10 @@ def update_crypto_tabs(n_intervals, active_tab):
         signals = crypto_loader.get_pending_signals()
         closed = crypto_loader.get_closed_trades(limit=50)
         metrics = crypto_loader.get_performance_metrics()
+
+        # Apply strategy filter to closed trades (Phase 6.5)
+        if strategy_filter and strategy_filter != 'all':
+            closed = [t for t in closed if t.get('strategy') == strategy_filter]
 
         return (
             create_crypto_signals_table(signals),

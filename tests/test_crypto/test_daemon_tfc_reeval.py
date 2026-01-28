@@ -177,7 +177,7 @@ class TestTFCReevalNoChange:
             direction="bullish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -195,7 +195,7 @@ class TestTFCReevalNoChange:
             direction="bullish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -222,7 +222,7 @@ class TestTFCReevalDegraded:
             direction="bullish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -240,7 +240,7 @@ class TestTFCReevalDegraded:
             direction="bullish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is True
         assert "TFC strength 2 < min threshold 3" in reason
@@ -258,7 +258,7 @@ class TestTFCReevalDegraded:
             direction=""  # No direction at 0
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is True
         assert "TFC strength 0 < min threshold 3" in reason
@@ -285,7 +285,7 @@ class TestTFCReevalDirectionFlip:
             direction="bearish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is True
         assert "TFC direction flipped from bullish to bearish" in reason
@@ -303,7 +303,7 @@ class TestTFCReevalDirectionFlip:
             direction="bullish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is True
         assert "TFC direction flipped from bearish to bullish" in reason
@@ -321,7 +321,7 @@ class TestTFCReevalDirectionFlip:
             direction="bearish"  # Same direction
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -339,7 +339,7 @@ class TestTFCReevalDirectionFlip:
             direction="bearish"  # Flipped
         )
 
-        should_block, reason = daemon_no_flip_block._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon_no_flip_block.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -359,7 +359,7 @@ class TestTFCReevalErrorHandling:
 
         daemon.scanner.evaluate_tfc.side_effect = ConnectionError("Network error")
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -370,7 +370,7 @@ class TestTFCReevalErrorHandling:
 
         daemon.scanner.evaluate_tfc.side_effect = TimeoutError("Request timed out")
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -381,7 +381,7 @@ class TestTFCReevalErrorHandling:
 
         daemon.scanner.evaluate_tfc.side_effect = ValueError("Invalid data")
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -392,7 +392,7 @@ class TestTFCReevalErrorHandling:
 
         daemon.scanner.evaluate_tfc.side_effect = RuntimeError("Unexpected error")
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -403,7 +403,7 @@ class TestTFCReevalErrorHandling:
 
         daemon.scanner.evaluate_tfc.return_value = None
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -415,7 +415,7 @@ class TestTFCReevalErrorHandling:
         invalid_assessment = Mock(spec=[])  # No attributes
         daemon.scanner.evaluate_tfc.return_value = invalid_assessment
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -443,7 +443,7 @@ class TestTFCReevalConfigControl:
             direction="bearish"
         )
 
-        should_block, reason = daemon_disabled._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon_disabled.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -480,7 +480,7 @@ class TestTFCReevalEdgeCases:
             direction="bullish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         # Should not block - direction flip detection skipped without original direction
         assert should_block is False
@@ -498,7 +498,7 @@ class TestTFCReevalEdgeCases:
             direction="bearish"  # This would be a flip, but can't detect
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         # Should not block due to flip (can't detect), but could block for other reasons
         assert should_block is False
@@ -525,7 +525,7 @@ class TestTFCReevalEdgeCases:
         )
 
         # Should not raise exception
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
         assert should_block is False
 
     def test_strength_exactly_at_threshold_allows_entry(self, daemon):
@@ -541,7 +541,7 @@ class TestTFCReevalEdgeCases:
             direction="bullish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is False
         assert reason == ""
@@ -559,7 +559,7 @@ class TestTFCReevalEdgeCases:
             direction="bearish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         # Verify evaluate_tfc was called with direction=-1 for SHORT
         daemon.scanner.evaluate_tfc.assert_called_once()
@@ -579,7 +579,7 @@ class TestTFCReevalEdgeCases:
             direction="bullish"
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         # Verify evaluate_tfc was called with direction=1 for LONG
         daemon.scanner.evaluate_tfc.assert_called_once()
@@ -608,7 +608,7 @@ class TestTFCReevalFlipPriority:
             direction="bearish"  # But direction flipped
         )
 
-        should_block, reason = daemon._reevaluate_tfc_at_entry(signal)
+        should_block, reason = daemon.entry_validator.reevaluate_tfc_at_entry(signal)
 
         assert should_block is True
         assert "TFC direction flipped" in reason
