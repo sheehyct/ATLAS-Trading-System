@@ -37,36 +37,21 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================
-# THEME CONFIGURATION (Matching options_panel.py)
+# THEME MAPPING (DB-5: Unified with config.py COLORS)
 # ============================================
-
-DARK_THEME = {
-    'background': '#090008',
-    'card_bg': '#1a1a2e',
-    'card_header': '#16213e',
-    'input_bg': '#0f0f1a',
-    'border': '#333344',
-    'text_primary': '#e0e0e0',
-    'text_secondary': '#a0a0a0',
-    'text_muted': '#666677',
-    'accent_green': '#00ff55',
-    'accent_red': '#ed4807',
-    'accent_yellow': '#ffd700',
-    'accent_blue': '#2196f3',
-    'progress_bg': '#2a2a3e',
-}
-
-# Light theme for charts (matching reference design)
-LIGHT_THEME = {
-    'background': '#f8f9fa',
-    'card_bg': '#ffffff',
-    'border': '#e5e5e5',
-    'text_primary': '#1a1a1a',
-    'text_secondary': '#666666',
-    'accent_green': '#059669',
-    'accent_red': '#dc2626',
-    'accent_blue': '#0066cc',
-}
+# DARK_THEME was removed in DB-5 to eliminate duplication with config.py COLORS.
+# All theme colors now use COLORS dict from dashboard.config.
+#
+# Migration reference:
+#   COLORS['bg_void'] -> COLORS['bg_void']
+#   COLORS['bg_card'] -> COLORS['bg_card']
+#   COLORS['bg_elevated'] -> COLORS['bg_elevated']
+#   COLORS['bg_surface'] -> COLORS['bg_surface']
+#   COLORS['border_subtle'] -> COLORS['border_subtle']
+#   COLORS['text_primary'] -> COLORS['text_primary']
+#   COLORS['text_secondary'] -> COLORS['text_secondary']
+#   COLORS['accent_emerald'] -> COLORS['accent_emerald']
+#   COLORS['accent_crimson'] -> COLORS['accent_crimson']
 
 # TFC threshold: >= 4 means "WITH TFC"
 TFC_THRESHOLD = 4
@@ -77,9 +62,9 @@ TABLE_HEADER_STYLE = {
     'position': 'sticky',
     'top': '0',
     'zIndex': '10',
-    'backgroundColor': DARK_THEME['card_header'],
-    'borderBottom': f'2px solid {DARK_THEME["border"]}',
-    'color': DARK_THEME['text_primary']
+    'backgroundColor': COLORS['bg_elevated'],
+    'borderBottom': f'2px solid {COLORS["border_subtle"]}',
+    'color': COLORS['text_primary']
 }
 
 
@@ -133,7 +118,7 @@ def create_strat_analytics_panel():
         dbc.Row([
             dbc.Col([
                 html.H3('STRAT Pattern Analytics', className='mb-0',
-                        style={'color': DARK_THEME['text_primary']}),
+                        style={'color': COLORS['text_primary']}),
                 html.P('Pattern detection on underlying/spot -- execution via options or derivatives',
                        className='text-muted mb-0', style={'fontSize': '0.9rem'})
             ], width=8),
@@ -148,9 +133,9 @@ def create_strat_analytics_panel():
                     ],
                     value='SMALL',
                     style={
-                        'backgroundColor': DARK_THEME['input_bg'],
-                        'color': DARK_THEME['text_primary'],
-                        'border': f'1px solid {DARK_THEME["border"]}',
+                        'backgroundColor': COLORS['bg_surface'],
+                        'color': COLORS['text_primary'],
+                        'border': f'1px solid {COLORS["border_subtle"]}',
                         'width': '140px',
                         'marginRight': '10px',
                     }
@@ -165,9 +150,9 @@ def create_strat_analytics_panel():
                     ],
                     value='all',
                     style={
-                        'backgroundColor': DARK_THEME['input_bg'],
-                        'color': DARK_THEME['text_primary'],
-                        'border': f'1px solid {DARK_THEME["border"]}',
+                        'backgroundColor': COLORS['bg_surface'],
+                        'color': COLORS['text_primary'],
+                        'border': f'1px solid {COLORS["border_subtle"]}',
                         'width': '140px',
                         'marginRight': '10px',
                     }
@@ -181,17 +166,17 @@ def create_strat_analytics_panel():
                     ],
                     value='options',
                     style={
-                        'backgroundColor': DARK_THEME['input_bg'],
-                        'color': DARK_THEME['text_primary'],
-                        'border': f'1px solid {DARK_THEME["border"]}',
+                        'backgroundColor': COLORS['bg_surface'],
+                        'color': COLORS['text_primary'],
+                        'border': f'1px solid {COLORS["border_subtle"]}',
                         'width': '160px',
                     }
                 )
             ], width=4, className='d-flex align-items-center justify-content-end')
         ], className='mb-3 p-3', style={
-            'backgroundColor': DARK_THEME['card_bg'],
+            'backgroundColor': COLORS['bg_card'],
             'borderRadius': '8px',
-            'border': f'1px solid {DARK_THEME["border"]}'
+            'border': f'1px solid {COLORS["border_subtle"]}'
         }),
 
         # Tab navigation
@@ -218,7 +203,7 @@ def create_strat_analytics_panel():
         # Store for current market selection
         dcc.Store(id='strat-current-market', data='options'),
 
-    ], fluid=True, style={'backgroundColor': DARK_THEME['background'], 'minHeight': '100vh'})
+    ], fluid=True, style={'backgroundColor': COLORS['bg_void'], 'minHeight': '100vh'})
 
 
 # ============================================
@@ -248,45 +233,45 @@ def create_overview_tab(metrics: Dict, pattern_stats: Dict) -> html.Div:
                 'WIN RATE',
                 f"{metrics.get('win_rate', 0):.1f}%",
                 f"{metrics.get('winning_trades', 0)}/{metrics.get('total_trades', 0)} trades",
-                value_color=DARK_THEME['accent_green'] if metrics.get('win_rate', 0) >= 50 else DARK_THEME['accent_red']
+                value_color=COLORS['accent_emerald'] if metrics.get('win_rate', 0) >= 50 else COLORS['accent_crimson']
             ),
             _create_metric_card(
                 'TOTAL P&L',
                 f"${metrics.get('total_pnl', 0):,.2f}",
                 f"Profit Factor: {metrics.get('profit_factor', 0):.2f}",
-                value_color=DARK_THEME['accent_green'] if metrics.get('total_pnl', 0) >= 0 else DARK_THEME['accent_red']
+                value_color=COLORS['accent_emerald'] if metrics.get('total_pnl', 0) >= 0 else COLORS['accent_crimson']
             ),
             _create_metric_card(
                 'AVG TRADE',
                 f"${metrics.get('avg_pnl', 0):,.2f}",
                 f"W: ${metrics.get('avg_win', 0):.2f} | L: ${metrics.get('avg_loss', 0):.2f}",
-                value_color=DARK_THEME['accent_green'] if metrics.get('avg_pnl', 0) >= 0 else DARK_THEME['accent_red']
+                value_color=COLORS['accent_emerald'] if metrics.get('avg_pnl', 0) >= 0 else COLORS['accent_crimson']
             ),
         ], className='mb-4'),
 
         # Win Rate by Pattern - Dashboard Overhaul: Replaced Plotly with progress bars
         dbc.Card([
             dbc.CardHeader('Win Rate by Pattern', style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             }),
             dbc.CardBody([
                 _create_win_rate_bars(pattern_stats)
-            ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': '12px 16px'})
-        ], className='mb-3', style={'border': f'1px solid {DARK_THEME["border"]}'}),
+            ], style={'backgroundColor': COLORS['bg_card'], 'padding': '12px 16px'})
+        ], className='mb-3', style={'border': f'1px solid {COLORS["border_subtle"]}'}),
 
         # Avg P&L by Pattern - Dashboard Overhaul: Replaced Plotly with progress bars
         dbc.Card([
             dbc.CardHeader('Average P&L by Pattern', style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             }),
             dbc.CardBody([
                 _create_pnl_bars(pattern_stats)
-            ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': '12px 16px'})
-        ], style={'border': f'1px solid {DARK_THEME["border"]}'}),
+            ], style={'backgroundColor': COLORS['bg_card'], 'padding': '12px 16px'})
+        ], style={'border': f'1px solid {COLORS["border_subtle"]}'}),
     ])
 
 
@@ -298,7 +283,7 @@ def _create_metric_card(label: str, value: str, subtext: str,
             dbc.CardBody([
                 html.Div(label, style={
                     'fontSize': '0.85rem',
-                    'color': DARK_THEME['text_secondary'],
+                    'color': COLORS['text_secondary'],
                     'textTransform': 'uppercase',
                     'letterSpacing': '0.5px',
                     'fontWeight': '500',
@@ -307,17 +292,17 @@ def _create_metric_card(label: str, value: str, subtext: str,
                 html.Div(value, style={
                     'fontSize': '1.8rem',
                     'fontWeight': '600',
-                    'color': value_color or DARK_THEME['text_primary'],
+                    'color': value_color or COLORS['text_primary'],
                     'marginBottom': '4px'
                 }),
                 html.Div(subtext, style={
                     'fontSize': '0.85rem',
-                    'color': DARK_THEME['text_secondary']
+                    'color': COLORS['text_secondary']
                 })
             ], style={'padding': '20px'})
         ], style={
-            'backgroundColor': DARK_THEME['card_bg'],
-            'border': f'1px solid {DARK_THEME["border"]}',
+            'backgroundColor': COLORS['bg_card'],
+            'border': f'1px solid {COLORS["border_subtle"]}',
             'borderRadius': '8px'
         })
     ], width=3)
@@ -333,7 +318,7 @@ def _create_win_rate_bars(pattern_stats: Dict) -> html.Div:
         return html.Div('No pattern data available', style={
             'textAlign': 'center',
             'padding': '40px',
-            'color': DARK_THEME['text_secondary']
+            'color': COLORS['text_secondary']
         })
 
     # Sort by win rate descending
@@ -349,7 +334,7 @@ def _create_win_rate_bars(pattern_stats: Dict) -> html.Div:
         trades = stats.get('total_trades', 0)  # Fix: was 'trades', should be 'total_trades'
 
         # Color based on win rate
-        bar_color = DARK_THEME['accent_green'] if win_rate >= 50 else DARK_THEME['accent_red']
+        bar_color = COLORS['accent_emerald'] if win_rate >= 50 else COLORS['accent_crimson']
 
         rows.append(
             html.Div([
@@ -357,7 +342,7 @@ def _create_win_rate_bars(pattern_stats: Dict) -> html.Div:
                 html.Div(pattern, style={
                     'flex': '0 0 100px',
                     'fontWeight': '500',
-                    'color': DARK_THEME['text_primary'],
+                    'color': COLORS['text_primary'],
                     'fontSize': '0.9rem'
                 }),
 
@@ -400,7 +385,7 @@ def _create_win_rate_bars(pattern_stats: Dict) -> html.Div:
                         'fontSize': '0.9rem'
                     }),
                     html.Span(f" ({trades})", style={
-                        'color': DARK_THEME['text_secondary'],
+                        'color': COLORS['text_secondary'],
                         'fontSize': '0.8rem',
                         'marginLeft': '4px'
                     }),
@@ -409,7 +394,7 @@ def _create_win_rate_bars(pattern_stats: Dict) -> html.Div:
                 'display': 'flex',
                 'alignItems': 'center',
                 'padding': '8px 0',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             })
         )
 
@@ -426,7 +411,7 @@ def _create_pnl_bars(pattern_stats: Dict) -> html.Div:
         return html.Div('No pattern data available', style={
             'textAlign': 'center',
             'padding': '40px',
-            'color': DARK_THEME['text_secondary']
+            'color': COLORS['text_secondary']
         })
 
     # Sort by avg P&L descending
@@ -444,7 +429,7 @@ def _create_pnl_bars(pattern_stats: Dict) -> html.Div:
         avg_pnl = stats.get('avg_pnl', 0)
 
         # Color based on P&L
-        bar_color = DARK_THEME['accent_green'] if avg_pnl >= 0 else DARK_THEME['accent_red']
+        bar_color = COLORS['accent_emerald'] if avg_pnl >= 0 else COLORS['accent_crimson']
 
         # Scale bar width relative to max
         bar_width = abs(avg_pnl) / max_abs_pnl * 100
@@ -455,7 +440,7 @@ def _create_pnl_bars(pattern_stats: Dict) -> html.Div:
                 html.Div(pattern, style={
                     'flex': '0 0 100px',
                     'fontWeight': '500',
-                    'color': DARK_THEME['text_primary'],
+                    'color': COLORS['text_primary'],
                     'fontSize': '0.9rem'
                 }),
 
@@ -502,7 +487,7 @@ def _create_pnl_bars(pattern_stats: Dict) -> html.Div:
                 'display': 'flex',
                 'alignItems': 'center',
                 'padding': '8px 0',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             })
         )
 
@@ -519,7 +504,7 @@ def _create_win_rate_chart(pattern_stats: Dict) -> go.Figure:
         go.Bar(
             x=patterns,
             y=win_rates,
-            marker_color=DARK_THEME['accent_blue'],
+            marker_color=COLORS['accent_electric'],
             text=[f'{wr:.1f}%' for wr in win_rates],
             textposition='auto'
         )
@@ -530,9 +515,9 @@ def _create_win_rate_chart(pattern_stats: Dict) -> go.Figure:
         height=300,
         yaxis=dict(range=[0, 100], title='Win Rate (%)'),
         xaxis=dict(title=''),
-        plot_bgcolor=DARK_THEME['background'],
-        paper_bgcolor=DARK_THEME['card_bg'],
-        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=DARK_THEME['text_primary'])
+        plot_bgcolor=COLORS['bg_void'],
+        paper_bgcolor=COLORS['bg_card'],
+        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=COLORS['text_primary'])
     )
 
     return fig
@@ -542,7 +527,7 @@ def _create_pnl_chart(pattern_stats: Dict) -> go.Figure:
     """Create avg P&L by pattern bar chart. DEPRECATED - use _create_pnl_bars()."""
     patterns = list(pattern_stats.keys())
     avg_pnls = [pattern_stats[p].get('avg_pnl', 0) for p in patterns]
-    colors = [DARK_THEME['accent_green'] if p >= 0 else DARK_THEME['accent_red'] for p in avg_pnls]
+    colors = [COLORS['accent_emerald'] if p >= 0 else COLORS['accent_crimson'] for p in avg_pnls]
 
     fig = go.Figure(data=[
         go.Bar(
@@ -559,9 +544,9 @@ def _create_pnl_chart(pattern_stats: Dict) -> go.Figure:
         height=300,
         yaxis=dict(title='Average P&L ($)'),
         xaxis=dict(title=''),
-        plot_bgcolor=DARK_THEME['background'],
-        paper_bgcolor=DARK_THEME['card_bg'],
-        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=DARK_THEME['text_primary'])
+        plot_bgcolor=COLORS['bg_void'],
+        paper_bgcolor=COLORS['bg_card'],
+        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=COLORS['text_primary'])
     )
 
     return fig
@@ -600,24 +585,24 @@ def create_open_positions_tab(
                 dbc.CardBody([
                     html.Div('ACCOUNT BALANCE', style={
                         'fontSize': '0.75rem',
-                        'color': DARK_THEME['text_secondary'],
+                        'color': COLORS['text_secondary'],
                         'textTransform': 'uppercase',
                         'letterSpacing': '1px',
                         'marginBottom': '8px'
                     }),
                     html.H3(f"${equity:,.2f}", style={
                         'fontWeight': '600',
-                        'color': DARK_THEME['text_primary'],
+                        'color': COLORS['text_primary'],
                         'marginBottom': '8px'
                     }),
                     html.Small([
                         f"Cash: ${cash:,.2f}  |  ",
                         f"Buying Power: ${buying_power:,.2f}"
-                    ], style={'color': DARK_THEME['text_secondary']})
+                    ], style={'color': COLORS['text_secondary']})
                 ], style={'padding': '20px'})
             ], style={
-                'backgroundColor': DARK_THEME['card_bg'],
-                'border': f'1px solid {DARK_THEME["border"]}',
+                'backgroundColor': COLORS['bg_card'],
+                'border': f'1px solid {COLORS["border_subtle"]}',
                 'borderRadius': '8px'
             })
         ], width=12)
@@ -662,7 +647,7 @@ def create_open_positions_tab(
                         _format_open_date(pos),
                         style={
                             'padding': '12px 16px',
-                            'color': DARK_THEME['text_secondary'],
+                            'color': COLORS['text_secondary'],
                             'fontSize': '0.9rem'
                         }
                     ),
@@ -679,28 +664,28 @@ def create_open_positions_tab(
                         f"${float(pos.get('unrealized_pl', 0)):,.2f}",
                         style={
                             'padding': '12px 16px',
-                            'color': DARK_THEME['accent_green']
+                            'color': COLORS['accent_emerald']
                             if float(pos.get('unrealized_pl', 0)) >= 0
-                            else DARK_THEME['accent_red']
+                            else COLORS['accent_crimson']
                         }
                     ),
                     html.Td(
                         f"{float(pos.get('unrealized_plpc', 0)) * 100:.1f}%",
                         style={
                             'padding': '12px 16px',
-                            'color': DARK_THEME['accent_green']
+                            'color': COLORS['accent_emerald']
                             if float(pos.get('unrealized_plpc', 0)) >= 0
-                            else DARK_THEME['accent_red']
+                            else COLORS['accent_crimson']
                         }
                     ),
-                ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
+                ], style={'borderBottom': f'1px solid {COLORS["border_subtle"]}'})
                 for pos in positions
             ])
         ], style={
             'width': '100%',
             'borderCollapse': 'collapse',
             'fontSize': '0.95rem',
-            'color': DARK_THEME['text_primary']
+            'color': COLORS['text_primary']
         })
         positions_table = html.Div(positions_table_content, style={
             'maxHeight': f'{MAX_TABLE_ROWS * 48}px',
@@ -712,37 +697,37 @@ def create_open_positions_tab(
             style={
                 'textAlign': 'center',
                 'padding': '40px 20px',
-                'color': DARK_THEME['text_secondary']
+                'color': COLORS['text_secondary']
             }
         )
 
     positions_section = dbc.Card([
         dbc.CardHeader('Open Positions', style={
-            'backgroundColor': DARK_THEME['card_bg'],
+            'backgroundColor': COLORS['bg_card'],
             'fontWeight': '600',
-            'borderBottom': f'1px solid {DARK_THEME["border"]}'
+            'borderBottom': f'1px solid {COLORS["border_subtle"]}'
         }),
         dbc.CardBody([
             positions_table
-        ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': 0})
-    ], className='mb-3', style={'border': f'1px solid {DARK_THEME["border"]}'})
+        ], style={'backgroundColor': COLORS['bg_card'], 'padding': 0})
+    ], className='mb-3', style={'border': f'1px solid {COLORS["border_subtle"]}'})
 
     # Progress Bars Section (using restored function from options_panel)
     progress_section = dbc.Card([
         dbc.CardHeader('Trade Progress to Target', style={
-            'backgroundColor': DARK_THEME['card_bg'],
+            'backgroundColor': COLORS['bg_card'],
             'fontWeight': '600',
-            'color': DARK_THEME['text_primary'],
-            'borderBottom': f'1px solid {DARK_THEME["border"]}'
+            'color': COLORS['text_primary'],
+            'borderBottom': f'1px solid {COLORS["border_subtle"]}'
         }),
         dbc.CardBody([
             create_trade_progress_display(progress_data)
         ], style={
-            'backgroundColor': DARK_THEME['card_bg'],
+            'backgroundColor': COLORS['bg_card'],
             'padding': '16px'
         })
     ], style={
-        'border': f'1px solid {DARK_THEME["border"]}',
+        'border': f'1px solid {COLORS["border_subtle"]}',
         'borderRadius': '8px'
     })
 
@@ -797,7 +782,7 @@ def create_patterns_tab(pattern_stats: Dict) -> html.Div:
                 'HIGHEST AVG P&L',
                 f"${highest_pnl[1].get('avg_pnl', 0):,.2f}",
                 highest_pnl[0],
-                value_color=DARK_THEME['accent_green']
+                value_color=COLORS['accent_emerald']
             ),
             _create_metric_card(
                 'TOTAL PATTERNS',
@@ -814,14 +799,14 @@ def create_patterns_tab(pattern_stats: Dict) -> html.Div:
         # Pattern breakdown table
         dbc.Card([
             dbc.CardHeader('Pattern Performance Breakdown', style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             }),
             dbc.CardBody([
                 _create_pattern_table(sorted_patterns)
-            ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': 0})
-        ], style={'border': f'1px solid {DARK_THEME["border"]}'}),
+            ], style={'backgroundColor': COLORS['bg_card'], 'padding': 0})
+        ], style={'border': f'1px solid {COLORS["border_subtle"]}'}),
     ])
 
 
@@ -856,17 +841,17 @@ def _create_pattern_table(sorted_patterns: List[Tuple]) -> html.Div:
                 html.Td(str(stats.get('total_trades', 0)), style={'padding': '12px 16px'}),
                 html.Td(
                     f"{stats.get('win_rate', 0):.1f}%",
-                    style={'padding': '12px 16px', 'color': DARK_THEME['accent_green']}
+                    style={'padding': '12px 16px', 'color': COLORS['accent_emerald']}
                 ),
                 html.Td(
                     f"${stats.get('avg_pnl', 0):,.2f}",
                     style={
                         'padding': '12px 16px',
-                        'color': DARK_THEME['accent_green'] if stats.get('avg_pnl', 0) >= 0 else DARK_THEME['accent_red']
+                        'color': COLORS['accent_emerald'] if stats.get('avg_pnl', 0) >= 0 else COLORS['accent_crimson']
                     }
                 ),
                 html.Td(f"#{rank + 1}", style={'padding': '12px 16px'}),
-            ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
+            ], style={'borderBottom': f'1px solid {COLORS["border_subtle"]}'})
             for rank, (pattern, stats) in enumerate(sorted_patterns)
         ])
     ], style={
@@ -908,17 +893,17 @@ def create_tfc_tab(trades: List[Dict]) -> html.Div:
                         html.Div('WITH Timeframe Continuity (TFC >= 4)', style={
                             'fontWeight': '600',
                             'marginBottom': '15px',
-                            'color': DARK_THEME['text_primary']
+                            'color': COLORS['text_primary']
                         }),
                         _tfc_stat_item('Total Trades', str(with_tfc['total_trades'])),
                         _tfc_stat_item('Win Rate', f"{with_tfc['win_rate']:.1f}%",
-                                       color=DARK_THEME['accent_green']),
+                                       color=COLORS['accent_emerald']),
                         _tfc_stat_item('Avg P&L', f"${with_tfc['avg_pnl']:.2f}",
-                                       color=DARK_THEME['accent_green'] if with_tfc['avg_pnl'] >= 0 else DARK_THEME['accent_red']),
+                                       color=COLORS['accent_emerald'] if with_tfc['avg_pnl'] >= 0 else COLORS['accent_crimson']),
                     ], style={'padding': '20px'})
                 ], style={
-                    'backgroundColor': DARK_THEME['card_bg'],
-                    'border': f'1px solid {DARK_THEME["border"]}',
+                    'backgroundColor': COLORS['bg_card'],
+                    'border': f'1px solid {COLORS["border_subtle"]}',
                     'borderRadius': '8px'
                 })
             ], width=6),
@@ -928,17 +913,17 @@ def create_tfc_tab(trades: List[Dict]) -> html.Div:
                         html.Div('WITHOUT Timeframe Continuity (TFC < 4)', style={
                             'fontWeight': '600',
                             'marginBottom': '15px',
-                            'color': DARK_THEME['text_primary']
+                            'color': COLORS['text_primary']
                         }),
                         _tfc_stat_item('Total Trades', str(without_tfc['total_trades'])),
                         _tfc_stat_item('Win Rate', f"{without_tfc['win_rate']:.1f}%",
-                                       color=DARK_THEME['accent_red']),
+                                       color=COLORS['accent_crimson']),
                         _tfc_stat_item('Avg P&L', f"${without_tfc['avg_pnl']:.2f}",
-                                       color=DARK_THEME['accent_green'] if without_tfc['avg_pnl'] >= 0 else DARK_THEME['accent_red']),
+                                       color=COLORS['accent_emerald'] if without_tfc['avg_pnl'] >= 0 else COLORS['accent_crimson']),
                     ], style={'padding': '20px'})
                 ], style={
-                    'backgroundColor': DARK_THEME['card_bg'],
-                    'border': f'1px solid {DARK_THEME["border"]}',
+                    'backgroundColor': COLORS['bg_card'],
+                    'border': f'1px solid {COLORS["border_subtle"]}',
                     'borderRadius': '8px'
                 })
             ], width=6),
@@ -947,9 +932,9 @@ def create_tfc_tab(trades: List[Dict]) -> html.Div:
         # Win Rate Comparison Chart
         dbc.Card([
             dbc.CardHeader('Win Rate Comparison', style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             }),
             dbc.CardBody([
                 dcc.Graph(
@@ -959,15 +944,15 @@ def create_tfc_tab(trades: List[Dict]) -> html.Div:
                     ),
                     config={'displayModeBar': False}
                 )
-            ], style={'backgroundColor': DARK_THEME['card_bg']})
-        ], className='mb-3', style={'border': f'1px solid {DARK_THEME["border"]}'}),
+            ], style={'backgroundColor': COLORS['bg_card']})
+        ], className='mb-3', style={'border': f'1px solid {COLORS["border_subtle"]}'}),
 
         # P&L Comparison Chart
         dbc.Card([
             dbc.CardHeader('Average P&L Comparison', style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             }),
             dbc.CardBody([
                 dcc.Graph(
@@ -976,8 +961,8 @@ def create_tfc_tab(trades: List[Dict]) -> html.Div:
                     ),
                     config={'displayModeBar': False}
                 )
-            ], style={'backgroundColor': DARK_THEME['card_bg']})
-        ], style={'border': f'1px solid {DARK_THEME["border"]}'}),
+            ], style={'backgroundColor': COLORS['bg_card']})
+        ], style={'border': f'1px solid {COLORS["border_subtle"]}'}),
     ])
 
 
@@ -985,14 +970,14 @@ def _tfc_stat_item(label: str, value: str, color: str = None) -> html.Div:
     """Create a TFC stat item."""
     return html.Div([
         html.Div(label, style={
-            'color': DARK_THEME['text_secondary'],
+            'color': COLORS['text_secondary'],
             'fontSize': '0.9rem',
             'marginBottom': '3px'
         }),
         html.Div(value, style={
             'fontSize': '1.4rem',
             'fontWeight': '600',
-            'color': color or DARK_THEME['text_primary']
+            'color': color or COLORS['text_primary']
         })
     ], style={'marginBottom': '10px'})
 
@@ -1036,12 +1021,12 @@ def _create_tfc_comparison_chart(with_val: float, without_val: float,
             text="No TFC data available",
             xref="paper", yref="paper",
             x=0.5, y=0.5, showarrow=False,
-            font=dict(color=DARK_THEME['text_secondary'], size=14)
+            font=dict(color=COLORS['text_secondary'], size=14)
         )
         fig.update_layout(
             height=300,
-            plot_bgcolor=DARK_THEME['background'],
-            paper_bgcolor=DARK_THEME['card_bg'],
+            plot_bgcolor=COLORS['bg_void'],
+            paper_bgcolor=COLORS['bg_card'],
             xaxis=dict(visible=False),
             yaxis=dict(visible=False)
         )
@@ -1051,7 +1036,7 @@ def _create_tfc_comparison_chart(with_val: float, without_val: float,
         go.Bar(
             x=['With Continuity', 'Without Continuity'],
             y=[with_val, without_val],
-            marker_color=[DARK_THEME['accent_green'], DARK_THEME['accent_red']],
+            marker_color=[COLORS['accent_emerald'], COLORS['accent_crimson']],
             text=[f'{with_val:.1f}%', f'{without_val:.1f}%'],
             textposition='auto'
         )
@@ -1061,9 +1046,9 @@ def _create_tfc_comparison_chart(with_val: float, without_val: float,
         margin=dict(l=40, r=20, t=20, b=40),
         height=300,
         yaxis=dict(title=y_label, range=[0, max_y] if max_y else None),
-        plot_bgcolor=DARK_THEME['background'],
-        paper_bgcolor=DARK_THEME['card_bg'],
-        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=DARK_THEME['text_primary'])
+        plot_bgcolor=COLORS['bg_void'],
+        paper_bgcolor=COLORS['bg_card'],
+        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=COLORS['text_primary'])
     )
 
     return fig
@@ -1078,20 +1063,20 @@ def _create_tfc_pnl_comparison_chart(with_pnl: float, without_pnl: float) -> go.
             text="No P&L data available",
             xref="paper", yref="paper",
             x=0.5, y=0.5, showarrow=False,
-            font=dict(color=DARK_THEME['text_secondary'], size=14)
+            font=dict(color=COLORS['text_secondary'], size=14)
         )
         fig.update_layout(
             height=300,
-            plot_bgcolor=DARK_THEME['background'],
-            paper_bgcolor=DARK_THEME['card_bg'],
+            plot_bgcolor=COLORS['bg_void'],
+            paper_bgcolor=COLORS['bg_card'],
             xaxis=dict(visible=False),
             yaxis=dict(visible=False)
         )
         return fig
 
     colors = [
-        DARK_THEME['accent_green'] if with_pnl >= 0 else DARK_THEME['accent_red'],
-        DARK_THEME['accent_green'] if without_pnl >= 0 else DARK_THEME['accent_red']
+        COLORS['accent_emerald'] if with_pnl >= 0 else COLORS['accent_crimson'],
+        COLORS['accent_emerald'] if without_pnl >= 0 else COLORS['accent_crimson']
     ]
 
     fig = go.Figure(data=[
@@ -1108,9 +1093,9 @@ def _create_tfc_pnl_comparison_chart(with_pnl: float, without_pnl: float) -> go.
         margin=dict(l=40, r=20, t=20, b=40),
         height=300,
         yaxis=dict(title='Average P&L ($)'),
-        plot_bgcolor=DARK_THEME['background'],
-        paper_bgcolor=DARK_THEME['card_bg'],
-        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=DARK_THEME['text_primary'])
+        plot_bgcolor=COLORS['bg_void'],
+        paper_bgcolor=COLORS['bg_card'],
+        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=COLORS['text_primary'])
     )
 
     return fig
@@ -1140,14 +1125,14 @@ def create_closed_trades_tab(trades: List[Dict]) -> html.Div:
     return html.Div([
         dbc.Card([
             dbc.CardHeader('Recent Closed Trades', style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             }),
             dbc.CardBody([
                 _create_trades_table(sorted_trades)
-            ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': 0})
-        ], style={'border': f'1px solid {DARK_THEME["border"]}'}),
+            ], style={'backgroundColor': COLORS['bg_card'], 'padding': 0})
+        ], style={'border': f'1px solid {COLORS["border_subtle"]}'}),
     ])
 
 
@@ -1160,7 +1145,7 @@ def _create_trades_table(trades: List[Dict]) -> html.Div:
         return html.Div('No closed trades found', style={
             'textAlign': 'center',
             'padding': '40px 20px',
-            'color': DARK_THEME['text_secondary']
+            'color': COLORS['text_secondary']
         })
 
     total_trades = len(trades)
@@ -1201,9 +1186,9 @@ def _create_trades_table(trades: List[Dict]) -> html.Div:
             style={
                 'padding': '8px 16px',
                 'fontSize': '0.85rem',
-                'color': DARK_THEME['text_secondary'],
-                'borderTop': f'1px solid {DARK_THEME["border"]}',
-                'backgroundColor': DARK_THEME['card_bg']
+                'color': COLORS['text_secondary'],
+                'borderTop': f'1px solid {COLORS["border_subtle"]}',
+                'backgroundColor': COLORS['bg_card']
             }
         ) if total_trades > MAX_TABLE_ROWS else None
     ])
@@ -1237,7 +1222,7 @@ def _create_trade_row(trade: Dict) -> html.Tr:
     return html.Tr([
         html.Td(
             html.Strong(symbol_display[:20]),
-            style={'padding': '12px 16px', 'color': DARK_THEME['text_primary']}
+            style={'padding': '12px 16px', 'color': COLORS['text_primary']}
         ),
         html.Td(
             html.Span(trade.get('pattern', '-'), style={
@@ -1254,43 +1239,43 @@ def _create_trade_row(trade: Dict) -> html.Tr:
             close_date or '-',
             style={
                 'padding': '12px 16px',
-                'color': DARK_THEME['text_secondary'],
+                'color': COLORS['text_secondary'],
                 'fontSize': '0.9rem'
             }
         ),
         html.Td(
             f"${trade.get('entry_price', 0):.2f}",
-            style={'padding': '12px 16px', 'color': DARK_THEME['text_primary']}
+            style={'padding': '12px 16px', 'color': COLORS['text_primary']}
         ),
         html.Td(
             f"${trade.get('exit_price', 0):.2f}",
-            style={'padding': '12px 16px', 'color': DARK_THEME['text_primary']}
+            style={'padding': '12px 16px', 'color': COLORS['text_primary']}
         ),
         html.Td(
             f"${pnl:,.2f}",
             style={
                 'padding': '12px 16px',
-                'color': DARK_THEME['accent_green'] if pnl >= 0 else DARK_THEME['accent_red']
+                'color': COLORS['accent_emerald'] if pnl >= 0 else COLORS['accent_crimson']
             }
         ),
         html.Td(
             f"{pnl_pct:.1f}%",
             style={
                 'padding': '12px 16px',
-                'color': DARK_THEME['accent_green'] if pnl_pct >= 0 else DARK_THEME['accent_red']
+                'color': COLORS['accent_emerald'] if pnl_pct >= 0 else COLORS['accent_crimson']
             }
         ),
         html.Td(
             html.Span(
                 'Yes' if has_tfc else 'No',
                 style={
-                    'color': DARK_THEME['accent_green'] if has_tfc else DARK_THEME['accent_red'],
+                    'color': COLORS['accent_emerald'] if has_tfc else COLORS['accent_crimson'],
                     'fontWeight': '600'
                 }
             ),
             style={'padding': '12px 16px'}
         ),
-    ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
+    ], style={'borderBottom': f'1px solid {COLORS["border_subtle"]}'})
 
 
 # ============================================
@@ -1310,14 +1295,14 @@ def create_pending_tab(signals: List[Dict]) -> html.Div:
     return html.Div([
         dbc.Card([
             dbc.CardHeader('Pending Pattern Confirmation', style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             }),
             dbc.CardBody([
                 _create_pending_table(signals)
-            ], style={'backgroundColor': DARK_THEME['card_bg'], 'padding': 0})
-        ], style={'border': f'1px solid {DARK_THEME["border"]}'}),
+            ], style={'backgroundColor': COLORS['bg_card'], 'padding': 0})
+        ], style={'border': f'1px solid {COLORS["border_subtle"]}'}),
     ])
 
 
@@ -1330,7 +1315,7 @@ def _create_pending_table(signals: List[Dict]) -> html.Div:
         return html.Div('No pending patterns', style={
             'textAlign': 'center',
             'padding': '40px 20px',
-            'color': DARK_THEME['text_secondary']
+            'color': COLORS['text_secondary']
         })
 
     total_signals = len(signals)
@@ -1368,9 +1353,9 @@ def _create_pending_table(signals: List[Dict]) -> html.Div:
             style={
                 'padding': '8px 16px',
                 'fontSize': '0.85rem',
-                'color': DARK_THEME['text_secondary'],
-                'borderTop': f'1px solid {DARK_THEME["border"]}',
-                'backgroundColor': DARK_THEME['card_bg']
+                'color': COLORS['text_secondary'],
+                'borderTop': f'1px solid {COLORS["border_subtle"]}',
+                'backgroundColor': COLORS['bg_card']
             }
         ) if total_signals > MAX_TABLE_ROWS else None
     ])
@@ -1418,7 +1403,7 @@ def _create_pending_row(signal: Dict) -> html.Tr:
             }),
             style={'padding': '12px 16px'}
         ),
-    ], style={'borderBottom': f'1px solid {DARK_THEME["border"]}'})
+    ], style={'borderBottom': f'1px solid {COLORS["border_subtle"]}'})
 
 
 # ============================================
@@ -1474,9 +1459,57 @@ def _calculate_equity_stats(portfolio_history: List[Dict]) -> Dict:
     }
 
 
+def _stat_card(title: str, value: str, subtext: str,
+               value_color: str = None, subtext_color: str = None) -> dbc.Col:
+    """
+    Create a single stats card for equity curve tab.
+
+    DB-5: Extracted helper to reduce duplication in _create_stats_cards().
+
+    Args:
+        title: Card title (uppercase label)
+        value: Main value to display
+        subtext: Secondary text below value
+        value_color: Optional color for value (defaults to text_primary)
+        subtext_color: Optional color for subtext (defaults to text_secondary)
+
+    Returns:
+        dbc.Col containing the card
+    """
+    return dbc.Col([
+        dbc.Card([
+            dbc.CardBody([
+                html.Div(title, style={
+                    'fontSize': '0.75rem',
+                    'color': COLORS['text_secondary'],
+                    'textTransform': 'uppercase',
+                    'letterSpacing': '0.5px',
+                    'marginBottom': '6px',
+                }),
+                html.Div(value, style={
+                    'fontSize': '1.6rem',
+                    'fontWeight': '600',
+                    'color': value_color or COLORS['text_primary'],
+                    'fontFamily': FONTS['mono'],
+                }),
+                html.Div(subtext, style={
+                    'fontSize': '0.85rem',
+                    'color': subtext_color or COLORS['text_secondary'],
+                }),
+            ], style={'padding': '16px'})
+        ], style={
+            'backgroundColor': COLORS['bg_card'],
+            'border': f'1px solid {COLORS["border_subtle"]}',
+            'borderRadius': '8px',
+        })
+    ], width=3)
+
+
 def _create_stats_cards(stats: Dict) -> dbc.Row:
     """
     Create summary stats cards row for equity curve tab.
+
+    DB-5: Refactored to use _stat_card() helper.
 
     Args:
         stats: Dict from _calculate_equity_stats()
@@ -1492,115 +1525,43 @@ def _create_stats_cards(stats: Dict) -> dbc.Row:
     dd_color = COLORS['accent_crimson'] if dd_pct > 0 else COLORS['text_secondary']
 
     return dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.Div('TOTAL RETURN', style={
-                        'fontSize': '0.75rem',
-                        'color': DARK_THEME['text_secondary'],
-                        'textTransform': 'uppercase',
-                        'letterSpacing': '0.5px',
-                        'marginBottom': '6px',
-                    }),
-                    html.Div(f"{ret_pct:+.2f}%", style={
-                        'fontSize': '1.6rem',
-                        'fontWeight': '600',
-                        'color': ret_color,
-                        'fontFamily': FONTS['mono'],
-                    }),
-                    html.Div(f"${ret_dollar:+,.2f}", style={
-                        'fontSize': '0.85rem',
-                        'color': ret_color,
-                    }),
-                ], style={'padding': '16px'})
-            ], style={
-                'backgroundColor': DARK_THEME['card_bg'],
-                'border': f'1px solid {DARK_THEME["border"]}',
-                'borderRadius': '8px',
-            })
-        ], width=3),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.Div('MAX DRAWDOWN', style={
-                        'fontSize': '0.75rem',
-                        'color': DARK_THEME['text_secondary'],
-                        'textTransform': 'uppercase',
-                        'letterSpacing': '0.5px',
-                        'marginBottom': '6px',
-                    }),
-                    html.Div(f"-{dd_pct:.2f}%", style={
-                        'fontSize': '1.6rem',
-                        'fontWeight': '600',
-                        'color': dd_color,
-                        'fontFamily': FONTS['mono'],
-                    }),
-                    html.Div('Peak to trough', style={
-                        'fontSize': '0.85rem',
-                        'color': DARK_THEME['text_secondary'],
-                    }),
-                ], style={'padding': '16px'})
-            ], style={
-                'backgroundColor': DARK_THEME['card_bg'],
-                'border': f'1px solid {DARK_THEME["border"]}',
-                'borderRadius': '8px',
-            })
-        ], width=3),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.Div('STARTING EQUITY', style={
-                        'fontSize': '0.75rem',
-                        'color': DARK_THEME['text_secondary'],
-                        'textTransform': 'uppercase',
-                        'letterSpacing': '0.5px',
-                        'marginBottom': '6px',
-                    }),
-                    html.Div(f"${stats['start_equity']:,.2f}", style={
-                        'fontSize': '1.6rem',
-                        'fontWeight': '600',
-                        'color': DARK_THEME['text_primary'],
-                        'fontFamily': FONTS['mono'],
-                    }),
-                    html.Div(f"{stats['days']} days tracked", style={
-                        'fontSize': '0.85rem',
-                        'color': DARK_THEME['text_secondary'],
-                    }),
-                ], style={'padding': '16px'})
-            ], style={
-                'backgroundColor': DARK_THEME['card_bg'],
-                'border': f'1px solid {DARK_THEME["border"]}',
-                'borderRadius': '8px',
-            })
-        ], width=3),
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.Div('CURRENT EQUITY', style={
-                        'fontSize': '0.75rem',
-                        'color': DARK_THEME['text_secondary'],
-                        'textTransform': 'uppercase',
-                        'letterSpacing': '0.5px',
-                        'marginBottom': '6px',
-                    }),
-                    html.Div(f"${stats['end_equity']:,.2f}", style={
-                        'fontSize': '1.6rem',
-                        'fontWeight': '600',
-                        'color': DARK_THEME['text_primary'],
-                        'fontFamily': FONTS['mono'],
-                    }),
-                    html.Div('Latest snapshot', style={
-                        'fontSize': '0.85rem',
-                        'color': DARK_THEME['text_secondary'],
-                    }),
-                ], style={'padding': '16px'})
-            ], style={
-                'backgroundColor': DARK_THEME['card_bg'],
-                'border': f'1px solid {DARK_THEME["border"]}',
-                'borderRadius': '8px',
-            })
-        ], width=3),
+        _stat_card('TOTAL RETURN', f"{ret_pct:+.2f}%", f"${ret_dollar:+,.2f}",
+                   value_color=ret_color, subtext_color=ret_color),
+        _stat_card('MAX DRAWDOWN', f"-{dd_pct:.2f}%", 'Peak to trough',
+                   value_color=dd_color),
+        _stat_card('STARTING EQUITY', f"${stats['start_equity']:,.2f}",
+                   f"{stats['days']} days tracked"),
+        _stat_card('CURRENT EQUITY', f"${stats['end_equity']:,.2f}",
+                   'Latest snapshot'),
     ], className='mb-3')
+
+
+def _create_empty_placeholder(message: str, height: int = 500) -> html.Div:
+    """
+    Create a centered empty state placeholder.
+
+    DB-5: Consolidated helper for empty chart/data states.
+
+    Args:
+        message: Message to display
+        height: Height in pixels (default 500 for charts)
+
+    Returns:
+        html.Div with centered message
+    """
+    return html.Div(
+        message,
+        style={
+            'textAlign': 'center',
+            'padding': '80px 20px',
+            'color': COLORS['text_secondary'],
+            'fontSize': '1.1rem',
+            'height': f'{height}px',
+            'display': 'flex',
+            'alignItems': 'center',
+            'justifyContent': 'center',
+        }
+    )
 
 
 def _create_equity_chart(history: List[Dict]):
@@ -1614,19 +1575,7 @@ def _create_equity_chart(history: List[Dict]):
         dash_tvlwc.Tvlwc component (or html.Div placeholder if no data)
     """
     if not history:
-        return html.Div(
-            'No portfolio history available',
-            style={
-                'textAlign': 'center',
-                'padding': '80px 20px',
-                'color': DARK_THEME['text_secondary'],
-                'fontSize': '1.1rem',
-                'height': '500px',
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'center',
-            }
-        )
+        return _create_empty_placeholder('No portfolio history available')
 
     # Transform data: {'timestamp'/'date': t, 'equity'/'balance': v} -> {'time': t, 'value': v}
     series_data = []
@@ -1637,14 +1586,7 @@ def _create_equity_chart(history: List[Dict]):
             series_data.append({'time': str(t), 'value': float(v)})
 
     if not series_data:
-        return html.Div(
-            'No valid data points',
-            style={
-                'textAlign': 'center',
-                'padding': '80px 20px',
-                'color': DARK_THEME['text_secondary'],
-            }
-        )
+        return _create_empty_placeholder('No valid data points', height=300)
 
     # Determine line color based on overall return
     start_val = series_data[0]['value']
@@ -1699,17 +1641,17 @@ def create_equity_tab(portfolio_history: List[Dict]) -> html.Div:
         # TradingView Lightweight Chart
         dbc.Card([
             dbc.CardHeader('90-Day Account Equity Curve', style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {DARK_THEME["border"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
             }),
             dbc.CardBody([
                 _create_equity_chart(portfolio_history),
             ], style={
-                'backgroundColor': DARK_THEME['card_bg'],
+                'backgroundColor': COLORS['bg_card'],
                 'padding': '8px',
             })
-        ], style={'border': f'1px solid {DARK_THEME["border"]}'}),
+        ], style={'border': f'1px solid {COLORS["border_subtle"]}'}),
     ])
 
 

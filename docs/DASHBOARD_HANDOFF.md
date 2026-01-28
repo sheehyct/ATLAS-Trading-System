@@ -11,12 +11,38 @@
 | Dashboard URL | http://localhost:8050 |
 | Run Command | `set PYTHONPATH=. && python -m dashboard.app` |
 | Main Entry | `dashboard/app.py` |
-| Last Session | DB-4 (2026-01-28) |
-| Next Session | DB-5 |
+| Last Session | DB-5 (2026-01-28) |
+| Next Session | DB-6 |
 
 ---
 
 ## Session History
+
+### DB-5 (2026-01-28) - Code Simplification + Theme Unification
+
+**Completed:**
+- **Extracted `_stat_card()` helper:** Reduced `_create_stats_cards()` from ~127 lines to ~70 lines. Reusable helper with title, value, subtext, and optional color parameters.
+- **Unified DARK_THEME with config.py COLORS:** Removed local `DARK_THEME` dict (~30 lines). All theme references now use centralized `COLORS` from `dashboard/config.py`. Migration: `card_bg` -> `bg_card`, `border` -> `border_subtle`, `accent_green` -> `accent_emerald`, etc.
+- **Added `_create_empty_placeholder()` helper:** Consolidated empty state rendering for charts into reusable function with configurable message and height.
+
+**Files Modified:**
+- `dashboard/components/strat_analytics_panel.py` - Extracted helpers, unified theme, removed duplication
+
+**Tests:** 224 passed (0 failures)
+
+**Theme Migration Reference:**
+| Old (DARK_THEME) | New (COLORS) |
+|------------------|--------------|
+| `background` | `bg_void` |
+| `card_bg` | `bg_card` |
+| `card_header` | `bg_elevated` |
+| `input_bg` | `bg_surface` |
+| `border` | `border_subtle` |
+| `accent_green` | `accent_emerald` |
+| `accent_red` | `accent_crimson` |
+| `accent_blue` | `accent_electric` |
+
+---
 
 ### DB-4 (2026-01-28) - TradingView Charts + Equity Stats
 
@@ -32,10 +58,7 @@
 
 **Tests:** 224 passed (0 failures)
 
-**Code Simplification Backlog (from code-simplifier review):**
-- Extract `_stat_card()` helper from `_create_stats_cards()` (~70 lines duplication)
-- Consolidate empty chart placeholders in `_create_equity_chart()`
-- DARK_THEME unification (local theme vs config.py COLORS)
+**Note:** Code simplification backlog (stat_card helper, empty placeholders, theme unification) completed in DB-5.
 
 ---
 
@@ -331,20 +354,24 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 
 ---
 
-## Next Session: DB-5
+## Next Session: DB-6
 
-### Primary Goal: Code Simplification & Theme Unification
+### Suggested Goals
 
-**From DB-4 Code Simplifier Review:**
-1. Extract `_stat_card()` helper from `_create_stats_cards()` - reduce 110 lines to ~40 lines
-2. Consolidate empty chart placeholders in `_create_equity_chart()`
-3. Unify DARK_THEME dict with config.py COLORS (pre-existing inconsistency)
+1. **Account selector persistence via `dcc.Store`** (Issue 3)
+   - Persist selector state across tab switches
+   - Use `dcc.Store` component with `storage_type='session'`
 
-### Secondary Goals
-1. Account selector persistence via `dcc.Store` (Issue 3)
-2. Strategy Performance Tab - ensure all strategy types render correctly
-3. Apply TradingView charts to regime price chart for consistency
-4. Add `line_shape='spline'` to regime detection line for smoother transitions
+2. **Apply TradingView charts to regime price chart**
+   - Replace Plotly line chart in regime panel with dash_tvlwc
+   - Consistent chart styling across dashboard
+
+3. **Strategy Performance Tab polish**
+   - Ensure all strategy types render correctly
+   - Add loading states for slow connections
+
+4. **Regime panel line smoothing**
+   - Add `line_shape='spline'` to regime detection line for smoother transitions
 
 ---
 
@@ -357,8 +384,8 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 | DB-3 | Bug fixes, date columns, crypto alignment |
 | DB-4 | TradingView Lightweight Charts, equity stats cards |
 | DB-5 | Code simplification, theme unification |
-| DB-6+ | Future dashboard work |
+| DB-6 | Selector persistence, regime charts, polish |
 
 ---
 
-*Last Updated: 2026-01-28 (DB-4)*
+*Last Updated: 2026-01-28 (DB-5)*
