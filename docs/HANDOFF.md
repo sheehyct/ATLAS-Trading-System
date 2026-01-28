@@ -1,9 +1,49 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 27, 2026 (Session EQUITY-94)
+**Last Updated:** January 28, 2026 (Session EQUITY-95)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 6 IN PROGRESS (Crypto Architecture Unification)
-**Status:** EQUITY-94 COMPLETE - Phase 6.4 coordinator extraction done, bugs investigated
+**Status:** EQUITY-95 COMPLETE - EOD exit bug fixed, Discord audit data source fixed
+
+---
+
+## Session EQUITY-95: EOD Exit Fix + Discord Audit Fix (COMPLETE)
+
+**Date:** January 28, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Both equities daemon bugs fixed, deployed to VPS, verified at market open
+
+### What Was Accomplished
+
+1. **EOD Exit After-Hours Bug Fix (CRITICAL)**
+   - Removed market hours bypass for EOD exits in `position_monitor.py:986`
+   - All exits now respect market hours (no special-casing for EOD)
+   - Changed EOD time from 15:59 to 15:55 (5-min buffer for reliable execution)
+   - Added 4 unit tests for market hours gating (91 tests passing)
+
+2. **Discord Audit Data Source Fix**
+   - Switched from stale `paper_trades.json` to `AlpacaTradingClient.get_closed_trades()`
+   - Live, accurate P&L data from broker using FIFO matching
+   - Updated `daemon.py:_generate_daily_audit()` method
+
+3. **VPS Deployment + Verification**
+   - Code deployed to VPS, daemon restarted (commit cd87f19)
+   - Verified at market open: stale 1H positions (IWM, NVDA) detected and exited correctly
+   - Discord alerts sent for all exits
+   - Full EOD blocking verification pending (requires after 4 PM observation)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/position_monitor.py` | EOD bypass removed, time 15:59->15:55 |
+| `strat/signal_automation/daemon.py` | Audit uses Alpaca API instead of JSON file |
+| `tests/test_signal_automation/test_position_monitor.py` | +4 market hours gate tests |
+
+### Test Results
+
+- Position monitor tests: 91/91 passing
+- Daemon tests: 83/83 passing
 
 ---
 
