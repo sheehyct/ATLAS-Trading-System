@@ -21,13 +21,14 @@ Tab Structure (Reference: strat-analytics-dashboard.html):
 """
 
 import dash_bootstrap_components as dbc
+import dash_tvlwc
 from dash import dcc, html, dash_table
 import plotly.graph_objects as go
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 
-from dashboard.config import COLORS, REFRESH_INTERVALS
+from dashboard.config import COLORS, FONTS, REFRESH_INTERVALS, TVLWC_CHART_OPTIONS
 
 # Dashboard Overhaul: Import progress bar function for Open Positions tab
 from dashboard.components.options_panel import create_trade_progress_display
@@ -1424,9 +1425,264 @@ def _create_pending_row(signal: Dict) -> html.Tr:
 # EQUITY CURVE TAB
 # ============================================
 
+def _calculate_equity_stats(portfolio_history: List[Dict]) -> Dict:
+    """
+    Calculate summary statistics from portfolio history.
+
+    Args:
+        portfolio_history: List of portfolio snapshots with timestamp/date and equity/balance
+
+    Returns:
+        Dict with total_return_pct, total_return_dollar, max_drawdown_pct,
+        start_equity, end_equity, days
+    """
+    if not portfolio_history:
+        return {
+            'total_return_pct': 0.0,
+            'total_return_dollar': 0.0,
+            'max_drawdown_pct': 0.0,
+            'start_equity': 0.0,
+            'end_equity': 0.0,
+            'days': 0,
+        }
+
+    equities = [h.get('equity', h.get('balance', 0)) for h in portfolio_history]
+    start_equity = equities[0] if equities else 0
+    end_equity = equities[-1] if equities else 0
+
+    total_return_dollar = end_equity - start_equity
+    total_return_pct = (total_return_dollar / start_equity * 100) if start_equity else 0.0
+
+    # Peak-to-trough max drawdown
+    max_drawdown_pct = 0.0
+    peak = equities[0] if equities else 0
+    for eq in equities:
+        if eq > peak:
+            peak = eq
+        if peak > 0:
+            dd = (peak - eq) / peak * 100
+            if dd > max_drawdown_pct:
+                max_drawdown_pct = dd
+
+    return {
+        'total_return_pct': total_return_pct,
+        'total_return_dollar': total_return_dollar,
+        'max_drawdown_pct': max_drawdown_pct,
+        'start_equity': start_equity,
+        'end_equity': end_equity,
+        'days': len(equities),
+    }
+
+
+def _create_stats_cards(stats: Dict) -> dbc.Row:
+    """
+    Create summary stats cards row for equity curve tab.
+
+    Args:
+        stats: Dict from _calculate_equity_stats()
+
+    Returns:
+        dbc.Row with 4 metric cards
+    """
+    ret_pct = stats['total_return_pct']
+    ret_dollar = stats['total_return_dollar']
+    dd_pct = stats['max_drawdown_pct']
+
+    ret_color = COLORS['accent_emerald'] if ret_pct >= 0 else COLORS['accent_crimson']
+    dd_color = COLORS['accent_crimson'] if dd_pct > 0 else COLORS['text_secondary']
+
+    return dbc.Row([
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.Div('TOTAL RETURN', style={
+                        'fontSize': '0.75rem',
+                        'color': DARK_THEME['text_secondary'],
+                        'textTransform': 'uppercase',
+                        'letterSpacing': '0.5px',
+                        'marginBottom': '6px',
+                    }),
+                    html.Div(f"{ret_pct:+.2f}%", style={
+                        'fontSize': '1.6rem',
+                        'fontWeight': '600',
+                        'color': ret_color,
+                        'fontFamily': FONTS['mono'],
+                    }),
+                    html.Div(f"${ret_dollar:+,.2f}", style={
+                        'fontSize': '0.85rem',
+                        'color': ret_color,
+                    }),
+                ], style={'padding': '16px'})
+            ], style={
+                'backgroundColor': DARK_THEME['card_bg'],
+                'border': f'1px solid {DARK_THEME["border"]}',
+                'borderRadius': '8px',
+            })
+        ], width=3),
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.Div('MAX DRAWDOWN', style={
+                        'fontSize': '0.75rem',
+                        'color': DARK_THEME['text_secondary'],
+                        'textTransform': 'uppercase',
+                        'letterSpacing': '0.5px',
+                        'marginBottom': '6px',
+                    }),
+                    html.Div(f"-{dd_pct:.2f}%", style={
+                        'fontSize': '1.6rem',
+                        'fontWeight': '600',
+                        'color': dd_color,
+                        'fontFamily': FONTS['mono'],
+                    }),
+                    html.Div('Peak to trough', style={
+                        'fontSize': '0.85rem',
+                        'color': DARK_THEME['text_secondary'],
+                    }),
+                ], style={'padding': '16px'})
+            ], style={
+                'backgroundColor': DARK_THEME['card_bg'],
+                'border': f'1px solid {DARK_THEME["border"]}',
+                'borderRadius': '8px',
+            })
+        ], width=3),
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.Div('STARTING EQUITY', style={
+                        'fontSize': '0.75rem',
+                        'color': DARK_THEME['text_secondary'],
+                        'textTransform': 'uppercase',
+                        'letterSpacing': '0.5px',
+                        'marginBottom': '6px',
+                    }),
+                    html.Div(f"${stats['start_equity']:,.2f}", style={
+                        'fontSize': '1.6rem',
+                        'fontWeight': '600',
+                        'color': DARK_THEME['text_primary'],
+                        'fontFamily': FONTS['mono'],
+                    }),
+                    html.Div(f"{stats['days']} days tracked", style={
+                        'fontSize': '0.85rem',
+                        'color': DARK_THEME['text_secondary'],
+                    }),
+                ], style={'padding': '16px'})
+            ], style={
+                'backgroundColor': DARK_THEME['card_bg'],
+                'border': f'1px solid {DARK_THEME["border"]}',
+                'borderRadius': '8px',
+            })
+        ], width=3),
+        dbc.Col([
+            dbc.Card([
+                dbc.CardBody([
+                    html.Div('CURRENT EQUITY', style={
+                        'fontSize': '0.75rem',
+                        'color': DARK_THEME['text_secondary'],
+                        'textTransform': 'uppercase',
+                        'letterSpacing': '0.5px',
+                        'marginBottom': '6px',
+                    }),
+                    html.Div(f"${stats['end_equity']:,.2f}", style={
+                        'fontSize': '1.6rem',
+                        'fontWeight': '600',
+                        'color': DARK_THEME['text_primary'],
+                        'fontFamily': FONTS['mono'],
+                    }),
+                    html.Div('Latest snapshot', style={
+                        'fontSize': '0.85rem',
+                        'color': DARK_THEME['text_secondary'],
+                    }),
+                ], style={'padding': '16px'})
+            ], style={
+                'backgroundColor': DARK_THEME['card_bg'],
+                'border': f'1px solid {DARK_THEME["border"]}',
+                'borderRadius': '8px',
+            })
+        ], width=3),
+    ], className='mb-3')
+
+
+def _create_equity_chart(history: List[Dict]):
+    """
+    Create TradingView Lightweight Charts equity curve.
+
+    Args:
+        history: List of portfolio snapshots with timestamp/date and equity/balance
+
+    Returns:
+        dash_tvlwc.Tvlwc component (or html.Div placeholder if no data)
+    """
+    if not history:
+        return html.Div(
+            'No portfolio history available',
+            style={
+                'textAlign': 'center',
+                'padding': '80px 20px',
+                'color': DARK_THEME['text_secondary'],
+                'fontSize': '1.1rem',
+                'height': '500px',
+                'display': 'flex',
+                'alignItems': 'center',
+                'justifyContent': 'center',
+            }
+        )
+
+    # Transform data: {'timestamp'/'date': t, 'equity'/'balance': v} -> {'time': t, 'value': v}
+    series_data = []
+    for h in history:
+        t = h.get('timestamp') or h.get('date', '')
+        v = h.get('equity', h.get('balance', 0))
+        if t:
+            series_data.append({'time': str(t), 'value': float(v)})
+
+    if not series_data:
+        return html.Div(
+            'No valid data points',
+            style={
+                'textAlign': 'center',
+                'padding': '80px 20px',
+                'color': DARK_THEME['text_secondary'],
+            }
+        )
+
+    # Determine line color based on overall return
+    start_val = series_data[0]['value']
+    end_val = series_data[-1]['value']
+    line_color = COLORS['accent_emerald'] if end_val >= start_val else COLORS['accent_crimson']
+
+    # Area fill with low opacity matching the line color
+    if end_val >= start_val:
+        top_color = 'rgba(0, 220, 130, 0.25)'
+        bottom_color = 'rgba(0, 220, 130, 0.02)'
+    else:
+        top_color = 'rgba(255, 59, 92, 0.25)'
+        bottom_color = 'rgba(255, 59, 92, 0.02)'
+
+    return dash_tvlwc.Tvlwc(
+        id='equity-curve-tvlwc',
+        seriesTypes=['Area'],
+        seriesData=[series_data],
+        seriesOptions=[{
+            'lineColor': line_color,
+            'topColor': top_color,
+            'bottomColor': bottom_color,
+            'lineWidth': 2,
+            'priceFormat': {
+                'type': 'price',
+                'precision': 2,
+                'minMove': 0.01,
+            },
+        }],
+        chartOptions=TVLWC_CHART_OPTIONS,
+        width='100%',
+        height=500,
+    )
+
+
 def create_equity_tab(portfolio_history: List[Dict]) -> html.Div:
     """
-    Create Equity Curve tab.
+    Create Equity Curve tab with summary stats and TradingView chart.
 
     Args:
         portfolio_history: List of portfolio snapshots with date, equity
@@ -1434,7 +1690,13 @@ def create_equity_tab(portfolio_history: List[Dict]) -> html.Div:
     Returns:
         Equity curve tab content
     """
+    stats = _calculate_equity_stats(portfolio_history)
+
     return html.Div([
+        # Summary stats cards
+        _create_stats_cards(stats),
+
+        # TradingView Lightweight Chart
         dbc.Card([
             dbc.CardHeader('90-Day Account Equity Curve', style={
                 'backgroundColor': DARK_THEME['card_bg'],
@@ -1442,54 +1704,13 @@ def create_equity_tab(portfolio_history: List[Dict]) -> html.Div:
                 'borderBottom': f'1px solid {DARK_THEME["border"]}'
             }),
             dbc.CardBody([
-                dcc.Graph(
-                    figure=_create_equity_chart(portfolio_history),
-                    config={'displayModeBar': True}
-                )
-            ], style={'backgroundColor': DARK_THEME['card_bg']})
+                _create_equity_chart(portfolio_history),
+            ], style={
+                'backgroundColor': DARK_THEME['card_bg'],
+                'padding': '8px',
+            })
         ], style={'border': f'1px solid {DARK_THEME["border"]}'}),
     ])
-
-
-def _create_equity_chart(history: List[Dict]) -> go.Figure:
-    """Create equity curve line chart."""
-    if not history:
-        fig = go.Figure()
-        fig.add_annotation(
-            text="No portfolio history available",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False
-        )
-        fig.update_layout(height=400)
-        return fig
-
-    dates = [h.get('timestamp') or h.get('date', '') for h in history]
-    balances = [h.get('equity', h.get('balance', 0)) for h in history]
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=dates,
-        y=balances,
-        mode='lines',
-        fill='tozeroy',
-        name='Account Equity',
-        line=dict(color=DARK_THEME['accent_blue'], width=2),
-        fillcolor='rgba(0, 102, 204, 0.1)'
-    ))
-
-    fig.update_layout(
-        margin=dict(l=50, r=30, t=30, b=50),
-        height=400,
-        xaxis=dict(title='Date', type='date', tickformat='%m/%d'),
-        yaxis=dict(title='Balance ($)'),
-        hovermode='x unified',
-        plot_bgcolor=DARK_THEME['background'],
-        paper_bgcolor=DARK_THEME['card_bg'],
-        font=dict(family='-apple-system, BlinkMacSystemFont, sans-serif', color=DARK_THEME['text_primary'])
-    )
-
-    return fig
 
 
 # ============================================

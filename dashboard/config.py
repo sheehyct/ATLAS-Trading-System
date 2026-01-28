@@ -355,6 +355,33 @@ LIGHTWEIGHT_CHARTS_CONFIG = {
     },
 }
 
+# Configuration for dash_tvlwc (TradingView Lightweight Charts Dash component)
+# Uses JavaScript API format (camelCase keys) as required by dash_tvlwc
+TVLWC_CHART_OPTIONS = {
+    'layout': {
+        'background': {'type': 'solid', 'color': COLORS['background_dark']},
+        'textColor': COLORS['text_primary'],
+        'fontSize': 12,
+        'fontFamily': FONTS['mono'],
+    },
+    'grid': {
+        'vertLines': {'color': COLORS['grid'], 'style': 1},
+        'horzLines': {'color': COLORS['grid'], 'style': 1},
+    },
+    'crosshair': {'mode': 0},
+    'rightPriceScale': {
+        'borderColor': COLORS['grid'],
+        'scaleMargins': {'top': 0.1, 'bottom': 0.1},
+    },
+    'timeScale': {
+        'borderColor': COLORS['grid'],
+        'timeVisible': True,
+        'secondsVisible': False,
+    },
+    'handleScroll': True,
+    'handleScale': True,
+}
+
 # ============================================
 # PERFORMANCE THRESHOLDS
 # ============================================

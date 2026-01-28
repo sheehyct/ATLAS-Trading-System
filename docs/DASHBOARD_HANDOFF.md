@@ -11,12 +11,33 @@
 | Dashboard URL | http://localhost:8050 |
 | Run Command | `set PYTHONPATH=. && python -m dashboard.app` |
 | Main Entry | `dashboard/app.py` |
-| Last Session | DB-3 (2026-01-27) |
-| Next Session | DB-4 |
+| Last Session | DB-4 (2026-01-28) |
+| Next Session | DB-5 |
 
 ---
 
 ## Session History
+
+### DB-4 (2026-01-28) - TradingView Charts + Equity Stats
+
+**Completed:**
+- **TradingView Lightweight Charts:** Replaced Plotly equity curve with `dash_tvlwc` area chart. Uses emerald line for positive return, crimson for negative. 500px height for better aspect ratio.
+- **TVLWC Config:** Added `TVLWC_CHART_OPTIONS` dict to `dashboard/config.py` with dark theme styling (camelCase JS API format).
+- **Equity Stats Cards:** Added 4 summary metric cards above equity chart: Total Return ($ and %), Max Drawdown (peak-to-trough %), Starting Equity, Current Equity.
+- **Helper Functions:** Added `_calculate_equity_stats()` for stats computation, `_create_stats_cards()` for card rendering.
+
+**Files Modified:**
+- `dashboard/config.py` - Added TVLWC_CHART_OPTIONS dict
+- `dashboard/components/strat_analytics_panel.py` - Replaced equity chart, added stats cards, new helpers
+
+**Tests:** 224 passed (0 failures)
+
+**Code Simplification Backlog (from code-simplifier review):**
+- Extract `_stat_card()` helper from `_create_stats_cards()` (~70 lines duplication)
+- Consolidate empty chart placeholders in `_create_equity_chart()`
+- DARK_THEME unification (local theme vs config.py COLORS)
+
+---
 
 ### DB-3 (2026-01-27) - Bug Fixes, Date Columns, Crypto Alignment
 
@@ -77,25 +98,15 @@
 
 ## Known Issues (Priority Order)
 
-### Issue 1: Equity Curve UI/UX
-**Priority:** Medium | **Severity:** Poor UX | **Session:** DB-2
+### Issue 1: Equity Curve UI/UX - RESOLVED (DB-4)
+**Status:** RESOLVED in DB-4
 
-**Problem:**
-The 90-day equity curve chart is difficult to read:
-- Chart is too wide/thin (aspect ratio)
-- Axis labels are small and hard to read
-- Grid lines lack contrast
-- No clear visual hierarchy
-- Missing key stats (total return %, max drawdown, etc.)
-
-**Proposed Fix:**
-- Increase chart height for better aspect ratio
-- Add summary stats card above chart (Total Return, Max DD, Sharpe)
-- Improve axis label sizing and contrast
-- Add hover tooltips with daily P/L values
-- Consider adding drawdown overlay or separate panel
-
-**Location:** `dashboard/components/strat_analytics_panel.py` or callback in `app.py`
+**Solution Implemented:**
+- Replaced Plotly with TradingView Lightweight Charts (`dash_tvlwc`)
+- Increased chart height to 500px for better aspect ratio
+- Added 4 summary stats cards: Total Return, Max Drawdown, Starting Equity, Current Equity
+- Color-coded chart line (emerald for positive, crimson for negative return)
+- Dark theme styling via `TVLWC_CHART_OPTIONS` config
 
 ---
 
@@ -320,43 +331,20 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 
 ---
 
-## Next Session: DB-4
+## Next Session: DB-5
 
-### Primary Goal: TradingView-Quality Charts
-Replace Plotly equity curve (and optionally regime price chart) with TradingView
-Lightweight Charts for professional-grade rendering.
+### Primary Goal: Code Simplification & Theme Unification
 
-**Research Completed (DB-2):**
-- `lightweight-charts` 2.1 is already installed
-- `dash-tradingview` (`dash_tvlwc`) is the Dash integration wrapper
-  - PyPI: `pip install dash_tvlwc` (v0.1.1, Feb 2023)
-  - GitHub: https://github.com/tysonwu/dash-tradingview
-  - Supports: candlestick, line, area, histogram, baseline chart types
-  - Native Dash component (no iframes needed)
-  - **Needs compatibility test with Dash 3.2**
-
-**Implementation Steps:**
-1. Install `dash_tvlwc` and verify it works with Dash 3.2
-2. If compatible:
-   - Replace equity curve chart in `strat_analytics_panel.py`
-   - Style to match dashboard dark theme
-   - Add summary stats card above chart (Total Return, Max DD)
-   - Consider replacing regime price chart for consistency
-3. If incompatible:
-   - Fall back to Plotly with `line_shape='spline'` + better styling
-   - Increase chart height, improve axis labels, add hover tooltips
-
-**Files to Modify:**
-- `dashboard/components/strat_analytics_panel.py` - equity curve chart
-- `dashboard/visualizations/regime_viz.py` - regime price chart (optional)
-- `dashboard/app.py` - equity curve callback (may need data format changes)
+**From DB-4 Code Simplifier Review:**
+1. Extract `_stat_card()` helper from `_create_stats_cards()` - reduce 110 lines to ~40 lines
+2. Consolidate empty chart placeholders in `_create_equity_chart()`
+3. Unify DARK_THEME dict with config.py COLORS (pre-existing inconsistency)
 
 ### Secondary Goals
-1. Fix remaining UI/UX issues across all pages (see Known Issues 2 and 3)
-2. Add `line_shape='spline'` to regime detection line for smoother transitions
-3. Improve overall visual hierarchy and spacing
-4. Strategy Performance Tab - ensure all strategy types render correctly
-5. Account selector persistence via `dcc.Store` (Issue 3)
+1. Account selector persistence via `dcc.Store` (Issue 3)
+2. Strategy Performance Tab - ensure all strategy types render correctly
+3. Apply TradingView charts to regime price chart for consistency
+4. Add `line_shape='spline'` to regime detection line for smoother transitions
 
 ---
 
@@ -367,9 +355,10 @@ Lightweight Charts for professional-grade rendering.
 | DB-1 | STRAT Analytics selectors, continuation blocking |
 | DB-2 | Trade metadata store, loader fixes, singleton pattern |
 | DB-3 | Bug fixes, date columns, crypto alignment |
-| DB-4 | TradingView-quality charts, UI/UX polish |
-| DB-5+ | Future dashboard work |
+| DB-4 | TradingView Lightweight Charts, equity stats cards |
+| DB-5 | Code simplification, theme unification |
+| DB-6+ | Future dashboard work |
 
 ---
 
-*Last Updated: 2026-01-27 (DB-3)*
+*Last Updated: 2026-01-28 (DB-4)*
