@@ -114,10 +114,10 @@ class TestMonitoringConfig:
         assert config.use_market_orders is True
 
     def test_default_eod_exit_time(self):
-        """Test default EOD exit time is 15:59."""
+        """Test default EOD exit time is 15:55 (EQUITY-95: 5-min buffer)."""
         config = MonitoringConfig()
         assert config.eod_exit_hour == 15
-        assert config.eod_exit_minute == 59
+        assert config.eod_exit_minute == 55
 
     def test_default_hourly_target_rr(self):
         """Test default hourly target R:R is 1.0."""
@@ -988,3 +988,151 @@ class TestPositionMonitorIntegration:
         result = monitor._check_position(pos)
         assert result is not None
         assert result.reason == ExitReason.STOP_HIT
+
+
+# =============================================================================
+# Execute Exit Market Hours Gate Tests (EQUITY-95)
+# =============================================================================
+
+class TestExecuteExitMarketHoursGate:
+    """
+    Tests for execute_exit market hours gating.
+
+    EQUITY-95: All exits must respect market hours, including EOD.
+    This prevents after-hours order spam when Alpaca rejects options orders.
+    """
+
+    @pytest.fixture
+    def monitor_with_position(self):
+        """Create a monitor with a tracked position."""
+        config = MonitoringConfig()
+        monitor = PositionMonitor(config=config)
+
+        # Add a position to track
+        pos = TrackedPosition(
+            osi_symbol='SPY250120C00450000',
+            signal_key='SPY_1H_test',
+            symbol='SPY',
+            direction='CALL',
+            entry_trigger=450.0,
+            target_price=460.0,
+            stop_price=445.0,
+            pattern_type='2-1-2U',
+            timeframe='1H',
+            entry_price=5.50,
+            contracts=2,
+            entry_time=datetime.now() - timedelta(hours=1),
+            expiration=(datetime.now() + timedelta(days=10)).strftime('%Y-%m-%d'),
+        )
+        pos.current_price = 6.00
+        pos.unrealized_pnl = 100.0
+        monitor._positions[pos.osi_symbol] = pos
+
+        # Mock trading client
+        monitor.trading_client = Mock()
+        monitor.trading_client.close_option_position = Mock(return_value={'filled_avg_price': 6.00})
+
+        return monitor
+
+    def test_eod_exit_blocked_after_market_close(self, monitor_with_position):
+        """EOD exits should be blocked when market is closed."""
+        monitor = monitor_with_position
+
+        # Mock market as closed (after 16:00 ET)
+        with patch.object(monitor, '_is_market_hours', return_value=False):
+            signal = ExitSignal(
+                osi_symbol='SPY250120C00450000',
+                signal_key='SPY_1H_test',
+                reason=ExitReason.EOD_EXIT,
+                underlying_price=455.0,
+                current_option_price=6.00,
+                unrealized_pnl=100.0,
+                dte=10,
+            )
+
+            result = monitor.execute_exit(signal)
+
+            # Exit should be blocked - returns None
+            assert result is None
+            # Trading client should NOT be called
+            monitor.trading_client.close_option_position.assert_not_called()
+
+    def test_eod_exit_allowed_during_market_hours(self, monitor_with_position):
+        """EOD exits should execute when market is open."""
+        monitor = monitor_with_position
+
+        # Mock market as open (before 16:00 ET)
+        with patch.object(monitor, '_is_market_hours', return_value=True):
+            signal = ExitSignal(
+                osi_symbol='SPY250120C00450000',
+                signal_key='SPY_1H_test',
+                reason=ExitReason.EOD_EXIT,
+                underlying_price=455.0,
+                current_option_price=6.00,
+                unrealized_pnl=100.0,
+                dte=10,
+            )
+
+            result = monitor.execute_exit(signal)
+
+            # Exit should succeed
+            assert result is not None
+            assert result['filled_avg_price'] == 6.00
+            # Trading client SHOULD be called
+            monitor.trading_client.close_option_position.assert_called_once()
+
+    def test_all_exit_types_blocked_after_market_close(self, monitor_with_position):
+        """All exit types should be blocked when market is closed."""
+        monitor = monitor_with_position
+
+        exit_types = [
+            ExitReason.EOD_EXIT,
+            ExitReason.TARGET_HIT,
+            ExitReason.STOP_HIT,
+            ExitReason.DTE_EXIT,
+            ExitReason.MAX_LOSS,
+        ]
+
+        with patch.object(monitor, '_is_market_hours', return_value=False):
+            for exit_type in exit_types:
+                signal = ExitSignal(
+                    osi_symbol='SPY250120C00450000',
+                    signal_key='SPY_1H_test',
+                    reason=exit_type,
+                    underlying_price=455.0,
+                    current_option_price=6.00,
+                    unrealized_pnl=100.0,
+                    dte=10,
+                )
+
+                result = monitor.execute_exit(signal)
+                assert result is None, f"{exit_type} should be blocked after market close"
+
+        # Trading client should never have been called
+        monitor.trading_client.close_option_position.assert_not_called()
+
+    def test_stale_1h_exit_blocked_after_hours(self, monitor_with_position):
+        """
+        Stale 1H positions attempting exit after hours should be blocked.
+
+        They will be caught again at market open the next morning.
+        """
+        monitor = monitor_with_position
+
+        with patch.object(monitor, '_is_market_hours', return_value=False):
+            # Stale positions still use EOD_EXIT reason
+            signal = ExitSignal(
+                osi_symbol='SPY250120C00450000',
+                signal_key='SPY_1H_test',
+                reason=ExitReason.EOD_EXIT,
+                underlying_price=455.0,
+                current_option_price=6.00,
+                unrealized_pnl=100.0,
+                dte=10,
+                details="STALE 1H trade - entered yesterday",
+            )
+
+            result = monitor.execute_exit(signal)
+
+            # Should be blocked - will retry at market open
+            assert result is None

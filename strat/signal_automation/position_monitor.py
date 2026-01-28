@@ -73,9 +73,10 @@ class MonitoringConfig:
 
     # Session EQUITY-35: EOD exit for hourly trades
     # All 1H timeframe trades must exit before market close to avoid overnight gap risk
-    # Session EQUITY-45: Changed from 15:55 to 15:59 to capture late momentum moves
+    # Session EQUITY-95: Changed from 15:59 back to 15:55 for reliable execution
+    # 5-minute buffer accounts for: position check cycle (60s), order latency, fill time
     eod_exit_hour: int = 15              # Hour in ET for EOD exit
-    eod_exit_minute: int = 59            # Minute in ET for EOD exit (15:59 = 1 min buffer)
+    eod_exit_minute: int = 55            # Minute in ET for EOD exit (15:55 = 5 min buffer)
 
     # Session EQUITY-36: Optimal exit strategy
     # 1H patterns get reduced target (1.0x R:R instead of 1.5x)
@@ -979,10 +980,11 @@ class PositionMonitor:
             Order result or None if failed
         """
         # Session 83K-77: Skip exits outside market hours
-        # Session EQUITY-45: Allow EOD exits to bypass market hours check
-        # EOD exits at 15:59 can race with market close at 16:00; we must
-        # allow them through since Alpaca will reject if market truly closed
-        if exit_signal.reason != ExitReason.EOD_EXIT and not self._is_market_hours():
+        # Session EQUITY-95: All exits respect market hours, including EOD.
+        # EOD fires at 15:59 while market is still open (< 16:00). After close,
+        # exits are blocked here; stale 1H positions exit next morning via
+        # _is_stale_1h_position() check at market open.
+        if not self._is_market_hours():
             logger.debug(
                 f"Skipping exit for {exit_signal.osi_symbol}: "
                 f"outside market hours ({exit_signal.reason.value})"

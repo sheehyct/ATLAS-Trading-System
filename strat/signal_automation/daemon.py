@@ -1057,18 +1057,20 @@ class SignalDaemon:
         - Open positions summary
         - Anomaly detection
 
+        EQUITY-95: Switched from paper_trades.json to Alpaca get_closed_trades()
+        for live, accurate trade data.
+
         Returns:
             Dictionary with audit data for Discord reporting
         """
-        import json
-        from pathlib import Path
-        from datetime import date
+        from datetime import date, datetime, timezone
 
-        today = date.today().isoformat()
+        today = date.today()
+        today_iso = today.isoformat()
 
         # Initialize audit data
         audit_data = {
-            'date': today,
+            'date': today_iso,
             'trades_today': 0,
             'wins': 0,
             'losses': 0,
@@ -1078,23 +1080,26 @@ class SignalDaemon:
             'anomalies': [],
         }
 
-        # Load paper trades
-        # EQUITY-84: Use absolute path to avoid issues when daemon runs from different cwd
-        paper_trades_path = Path(__file__).parent.parent.parent / 'paper_trades' / 'paper_trades.json'
-        if paper_trades_path.exists():
+        # EQUITY-95: Get closed trades from Alpaca instead of paper_trades.json
+        # This ensures we have accurate, live data from the broker
+        if self.executor and hasattr(self.executor, '_trading_client') and self.executor._trading_client:
             try:
-                with open(paper_trades_path, 'r') as f:
-                    data = json.load(f)
-                    trades = data if isinstance(data, list) else data.get('trades', [])
+                # Get start of today in UTC for the Alpaca query
+                start_of_today = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+                closed_trades = self.executor._trading_client.get_closed_trades(
+                    after=start_of_today,
+                    options_only=True
+                )
 
-                # Filter today's closed trades
+                # Process today's closed trades
                 gross_profit = 0.0
                 gross_loss = 0.0
-                for trade in trades:
-                    exit_time = trade.get('exit_time', '')
-                    if exit_time and exit_time.startswith(today):
+                for trade in closed_trades:
+                    # Filter to today's trades (sell_time_dt is the close time)
+                    sell_time = trade.get('sell_time_dt')
+                    if sell_time and sell_time.date() == today:
                         audit_data['trades_today'] += 1
-                        pnl = trade.get('pnl_dollars', 0)
+                        pnl = trade.get('realized_pnl', 0)
                         audit_data['total_pnl'] += pnl
                         if pnl > 0:
                             audit_data['wins'] += 1
@@ -1107,13 +1112,12 @@ class SignalDaemon:
                 if gross_loss > 0:
                     audit_data['profit_factor'] = gross_profit / gross_loss
 
-            except (json.JSONDecodeError, KeyError, IOError) as e:
-                logger.error(f"Failed to load paper trades for audit: {e}")
-                audit_data['anomalies'].append(f"Failed to load trades: {e}")
+            except Exception as e:
+                logger.error(f"Failed to get closed trades from Alpaca: {e}")
+                audit_data['anomalies'].append(f"Failed to get trades from Alpaca: {e}")
         else:
-            # EQUITY-84: Log warning if paper trades file not found
-            logger.warning(f"Paper trades file not found at {paper_trades_path.absolute()}")
-            audit_data['anomalies'].append(f"Paper trades file not found: {paper_trades_path}")
+            logger.warning("No trading client available for audit - executor not configured")
+            audit_data['anomalies'].append("Trading client not available")
 
         # Get open positions from position monitor
         if self.position_monitor is not None:
