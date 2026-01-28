@@ -110,7 +110,7 @@ def create_regime_timeline(
                 y=prices,
                 mode='lines',
                 name='Price',
-                line=dict(color=COLORS['price_line'], width=1.5),
+                line=dict(color=COLORS['price_line'], width=1.5, shape='spline'),
                 hovertemplate='<b>Price:</b> $%{y:.2f}<br><b>Date:</b> %{x}<extra></extra>'
             ),
             row=1, col=1
@@ -161,7 +161,7 @@ def create_regime_timeline(
                 segment_dates = dates[start_idx:end_idx + 1] if end_idx < len(dates) else dates[start_idx:]
                 segment_values = regime_numeric.iloc[start_idx:end_idx + 1] if end_idx < len(regime_numeric) else regime_numeric.iloc[start_idx:]
 
-                # Add colored line segment
+                # Add colored line segment with smooth transitions
                 fig.add_trace(
                     go.Scatter(
                         x=segment_dates,
@@ -171,7 +171,8 @@ def create_regime_timeline(
                         showlegend=(start_idx == 0),  # Only show legend for first segment
                         line=dict(
                             color=regime_line_colors.get(current_regime, COLORS['text_secondary']),
-                            width=3
+                            width=3,
+                            shape='spline'
                         ),
                         hovertemplate=f'<b>Regime:</b> {current_regime}<extra></extra>',
                     ),

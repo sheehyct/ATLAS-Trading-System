@@ -2145,6 +2145,71 @@ def update_market_store(market):
     return market
 
 
+# DB-6: Selector persistence callbacks
+# Save selector values to session storage when they change
+
+@app.callback(
+    Output('strat-account-store', 'data'),
+    Input('strat-account-selector', 'value'),
+    prevent_initial_call=True
+)
+def save_account_selection(account):
+    """Save account selection to session storage."""
+    return account
+
+
+@app.callback(
+    Output('strat-strategy-store', 'data'),
+    Input('strat-strategy-selector', 'value'),
+    prevent_initial_call=True
+)
+def save_strategy_selection(strategy):
+    """Save strategy selection to session storage."""
+    return strategy
+
+
+@app.callback(
+    Output('strat-market-store', 'data'),
+    Input('strat-market-selector', 'value'),
+    prevent_initial_call=True
+)
+def save_market_selection(market):
+    """Save market selection to session storage."""
+    return market
+
+
+# Restore selector values from session storage on page load
+
+@app.callback(
+    Output('strat-account-selector', 'value'),
+    Input('strat-account-store', 'data'),
+    prevent_initial_call=True
+)
+def restore_account_selection(stored_account):
+    """Restore account selection from session storage."""
+    return stored_account or 'SMALL'
+
+
+@app.callback(
+    Output('strat-strategy-selector', 'value'),
+    Input('strat-strategy-store', 'data'),
+    prevent_initial_call=True
+)
+def restore_strategy_selection(stored_strategy):
+    """Restore strategy selection from session storage."""
+    return stored_strategy or 'all'
+
+
+@app.callback(
+    Output('strat-market-selector', 'value'),
+    Input('strat-market-store', 'data'),
+    prevent_initial_call=True
+)
+def restore_market_selection(stored_market):
+    """Restore market selection from session storage."""
+    return stored_market or 'options'
+
+
 # ============================================
 # RUN SERVER
 # ============================================

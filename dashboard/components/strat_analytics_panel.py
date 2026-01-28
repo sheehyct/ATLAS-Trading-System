@@ -203,6 +203,11 @@ def create_strat_analytics_panel():
         # Store for current market selection
         dcc.Store(id='strat-current-market', data='options'),
 
+        # DB-6: Session-persistent stores for selector state across tab switches
+        dcc.Store(id='strat-account-store', storage_type='session', data='SMALL'),
+        dcc.Store(id='strat-strategy-store', storage_type='session', data='all'),
+        dcc.Store(id='strat-market-store', storage_type='session', data='options'),
+
     ], fluid=True, style={'backgroundColor': COLORS['bg_void'], 'minHeight': '100vh'})
 
 

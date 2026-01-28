@@ -11,12 +11,34 @@
 | Dashboard URL | http://localhost:8050 |
 | Run Command | `set PYTHONPATH=. && python -m dashboard.app` |
 | Main Entry | `dashboard/app.py` |
-| Last Session | DB-5 (2026-01-28) |
-| Next Session | DB-6 |
+| Last Session | DB-6 (2026-01-28) |
+| Next Session | DB-7 |
 
 ---
 
 ## Session History
+
+### DB-6 (2026-01-28) - Selector Persistence + Chart Smoothing
+
+**Completed:**
+- **Account selector persistence via `dcc.Store`:** Added session-persistent stores (`strat-account-store`, `strat-strategy-store`, `strat-market-store`) with `storage_type='session'`. Selector values now persist across tab switches. Added 6 callbacks: 3 to save selector values to stores, 3 to restore values on page load.
+- **Regime panel line smoothing:** Added `line_shape='spline'` to both the price line and regime state indicator lines in `regime_viz.py` for smoother chart transitions.
+- **TradingView for regime panel:** Investigated but not implemented. The regime timeline requires complex subplots (70/30 split) and regime shading (vrect) that `dash_tvlwc` does not support. Keeping Plotly with enhanced styling.
+- **Strategy Performance Tab:** Already polished in DB-3 (dbc.Select fix, error handling). No additional changes needed.
+
+**Files Modified:**
+- `dashboard/components/strat_analytics_panel.py` - Added 3 session-persistent dcc.Store components
+- `dashboard/app.py` - Added 6 callbacks for selector persistence (save/restore)
+- `dashboard/visualizations/regime_viz.py` - Added `shape='spline'` to price and regime lines
+
+**Tests:** 224 passed (0 failures)
+
+**Technical Notes:**
+- `dcc.Store(storage_type='session')` uses browser sessionStorage, persists until tab/window closes
+- `prevent_initial_call=True` prevents callbacks from firing on page load (only on value changes)
+- Regime panel architecture (subplots + shading) not compatible with TVLWC
+
+---
 
 ### DB-5 (2026-01-28) - Code Simplification + Theme Unification
 
@@ -151,14 +173,13 @@ Multiple pages need UI improvements for professional appearance:
 
 ---
 
-### Issue 3: Account Selector Not Persisted
-**Priority:** Low | **Severity:** Minor UX | **Session:** DB-2
+### Issue 3: Account Selector Not Persisted - RESOLVED (DB-6)
+**Status:** RESOLVED in DB-6
 
-**Problem:**
-When switching between tabs, the account/market/strategy selectors reset to defaults instead of persisting user's last selection.
-
-**Proposed Fix:**
-Use `dcc.Store` to persist selector state across tab switches.
+**Solution Implemented:**
+- Added 3 session-persistent `dcc.Store` components (`strat-account-store`, `strat-strategy-store`, `strat-market-store`)
+- Added 6 callbacks: 3 to save selector values on change, 3 to restore on page load
+- Uses `storage_type='session'` for persistence until browser tab closes
 
 ---
 
@@ -354,24 +375,25 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 
 ---
 
-## Next Session: DB-6
+## Next Session: DB-7
 
 ### Suggested Goals
 
-1. **Account selector persistence via `dcc.Store`** (Issue 3)
-   - Persist selector state across tab switches
-   - Use `dcc.Store` component with `storage_type='session'`
+1. **Benchmark comparison for equity curve**
+   - Overlay SPY buy-and-hold for comparison on equity chart
+   - Calculate alpha vs benchmark
 
-2. **Apply TradingView charts to regime price chart**
-   - Replace Plotly line chart in regime panel with dash_tvlwc
-   - Consistent chart styling across dashboard
+2. **Trade markers on equity curve**
+   - Mark entry/exit points on equity curve
+   - Visual indication of trade timing
 
-3. **Strategy Performance Tab polish**
-   - Ensure all strategy types render correctly
-   - Add loading states for slow connections
+3. **Drawdown visualization**
+   - Add separate drawdown chart or overlay
+   - Show peak-to-trough drawdown periods
 
-4. **Regime panel line smoothing**
-   - Add `line_shape='spline'` to regime detection line for smoother transitions
+4. **Real-time P/L for open positions**
+   - WebSocket updates for live P/L
+   - More frequent refresh for active trading
 
 ---
 
@@ -384,8 +406,9 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 | DB-3 | Bug fixes, date columns, crypto alignment |
 | DB-4 | TradingView Lightweight Charts, equity stats cards |
 | DB-5 | Code simplification, theme unification |
-| DB-6 | Selector persistence, regime charts, polish |
+| DB-6 | Selector persistence, line smoothing |
+| DB-7 | Benchmark comparison, trade markers, drawdown viz |
 
 ---
 
-*Last Updated: 2026-01-28 (DB-5)*
+*Last Updated: 2026-01-28 (DB-6)*
