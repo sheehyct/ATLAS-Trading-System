@@ -11,12 +11,35 @@
 | Dashboard URL | http://localhost:8050 |
 | Run Command | `set PYTHONPATH=. && python -m dashboard.app` |
 | Main Entry | `dashboard/app.py` |
-| Last Session | DB-2 (2026-01-26) |
-| Next Session | DB-3 |
+| Last Session | DB-3 (2026-01-27) |
+| Next Session | DB-4 |
 
 ---
 
 ## Session History
+
+### DB-3 (2026-01-27) - Bug Fixes, Date Columns, Crypto Alignment
+
+**Completed:**
+- **Strategy Performance Tab Fix:** Replaced `dcc.Dropdown` with `dbc.Select` to fix dropdown clipping and dark theme rendering issues. Updated card styling to use consistent `bg_card`/`bg_void`/`border_subtle` config keys.
+- **STRAT Analytics Connection Error UX:** Replaced terse error text with informative `_create_connection_error_panel()` showing service name, error detail, troubleshooting hint, and `/diagnostic` endpoint reference.
+- **Closed Trades Date Column:** Added "Closed" column to closed trades table showing sell date/time. Sources: `sell_time_display` (options), `exit_time` ISO parse (crypto).
+- **Open Positions Date Column:** Added "Opened" column to open positions table showing open date/time. Sources: `entry_time_et` (options from signal store), `entry_time` ISO parse (crypto).
+- **Crypto Spot/Derivatives Alignment:** Updated market selector label to "Crypto (Spot/Derivs)", updated panel subtitle to clarify "Pattern detection on underlying/spot -- execution via options or derivatives", added header note to crypto panel "(Spot Detection / Derivatives Execution)".
+
+**Files Modified:**
+- `dashboard/components/strategy_panel.py` - Dropdown fix, card styling
+- `dashboard/components/strat_analytics_panel.py` - Date columns, crypto label, helpers
+- `dashboard/components/crypto_panel.py` - Docstring, header label
+- `dashboard/app.py` - Connection error panel helper
+
+**Tests:** 224 passed (0 failures)
+
+**Known Issues Remaining:**
+- Strategy Performance Tab callbacks still depend on Alpaca connection for non-STRAT strategies
+- TradingView chart integration deferred (dash_tvlwc compatibility test needed)
+
+---
 
 ### DB-2 (2026-01-26) - Pattern Persistence & Loader Fixes
 **Commits:** `3c28d3f`, `d84b19a`
@@ -297,7 +320,7 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 
 ---
 
-## Next Session: DB-3
+## Next Session: DB-4
 
 ### Primary Goal: TradingView-Quality Charts
 Replace Plotly equity curve (and optionally regime price chart) with TradingView
@@ -332,6 +355,8 @@ Lightweight Charts for professional-grade rendering.
 1. Fix remaining UI/UX issues across all pages (see Known Issues 2 and 3)
 2. Add `line_shape='spline'` to regime detection line for smoother transitions
 3. Improve overall visual hierarchy and spacing
+4. Strategy Performance Tab - ensure all strategy types render correctly
+5. Account selector persistence via `dcc.Store` (Issue 3)
 
 ---
 
@@ -341,9 +366,10 @@ Lightweight Charts for professional-grade rendering.
 |---------|-------|
 | DB-1 | STRAT Analytics selectors, continuation blocking |
 | DB-2 | Trade metadata store, loader fixes, singleton pattern |
-| DB-3 | TradingView-quality charts, UI/UX polish |
-| DB-4+ | Future dashboard work |
+| DB-3 | Bug fixes, date columns, crypto alignment |
+| DB-4 | TradingView-quality charts, UI/UX polish |
+| DB-5+ | Future dashboard work |
 
 ---
 
-*Last Updated: 2026-01-26 (DB-2)*
+*Last Updated: 2026-01-27 (DB-3)*

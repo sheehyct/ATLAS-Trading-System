@@ -83,6 +83,40 @@ TABLE_HEADER_STYLE = {
 
 
 # ============================================
+# DATE FORMATTING HELPERS (DB-3)
+# ============================================
+
+def _format_open_date(pos: Dict) -> str:
+    """
+    Format the open date for a position from available fields.
+
+    Options positions: entry_time_et (from signal store, already formatted as MM/DD HH:MM)
+    Crypto positions: entry_time (ISO string from VPS API)
+
+    Args:
+        pos: Position dictionary
+
+    Returns:
+        Formatted date string or '-' if unavailable
+    """
+    # Options: entry_time_et is pre-formatted by options_loader
+    entry_time = pos.get('entry_time_et') or ''
+    if entry_time:
+        return str(entry_time)
+
+    # Crypto: entry_time is ISO string from VPS API
+    entry_time_raw = pos.get('entry_time') or ''
+    if entry_time_raw and isinstance(entry_time_raw, str):
+        try:
+            dt = datetime.fromisoformat(entry_time_raw.replace('Z', '+00:00'))
+            return dt.strftime('%m/%d %H:%M')
+        except (ValueError, TypeError):
+            return str(entry_time_raw)[:16]
+
+    return '-'
+
+
+# ============================================
 # MAIN PANEL COMPONENT
 # ============================================
 
@@ -99,7 +133,7 @@ def create_strat_analytics_panel():
             dbc.Col([
                 html.H3('STRAT Pattern Analytics', className='mb-0',
                         style={'color': DARK_THEME['text_primary']}),
-                html.P('Real-time pattern performance and timeframe continuity analysis',
+                html.P('Pattern detection on underlying/spot -- execution via options or derivatives',
                        className='text-muted mb-0', style={'fontSize': '0.9rem'})
             ], width=8),
             dbc.Col([
@@ -142,7 +176,7 @@ def create_strat_analytics_panel():
                     id='strat-market-selector',
                     options=[
                         {'label': 'Equity Options', 'value': 'options'},
-                        {'label': 'Crypto', 'value': 'crypto'},
+                        {'label': 'Crypto (Spot/Derivs)', 'value': 'crypto'},
                     ],
                     value='options',
                     style={
@@ -595,6 +629,7 @@ def create_open_positions_tab(
                 html.Tr([
                     html.Th('Symbol', style={'padding': '12px 16px', 'fontWeight': '600'}),
                     html.Th('Pattern', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                    html.Th('Opened', style={'padding': '12px 16px', 'fontWeight': '600'}),
                     html.Th('Qty', style={'padding': '12px 16px', 'fontWeight': '600'}),
                     html.Th('Entry', style={'padding': '12px 16px', 'fontWeight': '600'}),
                     html.Th('Current', style={'padding': '12px 16px', 'fontWeight': '600'}),
@@ -618,6 +653,17 @@ def create_open_positions_tab(
                             'fontWeight': '500'
                         }),
                         style={'padding': '12px 16px'}
+                    ),
+                    # DB-3: Open date/time column
+                    # Options: entry_time_et from signal store lookup
+                    # Crypto: entry_time from VPS API
+                    html.Td(
+                        _format_open_date(pos),
+                        style={
+                            'padding': '12px 16px',
+                            'color': DARK_THEME['text_secondary'],
+                            'fontSize': '0.9rem'
+                        }
                     ),
                     html.Td(str(pos.get('qty', 0)), style={'padding': '12px 16px'}),
                     html.Td(
@@ -1124,6 +1170,7 @@ def _create_trades_table(trades: List[Dict]) -> html.Div:
             html.Tr([
                 html.Th('Symbol', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('Pattern', style={'padding': '12px 16px', 'fontWeight': '600'}),
+                html.Th('Closed', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('Entry', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('Exit', style={'padding': '12px 16px', 'fontWeight': '600'}),
                 html.Th('P&L', style={'padding': '12px 16px', 'fontWeight': '600'}),
@@ -1171,6 +1218,21 @@ def _create_trade_row(trade: Dict) -> html.Tr:
     # Get best available display symbol - prefer display_contract for options
     symbol_display = trade.get('display_contract') or trade.get('display_symbol') or trade.get('symbol', '-')
 
+    # DB-3: Get close date/time from available fields
+    # Options: sell_time_display (formatted by options_loader)
+    # Crypto: exit_time (ISO string from API)
+    close_date = trade.get('sell_time_display') or ''
+    if not close_date:
+        exit_time = trade.get('exit_time') or ''
+        if exit_time and isinstance(exit_time, str):
+            try:
+                dt = datetime.fromisoformat(exit_time.replace('Z', '+00:00'))
+                close_date = dt.strftime('%m/%d %H:%M')
+            except (ValueError, TypeError):
+                close_date = str(exit_time)[:16]
+        elif hasattr(exit_time, 'strftime'):
+            close_date = exit_time.strftime('%m/%d %H:%M')
+
     return html.Tr([
         html.Td(
             html.Strong(symbol_display[:20]),
@@ -1186,6 +1248,14 @@ def _create_trade_row(trade: Dict) -> html.Tr:
                 'fontWeight': '500'
             }),
             style={'padding': '12px 16px'}
+        ),
+        html.Td(
+            close_date or '-',
+            style={
+                'padding': '12px 16px',
+                'color': DARK_THEME['text_secondary'],
+                'fontSize': '0.9rem'
+            }
         ),
         html.Td(
             f"${trade.get('entry_price', 0):.2f}",

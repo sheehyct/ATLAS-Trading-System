@@ -9,10 +9,15 @@ Professional dark-themed crypto trading panel for dashboard integration:
 - Closed trades history
 - Performance metrics
 
+Trading Model:
+- STRAT pattern detection on SPOT prices (e.g., BTC/USDT spot)
+- Trade execution on DERIVATIVES (perpetual futures/swaps)
+
 Pattern: Based on options_panel.py
 
 Session CRYPTO-10: Added EST time conversion, TFC score to positions,
                    proper STRAT pattern notation (2U/2D instead of just "2")
+Session DB-3: Clarified spot detection / derivatives execution model
 """
 
 import dash_bootstrap_components as dbc
@@ -131,7 +136,10 @@ def create_crypto_panel():
                     dbc.CardHeader([
                         html.I(className='fas fa-wallet me-2',
                                style={'color': DARK_THEME['accent_cyan']}),
-                        'Paper Trading Account'
+                        'Paper Trading Account',
+                        html.Span(' (Spot Detection / Derivatives Execution)',
+                                  style={'fontSize': '0.8rem', 'color': DARK_THEME['text_muted'],
+                                         'marginLeft': '8px'})
                     ], style=_header_style()),
                     dbc.CardBody(
                         id='crypto-account-summary',

@@ -23,7 +23,7 @@ def create_strategy_panel():
         Bootstrap container with strategy visualizations
     """
 
-    # Strategy options
+    # Strategy options for dbc.Select (uses label/value format)
     strategy_options = [
         {'label': strategy['name'], 'value': key}
         for key, strategy in AVAILABLE_STRATEGIES.items()
@@ -31,24 +31,29 @@ def create_strategy_panel():
 
     return dbc.Container([
 
-        # Strategy Selector
+        # Strategy Selector - DB-3: Switched from dcc.Dropdown to dbc.Select
+        # to fix dropdown clipping and dark theme rendering issues
         dbc.Row([
             dbc.Col([
                 dbc.Card([
                     dbc.CardBody([
-                        html.Label('Select Strategy:', className='fw-bold mb-2'),
-                        dcc.Dropdown(
+                        html.Label('Select Strategy:', className='fw-bold mb-2',
+                                   style={'color': COLORS['text_primary']}),
+                        dbc.Select(
                             id='strategy-selector',
                             options=strategy_options,
                             value='strat_options',
-                            clearable=False,
                             style={
-                                'backgroundColor': COLORS['background_dark'],
-                                'color': COLORS['text_primary']
+                                'backgroundColor': COLORS['bg_surface'],
+                                'color': COLORS['text_primary'],
+                                'border': f'1px solid {COLORS["border_default"]}',
                             }
                         )
                     ])
-                ], className='shadow-sm', style={'backgroundColor': COLORS['background_medium']})
+                ], className='shadow-sm', style={
+                    'backgroundColor': COLORS['bg_card'],
+                    'border': f'1px solid {COLORS["border_subtle"]}'
+                })
             ], width=12, lg=6)
         ], className='mb-4'),
 
@@ -59,14 +64,14 @@ def create_strategy_panel():
                     dbc.CardHeader([
                         html.I(className='fas fa-chart-line me-2'),
                         'Equity Curve & Drawdown'
-                    ], className='fw-bold', style={'backgroundColor': COLORS['background_medium']}),
+                    ], className='fw-bold', style={'backgroundColor': COLORS['bg_card']}),
                     dbc.CardBody([
                         dcc.Graph(
                             id='equity-curve-graph',
                             config={'displayModeBar': True, 'displaylogo': False}
                         )
-                    ], style={'backgroundColor': COLORS['background_dark']})
-                ], className='shadow-sm', style={'borderColor': COLORS['grid']})
+                    ], style={'backgroundColor': COLORS['bg_void']})
+                ], className='shadow-sm', style={'borderColor': COLORS['border_subtle']})
             ], width=12)
         ], className='mb-4'),
 
@@ -78,14 +83,14 @@ def create_strategy_panel():
                     dbc.CardHeader([
                         html.I(className='fas fa-chart-bar me-2'),
                         'Rolling Performance Metrics'
-                    ], className='fw-bold', style={'backgroundColor': COLORS['background_medium']}),
+                    ], className='fw-bold', style={'backgroundColor': COLORS['bg_card']}),
                     dbc.CardBody([
                         dcc.Graph(
                             id='rolling-metrics-graph',
                             config={'displayModeBar': True, 'displaylogo': False}
                         )
-                    ], style={'backgroundColor': COLORS['background_dark']})
-                ], className='shadow-sm', style={'borderColor': COLORS['grid']})
+                    ], style={'backgroundColor': COLORS['bg_void']})
+                ], className='shadow-sm', style={'borderColor': COLORS['border_subtle']})
             ], width=12, lg=6),
 
             # Regime Comparison
@@ -94,14 +99,14 @@ def create_strategy_panel():
                     dbc.CardHeader([
                         html.I(className='fas fa-layer-group me-2'),
                         'Performance by Regime'
-                    ], className='fw-bold', style={'backgroundColor': COLORS['background_medium']}),
+                    ], className='fw-bold', style={'backgroundColor': COLORS['bg_card']}),
                     dbc.CardBody([
                         dcc.Graph(
                             id='regime-comparison-graph',
                             config={'displayModeBar': True, 'displaylogo': False}
                         )
-                    ], style={'backgroundColor': COLORS['background_dark']})
-                ], className='shadow-sm', style={'borderColor': COLORS['grid']})
+                    ], style={'backgroundColor': COLORS['bg_void']})
+                ], className='shadow-sm', style={'borderColor': COLORS['border_subtle']})
             ], width=12, lg=6)
         ], className='mb-4'),
 
@@ -112,14 +117,14 @@ def create_strategy_panel():
                     dbc.CardHeader([
                         html.I(className='fas fa-chart-pie me-2'),
                         'Trade Distribution'
-                    ], className='fw-bold', style={'backgroundColor': COLORS['background_medium']}),
+                    ], className='fw-bold', style={'backgroundColor': COLORS['bg_card']}),
                     dbc.CardBody([
                         dcc.Graph(
                             id='trade-distribution-graph',
                             config={'displayModeBar': True, 'displaylogo': False}
                         )
-                    ], style={'backgroundColor': COLORS['background_dark']})
-                ], className='shadow-sm', style={'borderColor': COLORS['grid']})
+                    ], style={'backgroundColor': COLORS['bg_void']})
+                ], className='shadow-sm', style={'borderColor': COLORS['border_subtle']})
             ], width=12)
         ])
 

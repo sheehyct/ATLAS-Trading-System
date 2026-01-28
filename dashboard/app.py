@@ -1418,6 +1418,59 @@ def update_live_portfolio(n):
 # HELPER FUNCTIONS
 # ============================================
 
+def _create_connection_error_panel(service_name: str, error_detail: str, hint: str) -> html.Div:
+    """
+    Create a styled error panel for connection failures in STRAT Analytics tabs.
+
+    DB-3: Replaces terse error text with an informative panel that tells the user
+    what failed and how to fix it.
+
+    Args:
+        service_name: Name of the service that failed (e.g., 'Alpaca SMALL')
+        error_detail: Technical error detail
+        hint: User-friendly troubleshooting hint
+
+    Returns:
+        Styled Div with error information
+    """
+    return html.Div([
+        dbc.Card([
+            dbc.CardBody([
+                html.H5(
+                    f'Connection Error: {service_name}',
+                    style={'color': COLORS['danger'], 'marginBottom': '12px'}
+                ),
+                html.P(
+                    error_detail,
+                    style={
+                        'color': COLORS['text_secondary'],
+                        'fontFamily': 'monospace',
+                        'fontSize': '0.9rem',
+                        'backgroundColor': COLORS['bg_surface'],
+                        'padding': '10px',
+                        'borderRadius': '4px',
+                        'marginBottom': '12px'
+                    }
+                ),
+                html.P(
+                    hint,
+                    style={'color': COLORS['text_secondary'], 'fontSize': '0.9rem', 'marginBottom': '8px'}
+                ),
+                html.P(
+                    'Check /diagnostic endpoint for loader status details.',
+                    style={'color': COLORS['text_tertiary'], 'fontSize': '0.85rem'}
+                ),
+            ], style={'padding': '30px'})
+        ], style={
+            'backgroundColor': COLORS['bg_card'],
+            'border': f'1px solid {COLORS["danger"]}',
+            'borderRadius': '8px',
+            'maxWidth': '600px',
+            'margin': '40px auto'
+        })
+    ])
+
+
 def create_error_figure(message: str):
     """
     Create an error figure with message.
@@ -1972,16 +2025,29 @@ def render_strat_analytics_tab(active_tab, market, account, strategy, n_interval
         if market == 'crypto':
             loader = crypto_loader
             if loader is None or not loader._connected:
-                return html.Div('Crypto loader not connected', style={'padding': '40px', 'textAlign': 'center'})
+                error_msg = crypto_loader.init_error if crypto_loader else 'Loader not initialized'
+                return _create_connection_error_panel(
+                    'Crypto API',
+                    error_msg,
+                    'Verify the VPS daemon is running and CRYPTO_API_URL is set correctly.'
+                )
         else:
             # Session DB-2: Use singleton getter instead of creating new instance
             selected_account = account or 'SMALL'
             loader = get_options_loader(selected_account)
             if loader is None:
-                return html.Div('Options loader not available', style={'padding': '40px', 'textAlign': 'center'})
+                return _create_connection_error_panel(
+                    f'Alpaca {selected_account}',
+                    'Loader failed to initialize',
+                    'Check that Alpaca API credentials are configured in environment variables.'
+                )
             if not loader._connected:
-                return html.Div(f'Options loader not connected to {selected_account} account: {loader.init_error}',
-                               style={'padding': '40px', 'textAlign': 'center', 'color': '#ed4807'})
+                return _create_connection_error_panel(
+                    f'Alpaca {selected_account}',
+                    loader.init_error or 'Connection failed',
+                    'Verify ALPACA_API_KEY and ALPACA_SECRET_KEY environment variables are set. '
+                    'For Railway: check Variables tab in project settings.'
+                )
 
         # Fetch closed trades for analytics
         # Note: OptionsDataLoader uses days=, CryptoDataLoader uses limit=
