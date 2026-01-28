@@ -1,9 +1,52 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 27, 2026 (Session EQUITY-93)
+**Last Updated:** January 27, 2026 (Session EQUITY-94)
 **Current Branch:** `main`
 **Phase:** Paper Trading - Phase 6 IN PROGRESS (Crypto Architecture Unification)
-**Status:** EQUITY-93 COMPLETE - All crypto tests fixed (30 failures resolved)
+**Status:** EQUITY-94 COMPLETE - Phase 6.4 coordinator extraction done, bugs investigated
+
+---
+
+## Session EQUITY-94: Crypto Coordinator Extraction + Bug Investigation (COMPLETE)
+
+**Date:** January 27, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Phase 6.4 extraction done, 2 equities daemon bugs identified
+
+### What Was Accomplished
+
+1. **Phase 6.4 - Coordinator Extraction (COMPLETE)**
+   - Extracted 5 coordinators from CryptoSignalDaemon (1,818 -> 1,172 lines, 35.5% reduction)
+   - CryptoHealthMonitor (212 LOC): health loop, status assembly, print_status
+   - CryptoEntryValidator (287 LOC): stale setup check, TFC re-evaluation
+   - CryptoStatArbExecutor (348 LOC): StatArb signal check, entry/exit execution
+   - CryptoFilterManager (159 LOC): quality filters, dedup, signal store, expiry
+   - CryptoAlertManager (179 LOC): Discord alerting for all event types
+   - 824/824 crypto tests passing, backward compat delegates preserve test API
+
+2. **VPS Deployment**
+   - Git pull to VPS (EQUITY-93 + EQUITY-94 changes)
+   - Crypto daemon restarted, clean startup with all coordinators loading correctly
+
+3. **Equities Daemon Bug Investigation (NOT YET FIXED)**
+   - **Discord audit 0 trades**: Reads stale `paper_trades/paper_trades.json` (Dec 2025) instead of
+     `AlpacaTradingClient.get_closed_trades()` which already exists with FIFO P/L matching
+   - **EOD exits after-hours**: Daemon spam-retries EOD exits after market close (9:35 PM ET+),
+     Alpaca rejects with "options market orders only allowed during market hours".
+     Positions that should exit at 3:59 PM ET exit next morning = extra theta decay.
+
+### Files Created
+- `crypto/scanning/coordinators/__init__.py` - Package exports
+- `crypto/scanning/coordinators/health_monitor.py` - CryptoHealthMonitor + CryptoDaemonStats
+- `crypto/scanning/coordinators/entry_validator.py` - CryptoEntryValidator + TFCEvaluator Protocol
+- `crypto/scanning/coordinators/statarb_executor.py` - CryptoStatArbExecutor + Protocols
+- `crypto/scanning/coordinators/filter_manager.py` - CryptoFilterManager
+- `crypto/scanning/coordinators/alert_manager.py` - CryptoAlertManager
+
+### Files Modified
+- `crypto/scanning/daemon.py` - Rewritten to delegate to coordinators (1,818 -> 1,172 lines)
+- `tests/test_crypto/test_daemon_execution.py` - Updated 3 discord alerter tests for alert_manager
+- `tests/test_crypto/test_daemon_statarb.py` - Updated 1 test for statarb_executor._execute
 
 ---
 
