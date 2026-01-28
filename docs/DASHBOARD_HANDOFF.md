@@ -299,15 +299,39 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 
 ## Next Session: DB-3
 
-### Suggested Focus: UI/UX Polish
-1. Fix equity curve aspect ratio and readability
-2. Add summary stats card to equity curve page
-3. Improve overall visual hierarchy across pages
+### Primary Goal: TradingView-Quality Charts
+Replace Plotly equity curve (and optionally regime price chart) with TradingView
+Lightweight Charts for professional-grade rendering.
 
-### Alternative Focus: Real-time Features
-1. WebSocket integration for live P/L updates
-2. Position risk warnings (near stop loss)
-3. Quick position close functionality
+**Research Completed (DB-2):**
+- `lightweight-charts` 2.1 is already installed
+- `dash-tradingview` (`dash_tvlwc`) is the Dash integration wrapper
+  - PyPI: `pip install dash_tvlwc` (v0.1.1, Feb 2023)
+  - GitHub: https://github.com/tysonwu/dash-tradingview
+  - Supports: candlestick, line, area, histogram, baseline chart types
+  - Native Dash component (no iframes needed)
+  - **Needs compatibility test with Dash 3.2**
+
+**Implementation Steps:**
+1. Install `dash_tvlwc` and verify it works with Dash 3.2
+2. If compatible:
+   - Replace equity curve chart in `strat_analytics_panel.py`
+   - Style to match dashboard dark theme
+   - Add summary stats card above chart (Total Return, Max DD)
+   - Consider replacing regime price chart for consistency
+3. If incompatible:
+   - Fall back to Plotly with `line_shape='spline'` + better styling
+   - Increase chart height, improve axis labels, add hover tooltips
+
+**Files to Modify:**
+- `dashboard/components/strat_analytics_panel.py` - equity curve chart
+- `dashboard/visualizations/regime_viz.py` - regime price chart (optional)
+- `dashboard/app.py` - equity curve callback (may need data format changes)
+
+### Secondary Goals
+1. Fix remaining UI/UX issues across all pages (see Known Issues 2 and 3)
+2. Add `line_shape='spline'` to regime detection line for smoother transitions
+3. Improve overall visual hierarchy and spacing
 
 ---
 
@@ -317,7 +341,7 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 |---------|-------|
 | DB-1 | STRAT Analytics selectors, continuation blocking |
 | DB-2 | Trade metadata store, loader fixes, singleton pattern |
-| DB-3 | UI/UX polish (equity curve, overall styling) |
+| DB-3 | TradingView-quality charts, UI/UX polish |
 | DB-4+ | Future dashboard work |
 
 ---
