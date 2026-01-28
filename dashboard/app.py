@@ -2004,9 +2004,10 @@ def update_crypto_tabs(n_intervals, active_tab):
      Input('strat-market-selector', 'value'),
      Input('strat-account-selector', 'value'),  # EQUITY-93B: Wire account selector
      Input('strat-strategy-selector', 'value'),  # EQUITY-93B: Wire strategy selector
-     Input('strat-analytics-refresh', 'n_intervals')]
+     Input('strat-analytics-refresh', 'n_intervals'),
+     Input('strat-positions-refresh', 'n_intervals')]  # DB-7: Faster positions refresh
 )
-def render_strat_analytics_tab(active_tab, market, account, strategy, n_intervals):
+def render_strat_analytics_tab(active_tab, market, account, strategy, n_intervals, positions_intervals):
     """
     Render content for STRAT Analytics sub-tabs.
 
@@ -2015,7 +2016,8 @@ def render_strat_analytics_tab(active_tab, market, account, strategy, n_interval
         market: Selected market (options/crypto)
         account: Selected account for equity options (SMALL/MID/LARGE)
         strategy: Selected strategy filter (all/strat/statarb)
-        n_intervals: Refresh interval count
+        n_intervals: Refresh interval count (30s for general tabs)
+        positions_intervals: Faster refresh count (15s for positions tab)
 
     Returns:
         Tab content component
@@ -2120,13 +2122,25 @@ def render_strat_analytics_tab(active_tab, market, account, strategy, n_interval
         elif active_tab == 'tab-equity':
             # Dashboard Overhaul: Use options_loader for consistent account data
             history = []
+            benchmark_data = None
+            closed_trades = []
             if market == 'options' and options_loader is not None:
                 # Use options_loader (SMALL account) for consistency with other data
                 history = options_loader.get_portfolio_history(days=90) if hasattr(options_loader, 'get_portfolio_history') else []
+                # DB-7: Fetch SPY benchmark for comparison
+                if hasattr(options_loader, 'get_benchmark_data'):
+                    benchmark_data = options_loader.get_benchmark_data(days=90, symbol='SPY')
+                # DB-7: Fetch closed trades for trade event markers
+                if hasattr(options_loader, 'get_closed_trades'):
+                    closed_trades = options_loader.get_closed_trades(days=90)
             elif market == 'crypto' and crypto_loader is not None:
                 # Use crypto_loader for crypto equity curve
                 history = crypto_loader.get_account_history(days=90) if hasattr(crypto_loader, 'get_account_history') else []
-            return create_equity_tab(history)
+                # DB-7: Fetch crypto closed trades
+                if hasattr(crypto_loader, 'get_closed_trades'):
+                    closed_trades = crypto_loader.get_closed_trades(days=90)
+                # Note: Crypto doesn't compare to SPY benchmark
+            return create_equity_tab(history, benchmark_data, closed_trades)
 
         else:
             return html.Div('Tab not found')

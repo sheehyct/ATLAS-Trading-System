@@ -193,10 +193,17 @@ def create_strat_analytics_panel():
         # Tab content area
         html.Div(id='strat-analytics-tab-content'),
 
-        # Auto-refresh interval
+        # Auto-refresh interval for general tabs
         dcc.Interval(
             id='strat-analytics-refresh',
             interval=30 * 1000,  # 30 seconds
+            n_intervals=0
+        ),
+
+        # DB-7: Faster refresh interval for Open Positions tab (real-time P/L)
+        dcc.Interval(
+            id='strat-positions-refresh',
+            interval=15 * 1000,  # 15 seconds for more responsive P/L updates
             n_intervals=0
         ),
 
@@ -1415,16 +1422,18 @@ def _create_pending_row(signal: Dict) -> html.Tr:
 # EQUITY CURVE TAB
 # ============================================
 
-def _calculate_equity_stats(portfolio_history: List[Dict]) -> Dict:
+def _calculate_equity_stats(portfolio_history: List[Dict],
+                            benchmark_data: List[Dict] = None) -> Dict:
     """
     Calculate summary statistics from portfolio history.
 
     Args:
         portfolio_history: List of portfolio snapshots with timestamp/date and equity/balance
+        benchmark_data: Optional list of benchmark price data for alpha calculation
 
     Returns:
         Dict with total_return_pct, total_return_dollar, max_drawdown_pct,
-        start_equity, end_equity, days
+        start_equity, end_equity, days, alpha_pct, benchmark_return_pct
     """
     if not portfolio_history:
         return {
@@ -1434,6 +1443,8 @@ def _calculate_equity_stats(portfolio_history: List[Dict]) -> Dict:
             'start_equity': 0.0,
             'end_equity': 0.0,
             'days': 0,
+            'alpha_pct': 0.0,
+            'benchmark_return_pct': 0.0,
         }
 
     equities = [h.get('equity', h.get('balance', 0)) for h in portfolio_history]
@@ -1454,6 +1465,13 @@ def _calculate_equity_stats(portfolio_history: List[Dict]) -> Dict:
             if dd > max_drawdown_pct:
                 max_drawdown_pct = dd
 
+    # DB-7: Calculate alpha vs benchmark
+    benchmark_return_pct = 0.0
+    alpha_pct = 0.0
+    if benchmark_data and len(benchmark_data) > 0:
+        benchmark_return_pct = benchmark_data[-1].get('return_pct', 0.0)
+        alpha_pct = total_return_pct - benchmark_return_pct
+
     return {
         'total_return_pct': total_return_pct,
         'total_return_dollar': total_return_dollar,
@@ -1461,6 +1479,8 @@ def _calculate_equity_stats(portfolio_history: List[Dict]) -> Dict:
         'start_equity': start_equity,
         'end_equity': end_equity,
         'days': len(equities),
+        'alpha_pct': alpha_pct,
+        'benchmark_return_pct': benchmark_return_pct,
     }
 
 
@@ -1515,6 +1535,7 @@ def _create_stats_cards(stats: Dict) -> dbc.Row:
     Create summary stats cards row for equity curve tab.
 
     DB-5: Refactored to use _stat_card() helper.
+    DB-7: Added Alpha vs SPY card when benchmark data available.
 
     Args:
         stats: Dict from _calculate_equity_stats()
@@ -1525,17 +1546,28 @@ def _create_stats_cards(stats: Dict) -> dbc.Row:
     ret_pct = stats['total_return_pct']
     ret_dollar = stats['total_return_dollar']
     dd_pct = stats['max_drawdown_pct']
+    alpha_pct = stats.get('alpha_pct', 0.0)
+    benchmark_ret = stats.get('benchmark_return_pct', 0.0)
 
     ret_color = COLORS['accent_emerald'] if ret_pct >= 0 else COLORS['accent_crimson']
     dd_color = COLORS['accent_crimson'] if dd_pct > 0 else COLORS['text_secondary']
+    alpha_color = COLORS['accent_emerald'] if alpha_pct >= 0 else COLORS['accent_crimson']
+
+    # DB-7: Show alpha vs SPY instead of starting equity when benchmark available
+    if benchmark_ret != 0.0:
+        third_card = _stat_card('ALPHA VS SPY', f"{alpha_pct:+.2f}%",
+                                f"SPY: {benchmark_ret:+.2f}%",
+                                value_color=alpha_color)
+    else:
+        third_card = _stat_card('STARTING EQUITY', f"${stats['start_equity']:,.2f}",
+                                f"{stats['days']} days tracked")
 
     return dbc.Row([
         _stat_card('TOTAL RETURN', f"{ret_pct:+.2f}%", f"${ret_dollar:+,.2f}",
                    value_color=ret_color, subtext_color=ret_color),
         _stat_card('MAX DRAWDOWN', f"-{dd_pct:.2f}%", 'Peak to trough',
                    value_color=dd_color),
-        _stat_card('STARTING EQUITY', f"${stats['start_equity']:,.2f}",
-                   f"{stats['days']} days tracked"),
+        third_card,
         _stat_card('CURRENT EQUITY', f"${stats['end_equity']:,.2f}",
                    'Latest snapshot'),
     ], className='mb-3')
@@ -1569,12 +1601,15 @@ def _create_empty_placeholder(message: str, height: int = 500) -> html.Div:
     )
 
 
-def _create_equity_chart(history: List[Dict]):
+def _create_equity_chart(history: List[Dict], benchmark_data: List[Dict] = None):
     """
-    Create TradingView Lightweight Charts equity curve.
+    Create TradingView Lightweight Charts equity curve with optional benchmark overlay.
+
+    DB-7: Added benchmark (SPY) overlay using normalized percentage returns.
 
     Args:
         history: List of portfolio snapshots with timestamp/date and equity/balance
+        benchmark_data: Optional list of benchmark price data for overlay
 
     Returns:
         dash_tvlwc.Tvlwc component (or html.Div placeholder if no data)
@@ -1582,13 +1617,18 @@ def _create_equity_chart(history: List[Dict]):
     if not history:
         return _create_empty_placeholder('No portfolio history available')
 
-    # Transform data: {'timestamp'/'date': t, 'equity'/'balance': v} -> {'time': t, 'value': v}
+    # Transform portfolio data to normalized % returns for fair comparison
     series_data = []
+    first_equity = None
     for h in history:
         t = h.get('timestamp') or h.get('date', '')
         v = h.get('equity', h.get('balance', 0))
         if t:
-            series_data.append({'time': str(t), 'value': float(v)})
+            if first_equity is None:
+                first_equity = v
+            # Normalize to % return from start
+            return_pct = ((v / first_equity) - 1) * 100 if first_equity else 0
+            series_data.append({'time': str(t), 'value': float(return_pct)})
 
     if not series_data:
         return _create_empty_placeholder('No valid data points', height=300)
@@ -1606,57 +1646,352 @@ def _create_equity_chart(history: List[Dict]):
         top_color = 'rgba(255, 59, 92, 0.25)'
         bottom_color = 'rgba(255, 59, 92, 0.02)'
 
+    # DB-7: Prepare benchmark series if available
+    series_types = ['Area']
+    series_list = [series_data]
+    series_options = [{
+        'lineColor': line_color,
+        'topColor': top_color,
+        'bottomColor': bottom_color,
+        'lineWidth': 2,
+        'priceFormat': {
+            'type': 'price',
+            'precision': 2,
+            'minMove': 0.01,
+        },
+    }]
+
+    # Add benchmark overlay as Line series
+    if benchmark_data:
+        benchmark_series = []
+        for b in benchmark_data:
+            t = b.get('timestamp', '')
+            ret = b.get('return_pct', 0)
+            if t:
+                benchmark_series.append({'time': str(t), 'value': float(ret)})
+
+        if benchmark_series:
+            series_types.append('Line')
+            series_list.append(benchmark_series)
+            series_options.append({
+                'color': COLORS['accent_electric'],  # Blue for SPY
+                'lineWidth': 2,
+                'lineStyle': 0,  # Solid line
+                'priceFormat': {
+                    'type': 'price',
+                    'precision': 2,
+                    'minMove': 0.01,
+                },
+            })
+
     return dash_tvlwc.Tvlwc(
         id='equity-curve-tvlwc',
-        seriesTypes=['Area'],
-        seriesData=[series_data],
-        seriesOptions=[{
-            'lineColor': line_color,
-            'topColor': top_color,
-            'bottomColor': bottom_color,
-            'lineWidth': 2,
-            'priceFormat': {
-                'type': 'price',
-                'precision': 2,
-                'minMove': 0.01,
-            },
-        }],
+        seriesTypes=series_types,
+        seriesData=series_list,
+        seriesOptions=series_options,
         chartOptions=TVLWC_CHART_OPTIONS,
         width='100%',
-        height=500,
+        height=400,
     )
 
 
-def create_equity_tab(portfolio_history: List[Dict]) -> html.Div:
+def _create_drawdown_chart(portfolio_history: List[Dict]) -> html.Div:
     """
-    Create Equity Curve tab with summary stats and TradingView chart.
+    Create underwater equity (drawdown) chart using Plotly.
+
+    DB-7: Shows distance from peak equity over time.
+
+    Args:
+        portfolio_history: List of portfolio snapshots with timestamp/date and equity/balance
+
+    Returns:
+        dcc.Graph component with drawdown visualization
+    """
+    if not portfolio_history:
+        return _create_empty_placeholder('No drawdown data available', height=200)
+
+    # Calculate drawdown series
+    timestamps = []
+    drawdowns = []
+    peak = 0
+
+    for h in portfolio_history:
+        t = h.get('timestamp') or h.get('date', '')
+        eq = h.get('equity', h.get('balance', 0))
+        if t:
+            if eq > peak:
+                peak = eq
+            dd_pct = ((eq - peak) / peak * 100) if peak > 0 else 0
+            timestamps.append(t)
+            drawdowns.append(dd_pct)
+
+    if not timestamps:
+        return _create_empty_placeholder('No valid drawdown data', height=200)
+
+    fig = go.Figure()
+
+    # Drawdown area fill
+    fig.add_trace(go.Scatter(
+        x=timestamps,
+        y=drawdowns,
+        fill='tozeroy',
+        mode='lines',
+        line=dict(color=COLORS['accent_crimson'], width=1),
+        fillcolor='rgba(255, 59, 92, 0.3)',
+        name='Drawdown',
+        hovertemplate='%{y:.2f}%<extra></extra>'
+    ))
+
+    fig.update_layout(
+        margin=dict(l=50, r=20, t=10, b=30),
+        height=180,
+        yaxis=dict(
+            title='Drawdown %',
+            tickformat='.1f',
+            ticksuffix='%',
+            range=[min(drawdowns) * 1.1, 0.5],  # Invert so drawdowns show below zero
+            gridcolor=COLORS['grid'],
+            zerolinecolor=COLORS['border_subtle'],
+        ),
+        xaxis=dict(
+            showgrid=False,
+            tickfont=dict(size=10),
+        ),
+        plot_bgcolor=COLORS['bg_void'],
+        paper_bgcolor=COLORS['bg_card'],
+        font=dict(color=COLORS['text_primary']),
+        showlegend=False,
+        hovermode='x unified',
+    )
+
+    return dcc.Graph(
+        figure=fig,
+        config={'displayModeBar': False},
+        style={'height': '180px'}
+    )
+
+
+def _create_trade_events_panel(closed_trades: List[Dict]) -> html.Div:
+    """
+    Create a compact trade events summary showing recent trades.
+
+    DB-7: Trade markers as a timeline summary below the equity curve.
+
+    Args:
+        closed_trades: List of closed trade dictionaries
+
+    Returns:
+        html.Div with trade events summary
+    """
+    if not closed_trades:
+        return html.Div(
+            'No trade events in selected period',
+            style={
+                'textAlign': 'center',
+                'padding': '20px',
+                'color': COLORS['text_secondary'],
+                'fontSize': '0.9rem',
+            }
+        )
+
+    # Sort by sell date descending and take most recent 10
+    sorted_trades = sorted(
+        [t for t in closed_trades if t.get('sell_time_dt') or t.get('exit_time')],
+        key=lambda t: t.get('sell_time_dt') or datetime.min,
+        reverse=True
+    )[:10]
+
+    if not sorted_trades:
+        return html.Div(
+            'No dated trade events',
+            style={
+                'textAlign': 'center',
+                'padding': '20px',
+                'color': COLORS['text_secondary'],
+            }
+        )
+
+    events = []
+    for trade in sorted_trades:
+        pnl = trade.get('pnl', trade.get('realized_pnl', 0)) or 0
+        symbol = trade.get('display_contract') or trade.get('symbol', '-')
+        pattern = trade.get('pattern', '-')
+
+        # Get close date
+        close_date = trade.get('sell_time_display', '')
+        if not close_date:
+            exit_time = trade.get('exit_time', '')
+            if exit_time:
+                try:
+                    dt = datetime.fromisoformat(str(exit_time).replace('Z', '+00:00'))
+                    close_date = dt.strftime('%m/%d')
+                except (ValueError, TypeError):
+                    close_date = '-'
+
+        pnl_color = COLORS['accent_emerald'] if pnl >= 0 else COLORS['accent_crimson']
+        marker_symbol = '+' if pnl >= 0 else '-'
+
+        events.append(
+            html.Div([
+                # Date badge
+                html.Span(close_date, style={
+                    'fontSize': '0.75rem',
+                    'color': COLORS['text_secondary'],
+                    'marginRight': '8px',
+                    'minWidth': '40px',
+                    'display': 'inline-block',
+                }),
+                # P/L indicator
+                html.Span(marker_symbol, style={
+                    'color': pnl_color,
+                    'fontWeight': '600',
+                    'marginRight': '4px',
+                    'fontSize': '1rem',
+                }),
+                # Symbol (truncated)
+                html.Span(symbol[:15], style={
+                    'color': COLORS['text_primary'],
+                    'marginRight': '8px',
+                    'fontSize': '0.85rem',
+                }),
+                # Pattern
+                html.Span(pattern, style={
+                    'backgroundColor': '#1e3a5f',
+                    'color': '#93c5fd',
+                    'padding': '1px 5px',
+                    'borderRadius': '3px',
+                    'fontSize': '0.75rem',
+                    'marginRight': '8px',
+                }),
+                # P/L value
+                html.Span(f"${pnl:+,.0f}", style={
+                    'color': pnl_color,
+                    'fontWeight': '500',
+                    'fontSize': '0.85rem',
+                    'marginLeft': 'auto',
+                }),
+            ], style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'padding': '6px 8px',
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}',
+            })
+        )
+
+    return html.Div(events, style={
+        'maxHeight': '280px',
+        'overflowY': 'auto',
+    })
+
+
+def create_equity_tab(portfolio_history: List[Dict],
+                      benchmark_data: List[Dict] = None,
+                      closed_trades: List[Dict] = None) -> html.Div:
+    """
+    Create Equity Curve tab with summary stats, benchmark comparison, drawdown, and trade events.
+
+    DB-7: Added benchmark overlay, drawdown visualization, and trade events panel.
 
     Args:
         portfolio_history: List of portfolio snapshots with date, equity
+        benchmark_data: Optional list of benchmark (SPY) price data for comparison
+        closed_trades: Optional list of closed trades for trade event markers
 
     Returns:
         Equity curve tab content
     """
-    stats = _calculate_equity_stats(portfolio_history)
+    stats = _calculate_equity_stats(portfolio_history, benchmark_data)
+
+    # Chart legend for benchmark comparison
+    legend_items = []
+    if benchmark_data:
+        legend_items = [
+            html.Div([
+                html.Span(style={
+                    'display': 'inline-block',
+                    'width': '12px',
+                    'height': '12px',
+                    'backgroundColor': COLORS['accent_emerald'],
+                    'borderRadius': '2px',
+                    'marginRight': '6px',
+                }),
+                html.Span('Portfolio', style={'color': COLORS['text_secondary'], 'fontSize': '0.85rem'}),
+                html.Span(style={
+                    'display': 'inline-block',
+                    'width': '12px',
+                    'height': '12px',
+                    'backgroundColor': COLORS['accent_electric'],
+                    'borderRadius': '2px',
+                    'marginLeft': '16px',
+                    'marginRight': '6px',
+                }),
+                html.Span('SPY Buy & Hold', style={'color': COLORS['text_secondary'], 'fontSize': '0.85rem'}),
+            ], style={'textAlign': 'right', 'padding': '4px 8px'})
+        ]
 
     return html.Div([
         # Summary stats cards
         _create_stats_cards(stats),
 
-        # TradingView Lightweight Chart
+        # Equity Curve with Benchmark
         dbc.Card([
-            dbc.CardHeader('90-Day Account Equity Curve', style={
+            dbc.CardHeader([
+                html.Span('Portfolio Returns vs SPY' if benchmark_data else '90-Day Account Equity Curve'),
+                html.Div(legend_items) if legend_items else None,
+            ], style={
                 'backgroundColor': COLORS['bg_card'],
                 'fontWeight': '600',
-                'borderBottom': f'1px solid {COLORS["border_subtle"]}'
+                'borderBottom': f'1px solid {COLORS["border_subtle"]}',
+                'display': 'flex',
+                'justifyContent': 'space-between',
+                'alignItems': 'center',
             }),
             dbc.CardBody([
-                _create_equity_chart(portfolio_history),
+                _create_equity_chart(portfolio_history, benchmark_data),
             ], style={
                 'backgroundColor': COLORS['bg_card'],
                 'padding': '8px',
             })
-        ], style={'border': f'1px solid {COLORS["border_subtle"]}'}),
+        ], className='mb-3', style={'border': f'1px solid {COLORS["border_subtle"]}'}),
+
+        # Drawdown and Trade Events in 2-column layout
+        dbc.Row([
+            # Drawdown Chart
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader('Underwater Equity (Drawdown)', style={
+                        'backgroundColor': COLORS['bg_card'],
+                        'fontWeight': '600',
+                        'borderBottom': f'1px solid {COLORS["border_subtle"]}',
+                        'fontSize': '0.9rem',
+                    }),
+                    dbc.CardBody([
+                        _create_drawdown_chart(portfolio_history),
+                    ], style={
+                        'backgroundColor': COLORS['bg_card'],
+                        'padding': '8px',
+                    })
+                ], style={'border': f'1px solid {COLORS["border_subtle"]}', 'height': '100%'})
+            ], width=8),
+
+            # Trade Events Panel
+            dbc.Col([
+                dbc.Card([
+                    dbc.CardHeader('Recent Trade Events', style={
+                        'backgroundColor': COLORS['bg_card'],
+                        'fontWeight': '600',
+                        'borderBottom': f'1px solid {COLORS["border_subtle"]}',
+                        'fontSize': '0.9rem',
+                    }),
+                    dbc.CardBody([
+                        _create_trade_events_panel(closed_trades or []),
+                    ], style={
+                        'backgroundColor': COLORS['bg_card'],
+                        'padding': '0',
+                    })
+                ], style={'border': f'1px solid {COLORS["border_subtle"]}', 'height': '100%'})
+            ], width=4),
+        ]),
     ])
 
 

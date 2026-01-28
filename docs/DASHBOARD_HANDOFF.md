@@ -11,12 +11,37 @@
 | Dashboard URL | http://localhost:8050 |
 | Run Command | `set PYTHONPATH=. && python -m dashboard.app` |
 | Main Entry | `dashboard/app.py` |
-| Last Session | DB-6 (2026-01-28) |
-| Next Session | DB-7 |
+| Last Session | DB-7 (2026-01-28) |
+| Next Session | DB-8 |
 
 ---
 
 ## Session History
+
+### DB-7 (2026-01-28) - Benchmark Comparison + Drawdown + Trade Events
+
+**Completed:**
+- **SPY Benchmark Comparison:** Added SPY buy-and-hold overlay on equity curve for Options market. Equity curve now shows normalized % returns for fair comparison. Added `get_benchmark_data()` method to options_loader using Alpaca historical bars API. Blue line shows SPY, green/red shows portfolio.
+- **Alpha Calculation:** Stats cards now show "Alpha vs SPY" when benchmark data is available. Calculates portfolio return minus SPY return for the period.
+- **Drawdown Visualization:** Added underwater equity chart using Plotly below the main equity curve. Shows peak-to-trough drawdown over time with crimson fill. 180px height, compact design.
+- **Trade Events Panel:** Added compact trade events summary next to drawdown chart. Shows 10 most recent trades with date, symbol, pattern, and P/L. Color-coded +/- indicators for wins/losses.
+- **Faster Positions Refresh:** Added separate `strat-positions-refresh` interval (15 seconds) for Open Positions tab. More responsive P/L updates during active trading.
+
+**Files Modified:**
+- `dashboard/data_loaders/options_loader.py` - Added `get_benchmark_data()` method (+65 lines)
+- `dashboard/components/strat_analytics_panel.py` - Benchmark overlay, drawdown chart, trade events panel (+200 lines)
+- `dashboard/app.py` - Fetch benchmark + closed trades for equity tab, faster refresh interval (+15 lines)
+
+**Tests:** 224 passed (0 failures)
+
+**Technical Notes:**
+- Benchmark uses Alpaca `StockBarsRequest` with TimeFrame.Day for daily bars
+- Equity chart now normalizes both portfolio and SPY to % returns for fair comparison
+- TVLWC supports multiple series: Area for portfolio, Line for SPY
+- Drawdown calculated as `(current - peak) / peak * 100`
+- Trade events sorted by sell_time_dt descending, shows 10 most recent
+
+---
 
 ### DB-6 (2026-01-28) - Selector Persistence + Chart Smoothing
 
@@ -199,16 +224,16 @@ Multiple pages need UI improvements for professional appearance:
 
 | Enhancement | Description | Priority |
 |-------------|-------------|----------|
-| Benchmark comparison | Overlay SPY buy-and-hold for comparison | High |
-| Drawdown chart | Add separate drawdown visualization | Medium |
+| ~~Benchmark comparison~~ | ~~Overlay SPY buy-and-hold for comparison~~ | ~~DONE (DB-7)~~ |
+| ~~Drawdown chart~~ | ~~Add separate drawdown visualization~~ | ~~DONE (DB-7)~~ |
 | Rolling Sharpe | Show 30-day rolling Sharpe ratio | Low |
-| Trade markers | Mark entry/exit points on equity curve | Medium |
+| ~~Trade markers~~ | ~~Mark entry/exit points on equity curve~~ | ~~DONE (DB-7)~~ |
 
 ### Open Positions Page
 
 | Enhancement | Description | Priority |
 |-------------|-------------|----------|
-| Real-time P/L | WebSocket updates for live P/L | High |
+| ~~Real-time P/L~~ | ~~Faster refresh interval (15s)~~ | ~~DONE (DB-7)~~ |
 | Greeks display | Show delta/theta/vega for options | Medium |
 | Risk warnings | Highlight positions near stop loss | High |
 | Quick close button | One-click position close | Medium |
@@ -375,25 +400,25 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 
 ---
 
-## Next Session: DB-7
+## Next Session: DB-8
 
 ### Suggested Goals
 
-1. **Benchmark comparison for equity curve**
-   - Overlay SPY buy-and-hold for comparison on equity chart
-   - Calculate alpha vs benchmark
+1. **Greeks display for options positions**
+   - Show delta/theta/vega for open options
+   - Calculate portfolio-level Greeks
 
-2. **Trade markers on equity curve**
-   - Mark entry/exit points on equity curve
-   - Visual indication of trade timing
+2. **Risk warnings for positions**
+   - Highlight positions near stop loss level
+   - Color-coded warning indicators
 
-3. **Drawdown visualization**
-   - Add separate drawdown chart or overlay
-   - Show peak-to-trough drawdown periods
+3. **Rolling Sharpe ratio**
+   - Add 30-day rolling Sharpe to equity stats
+   - Visual chart of Sharpe over time
 
-4. **Real-time P/L for open positions**
-   - WebSocket updates for live P/L
-   - More frequent refresh for active trading
+4. **Position sizing analysis**
+   - Compare TFC-based vs non-TFC trade performance
+   - Visual breakdown of sizing impact
 
 ---
 
@@ -411,4 +436,4 @@ python -m py_compile dashboard/data_loaders/crypto_loader.py
 
 ---
 
-*Last Updated: 2026-01-28 (DB-6)*
+*Last Updated: 2026-01-28 (DB-7)*

@@ -997,5 +997,76 @@ class OptionsDataLoader:
             return occ_symbol
 
 
+    def get_benchmark_data(self, days: int = 90, symbol: str = 'SPY') -> List[Dict]:
+        """
+        Fetch benchmark price data for comparison with portfolio equity curve.
+
+        DB-7: Used for SPY buy-and-hold overlay on equity curve.
+
+        Args:
+            days: Number of days of history (should match portfolio_history days)
+            symbol: Benchmark symbol (default: SPY)
+
+        Returns:
+            List of dicts with 'timestamp', 'close', 'return_pct' fields
+            Empty list on error.
+        """
+        if not self._connected:
+            self.connect()
+        if not self._connected:
+            logger.warning("Cannot get benchmark data: not connected")
+            return []
+
+        try:
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
+            from datetime import timedelta
+
+            end = datetime.now()
+            start = end - timedelta(days=days + 5)  # Extra buffer for market holidays
+
+            request = StockBarsRequest(
+                symbol_or_symbols=[symbol],
+                timeframe=TimeFrame.Day,
+                start=start,
+                end=end
+            )
+
+            bars = self.client.data_client.get_stock_bars(request)
+            symbol_bars = bars.get(symbol, [])
+
+            if not symbol_bars:
+                logger.warning(f"No benchmark data returned for {symbol}")
+                return []
+
+            # Convert to list of dicts and calculate cumulative returns
+            result = []
+            first_close = None
+
+            for bar in symbol_bars:
+                close = float(bar.close)
+                if first_close is None:
+                    first_close = close
+
+                # Calculate return from start (for normalized comparison)
+                return_pct = ((close / first_close) - 1) * 100 if first_close else 0
+
+                result.append({
+                    'timestamp': bar.timestamp.isoformat() if hasattr(bar.timestamp, 'isoformat') else str(bar.timestamp),
+                    'close': close,
+                    'return_pct': return_pct
+                })
+
+            logger.info(f"Fetched {len(result)} days of benchmark data for {symbol}")
+            return result[-days:]  # Trim to requested days
+
+        except ImportError as e:
+            logger.error(f"alpaca-py import error: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Error getting benchmark data: {e}")
+            return []
+
+
 # Export for dashboard
 __all__ = ['OptionsDataLoader']
