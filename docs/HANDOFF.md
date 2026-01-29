@@ -1,9 +1,74 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 28, 2026 (Session EQUITY-95)
+**Last Updated:** January 29, 2026 (Session EQUITY-96)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Phase 6 IN PROGRESS (Crypto Architecture Unification)
-**Status:** EQUITY-95 COMPLETE - EOD exit bug fixed, Discord audit data source fixed
+**Phase:** Paper Trading - Phase 6 COMPLETE, Trade Analytics Integration NEXT
+**Status:** EQUITY-96 COMPLETE - Phase 6.5 dashboard filter, code simplification, trade analytics planning
+
+---
+
+## Session EQUITY-96: Phase 6.5 + Code Simplification + Trade Analytics Planning (COMPLETE)
+
+**Date:** January 29, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Dashboard strategy filter added, 78 lines removed from crypto daemon, trade analytics module explored
+
+### What Was Accomplished
+
+1. **Phase 6.5 - Dashboard Strategy Filter (COMPLETE)**
+   - Added P&L by Strategy row showing STRAT/StatArb/Combined breakdown
+   - Added strategy filter dropdown in Trading Activity header
+   - Created `create_strategy_pnl_display()` function
+   - Filter applies to closed trades table
+   - New callback `update_crypto_strategy_pnl()`
+
+2. **Code Simplification - Backward-Compat Delegates Removed**
+   - Removed 78 lines of delegate methods from `crypto/scanning/daemon.py` (1,172 -> 1,094 lines)
+   - Updated 3 test files to use coordinator APIs directly
+   - Tests now call `daemon.filter_manager.passes_filters()` instead of `daemon._passes_filters()`
+   - 824 crypto tests passing
+
+3. **Railway Deploy Fix**
+   - Added `dash-tvlwc>=0.1.0` to `pyproject.toml` and `requirements-railway.txt`
+   - TradingView charts package was missing from Railway dependencies
+
+4. **Trade Analytics Module Understanding**
+   - Explored `core/trade_analytics/` - discovered it's FULLY IMPLEMENTED (2,800+ lines)
+   - ExcursionTracker, TradeStore, TradeAnalyticsEngine all complete
+   - Ready for integration into equity/crypto daemons
+   - User chose equity daemon integration as first priority
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `crypto/scanning/daemon.py` | -78 lines (delegate removal) |
+| `dashboard/components/crypto_panel.py` | +100 lines (strategy P&L display, filter) |
+| `dashboard/app.py` | +35 lines (strategy callbacks) |
+| `pyproject.toml` | Added dash-tvlwc dependency |
+| `requirements-railway.txt` | Added dash-tvlwc dependency |
+| `tests/test_crypto/test_daemon_*.py` | Updated delegate calls to coordinator APIs |
+
+### Test Results
+
+- Crypto tests: 824/824 passing
+- Dashboard tests: 224/224 passing
+
+### Phase 6 Progress (COMPLETE)
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 6.1 | Strategy field addition | COMPLETE |
+| 6.2 | StatArb signal generator | COMPLETE |
+| 6.3 | Daemon integration | COMPLETE |
+| 6.4 | Coordinator extraction | COMPLETE |
+| 6.5 | Dashboard filter | COMPLETE |
+
+### Next Session: EQUITY-97
+
+- Trade Analytics: Wire `TradeAnalyticsIntegration` into equity position_monitor.py
+- Verify EOD exit fix (after 4 PM observation)
+- Historical trade migration (paper_trades.json -> TradeStore)
 
 ---
 
