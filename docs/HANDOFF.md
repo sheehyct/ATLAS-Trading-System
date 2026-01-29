@@ -1,9 +1,53 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 29, 2026 (Session EQUITY-96)
+**Last Updated:** January 29, 2026 (Session EQUITY-97)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Phase 6 COMPLETE, Trade Analytics Integration NEXT
-**Status:** EQUITY-96 COMPLETE - Phase 6.5 dashboard filter, code simplification, trade analytics planning
+**Phase:** Paper Trading - Trade Analytics Integration COMPLETE
+**Status:** EQUITY-97 COMPLETE - Trade analytics wired into equity daemon, historical trades migrated
+
+---
+
+## Session EQUITY-97: Trade Analytics Integration + Historical Migration (COMPLETE)
+
+**Date:** January 29, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Analytics integration active, 35 trades in TradeStore
+
+### What Was Accomplished
+
+1. **Trade Analytics Integration into Equity Daemon**
+   - Wired `TradeAnalyticsIntegration` into `position_monitor.py`
+   - `on_position_open()` - starts MFE/MAE tracking when TrackedPosition created
+   - `on_price_update()` - updates excursion tracking every 60s in check loop
+   - `on_position_close()` - finalizes and stores EnrichedTradeRecord on exit
+   - All 91 position monitor tests passing
+
+2. **Historical Trade Migration**
+   - Created `scripts/migrate_enriched_trades.py` for importing completed trades
+   - Migrated 34 trades from `data/enriched_trades.json` into TradeStore
+   - TradeStore now contains 35 equity option trades for baseline analytics
+
+3. **Trade Analytics Baseline Stats**
+   - Total trades: 35
+   - Win rate: 34.3%
+   - Total P&L: -$2,188
+   - Best pattern: 3-2U (50% WR, N=10)
+   - Worst pattern: 3-2D (15% WR, N=13)
+   - Most traded: 1H timeframe (16 trades)
+
+4. **Bug Fix**
+   - Fixed division by zero in migration script stats calculation
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/position_monitor.py` | +51 lines (analytics integration) |
+| `scripts/migrate_enriched_trades.py` | NEW (209 lines, migration script) |
+
+### Deferred
+
+- Priority 2 (Verify EOD Exit Fix) - VPS payment issue, check next session
 
 ---
 

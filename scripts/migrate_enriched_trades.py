@@ -199,7 +199,8 @@ def migrate_enriched_trades():
     total_pnl = sum(t.pnl for t in all_trades)
 
     logger.info("")
-    logger.info(f"Win Rate: {len(winners)}/{len(all_trades)} ({100*len(winners)/len(all_trades):.1f}%)")
+    if all_trades:
+        logger.info(f"Win Rate: {len(winners)}/{len(all_trades)} ({len(winners)/len(all_trades):.1%})")
     logger.info(f"Total P&L: ${total_pnl:.2f}")
 
     return imported
