@@ -25,6 +25,10 @@ from strat.signal_automation.executor import (
 from strat.signal_automation.signal_store import SignalStore, StoredSignal
 from strat.signal_automation.utils import MarketHoursValidator
 
+# EQUITY-97: Trade analytics integration
+from pathlib import Path
+from core.trade_analytics.integration import TradeAnalyticsIntegration
+
 logger = logging.getLogger(__name__)
 
 
@@ -344,6 +348,13 @@ class PositionMonitor:
         self._exit_count = 0
         self._error_count = 0
 
+        # EQUITY-97: Trade analytics integration for MFE/MAE tracking
+        self._analytics = TradeAnalyticsIntegration(
+            store_path=Path("core/trade_analytics/data/equity_trades.json"),
+            sample_interval_seconds=60,  # Match check_interval
+            store_price_history=True,
+        )
+
     def sync_positions(self) -> int:
         """
         Sync tracked positions with Alpaca.
@@ -572,7 +583,7 @@ class PositionMonitor:
                 f"trail_distance=${atr_trail_distance:.2f}"
             )
 
-        return TrackedPosition(
+        tracked = TrackedPosition(
             osi_symbol=osi_symbol,
             signal_key=execution.signal_key if execution else "",
             symbol=signal.symbol,
@@ -607,6 +618,19 @@ class PositionMonitor:
             atr_trail_distance=atr_trail_distance,
             atr_activation_level=atr_activation_level,
         )
+
+        # EQUITY-97: Start excursion tracking for MFE/MAE
+        if self._analytics and tracked.signal_key:
+            self._analytics.on_position_open(
+                trade_id=tracked.signal_key,
+                entry_price=tracked.actual_entry_underlying,
+                direction=tracked.direction,
+                quantity=tracked.contracts,
+                multiplier=100.0,  # Options multiplier
+                entry_time=tracked.entry_time,
+            )
+
+        return tracked
 
     def _parse_expiration(self, osi_symbol: str) -> str:
         """Parse expiration date from OSI symbol."""
@@ -697,6 +721,13 @@ class PositionMonitor:
 
         # Get underlying price for the evaluator
         underlying_price = self._get_underlying_price(pos.symbol)
+
+        # EQUITY-97: Update excursion tracking (MFE/MAE)
+        if self._analytics and underlying_price and pos.signal_key:
+            self._analytics.on_price_update(
+                trade_id=pos.signal_key,
+                current_price=underlying_price,
+            )
 
         # Get bar data for pattern invalidation check
         bar_data = self._bar_cache.get(pos.symbol)
@@ -1051,6 +1082,25 @@ class PositionMonitor:
                         f"Position closed: {pos.signal_key} ({exit_signal.osi_symbol}) - "
                         f"P&L: ${pos.realized_pnl:.2f} ({exit_signal.reason.value})"
                     )
+
+                    # EQUITY-97: Finalize and store enriched trade record with MFE/MAE
+                    if self._analytics and pos.signal_key:
+                        try:
+                            record = self._analytics.on_position_close(
+                                position=pos,
+                                exit_price=exit_signal.underlying_price,
+                                exit_time=pos.exit_time,
+                                asset_class="equity_option",
+                            )
+                            if record and record.excursion:
+                                logger.info(
+                                    f"Trade analytics stored: {pos.signal_key} - "
+                                    f"MFE=${record.excursion.mfe_pnl:.2f}, "
+                                    f"Efficiency={record.excursion.exit_efficiency:.1%}"
+                                )
+                        except Exception as e:
+                            # Analytics errors should not affect exit execution
+                            logger.warning(f"Trade analytics error for {pos.signal_key}: {e}")
 
                 self._exit_count += 1
 
