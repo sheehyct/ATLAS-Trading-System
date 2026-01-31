@@ -11,7 +11,7 @@ Provides:
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -791,3 +791,356 @@ class CoinbaseClient:
             amount: Balance amount
         """
         self._mock_balance[currency] = amount
+
+    # =========================================================================
+    # READ-ONLY CFM METHODS (For Live P/L Tracking)
+    # =========================================================================
+    # These methods use COINBASE_READONLY_API_KEY/SECRET for read-only access
+    # to actual CFM trading data (fills, positions, funding). They work
+    # independently of simulation_mode and do not affect paper trading state.
+
+    def _get_readonly_client(self) -> Optional[RESTClient]:
+        """
+        Get a read-only client using COINBASE_READONLY_API_KEY credentials.
+
+        Returns:
+            RESTClient configured with readonly credentials, or None if not configured
+        """
+        if hasattr(self, "_readonly_client"):
+            return self._readonly_client
+
+        readonly_key = os.getenv("COINBASE_READONLY_API_KEY")
+        readonly_secret = os.getenv("COINBASE_READONLY_API_SECRET")
+
+        if not readonly_key or not readonly_secret:
+            logger.debug("COINBASE_READONLY_API_KEY/SECRET not configured")
+            self._readonly_client = None
+            return None
+
+        try:
+            # Handle private key formatting
+            readonly_secret = readonly_secret.replace("\\n", "\n").strip()
+            if not readonly_secret.startswith("-----BEGIN"):
+                readonly_secret = (
+                    f"-----BEGIN EC PRIVATE KEY-----\n"
+                    f"{readonly_secret}\n"
+                    f"-----END EC PRIVATE KEY-----"
+                )
+
+            self._readonly_client = RESTClient(
+                api_key=readonly_key, api_secret=readonly_secret
+            )
+            logger.info("Readonly Coinbase client initialized for CFM P/L tracking")
+            return self._readonly_client
+        except Exception as e:
+            logger.error("Failed to initialize readonly Coinbase client: %s", e)
+            self._readonly_client = None
+            return None
+
+    def get_fills_live(
+        self,
+        product_id: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get filled orders from Coinbase (READ-ONLY - uses readonly API key).
+
+        This fetches actual fills from your Coinbase account for P/L tracking.
+
+        Args:
+            product_id: Filter by product (e.g., 'BIP-20DEC30-CDE')
+            start_date: Start date for fill history
+            end_date: End date for fill history
+            limit: Maximum number of fills to return (default: 500)
+
+        Returns:
+            List of fill dictionaries with trade details
+        """
+        client = self._get_readonly_client()
+        if not client:
+            logger.warning("Readonly client not available for get_fills_live")
+            return []
+
+        try:
+            # Build query parameters
+            kwargs = {"limit": limit}
+            if product_id:
+                kwargs["product_id"] = product_id
+            if start_date:
+                kwargs["start_sequence_timestamp"] = start_date.isoformat() + "Z"
+            if end_date:
+                kwargs["end_sequence_timestamp"] = end_date.isoformat() + "Z"
+
+            response = client.get_fills(**kwargs)
+
+            # Parse response
+            if hasattr(response, "fills"):
+                fills = response.fills
+            else:
+                fills = response.get("fills", [])
+
+            result = []
+            for fill in fills:
+                result.append(self._fill_to_dict(fill))
+
+            logger.debug("Fetched %d fills from Coinbase", len(result))
+            return result
+
+        except Exception as e:
+            logger.error("Error fetching fills from Coinbase: %s", e)
+            return []
+
+    def _fill_to_dict(self, fill: Any) -> Dict[str, Any]:
+        """Convert fill object to dictionary."""
+        if isinstance(fill, dict):
+            return fill
+
+        return {
+            "entry_id": getattr(fill, "entry_id", None),
+            "trade_id": getattr(fill, "trade_id", None),
+            "order_id": getattr(fill, "order_id", None),
+            "trade_time": getattr(fill, "trade_time", None),
+            "trade_type": getattr(fill, "trade_type", None),
+            "price": getattr(fill, "price", None),
+            "size": getattr(fill, "size", None),
+            "commission": getattr(fill, "commission", None),
+            "product_id": getattr(fill, "product_id", None),
+            "sequence_timestamp": getattr(fill, "sequence_timestamp", None),
+            "liquidity_indicator": getattr(fill, "liquidity_indicator", None),
+            "size_in_quote": getattr(fill, "size_in_quote", None),
+            "user_id": getattr(fill, "user_id", None),
+            "side": getattr(fill, "side", None),
+        }
+
+    def get_order_history_live(
+        self,
+        product_id: Optional[str] = None,
+        order_status: Optional[List[str]] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get order history from Coinbase (READ-ONLY - uses readonly API key).
+
+        Args:
+            product_id: Filter by product
+            order_status: Filter by status (e.g., ['FILLED', 'CANCELLED'])
+            start_date: Start date for order history
+            end_date: End date for order history
+            limit: Maximum number of orders to return
+
+        Returns:
+            List of order dictionaries
+        """
+        client = self._get_readonly_client()
+        if not client:
+            logger.warning("Readonly client not available for get_order_history_live")
+            return []
+
+        try:
+            kwargs = {"limit": limit}
+            if product_id:
+                kwargs["product_id"] = product_id
+            if order_status:
+                kwargs["order_status"] = order_status
+            if start_date:
+                kwargs["start_date"] = start_date.isoformat() + "Z"
+            if end_date:
+                kwargs["end_date"] = end_date.isoformat() + "Z"
+
+            response = client.list_orders(**kwargs)
+
+            if hasattr(response, "orders"):
+                orders = response.orders
+            else:
+                orders = response.get("orders", [])
+
+            result = []
+            for order in orders:
+                result.append(self._order_to_dict(order))
+
+            logger.debug("Fetched %d orders from Coinbase", len(result))
+            return result
+
+        except Exception as e:
+            logger.error("Error fetching order history from Coinbase: %s", e)
+            return []
+
+    def get_cfm_portfolio_summary(self) -> Dict[str, Any]:
+        """
+        Get CFM (Coinbase Financial Markets) portfolio summary (READ-ONLY).
+
+        Returns summary of your CFM derivatives account including balances,
+        margin, and unrealized P/L.
+
+        Returns:
+            Dict with portfolio summary or empty dict if unavailable
+        """
+        client = self._get_readonly_client()
+        if not client:
+            logger.warning("Readonly client not available for get_cfm_portfolio_summary")
+            return {}
+
+        try:
+            # Try INTX portfolio endpoint for CFM
+            if hasattr(client, "get_intx_portfolio_summary"):
+                response = client.get_intx_portfolio_summary()
+            elif hasattr(client, "get_futures_balance_summary"):
+                response = client.get_futures_balance_summary()
+            else:
+                # Fall back to accounts endpoint
+                response = client.get_accounts()
+                if hasattr(response, "accounts"):
+                    return {"accounts": [self._account_to_dict(a) for a in response.accounts]}
+                return response
+
+            # Parse response
+            if hasattr(response, "__dict__"):
+                return {k: v for k, v in response.__dict__.items() if not k.startswith("_")}
+            return response if isinstance(response, dict) else {}
+
+        except Exception as e:
+            logger.error("Error fetching CFM portfolio summary: %s", e)
+            return {}
+
+    def get_cfm_positions(self) -> List[Dict[str, Any]]:
+        """
+        Get open CFM positions (READ-ONLY).
+
+        Returns all open positions in your CFM derivatives account
+        (BIP, ETP, SOP, ADP, XRP, SLRH, GOLJ, etc.).
+
+        Returns:
+            List of position dictionaries
+        """
+        client = self._get_readonly_client()
+        if not client:
+            logger.warning("Readonly client not available for get_cfm_positions")
+            return []
+
+        try:
+            # Try different position endpoints
+            response = None
+            if hasattr(client, "list_intx_positions"):
+                response = client.list_intx_positions()
+            elif hasattr(client, "get_futures_positions"):
+                response = client.get_futures_positions()
+            elif hasattr(client, "list_futures_positions"):
+                response = client.list_futures_positions()
+
+            if response is None:
+                logger.warning("No CFM positions endpoint available")
+                return []
+
+            # Parse positions
+            if hasattr(response, "positions"):
+                positions = response.positions
+            else:
+                positions = response.get("positions", [])
+
+            result = []
+            for pos in positions:
+                result.append(self._cfm_position_to_dict(pos))
+
+            logger.debug("Fetched %d CFM positions", len(result))
+            return result
+
+        except Exception as e:
+            logger.error("Error fetching CFM positions: %s", e)
+            return []
+
+    def _cfm_position_to_dict(self, position: Any) -> Dict[str, Any]:
+        """Convert CFM position object to dictionary."""
+        if isinstance(position, dict):
+            return position
+
+        return {
+            "product_id": getattr(position, "product_id", None),
+            "symbol": getattr(position, "symbol", None),
+            "side": getattr(position, "side", None),
+            "number_of_contracts": getattr(position, "number_of_contracts", None),
+            "avg_entry_price": getattr(position, "avg_entry_price", None),
+            "current_price": getattr(position, "current_price", None),
+            "unrealized_pnl": getattr(position, "unrealized_pnl", None),
+            "aggregated_pnl": getattr(position, "aggregated_pnl", None),
+            "position_side": getattr(position, "position_side", None),
+            "margin_type": getattr(position, "margin_type", None),
+            "net_size": getattr(position, "net_size", None),
+            "buy_order_size": getattr(position, "buy_order_size", None),
+            "sell_order_size": getattr(position, "sell_order_size", None),
+            "leverage": getattr(position, "leverage", None),
+            "mark_price": getattr(position, "mark_price", None),
+            "liquidation_price": getattr(position, "liquidation_price", None),
+            "im_notional": getattr(position, "im_notional", None),
+            "mm_notional": getattr(position, "mm_notional", None),
+            "position_notional": getattr(position, "position_notional", None),
+        }
+
+    def get_cfm_funding_payments(
+        self,
+        product_id: Optional[str] = None,
+        days: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get funding rate payments for perpetual positions (READ-ONLY).
+
+        Perpetuals (BIP, ETP, SOP, ADP, XRP) have 8-hour funding intervals.
+        Positive funding means longs pay shorts.
+
+        Args:
+            product_id: Filter by specific product
+            days: Number of days of history to fetch (default: 30)
+
+        Returns:
+            List of funding payment dictionaries
+        """
+        client = self._get_readonly_client()
+        if not client:
+            logger.warning("Readonly client not available for get_cfm_funding_payments")
+            return []
+
+        try:
+            # Calculate date range
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=days)
+
+            # Try to get funding payments via fills or transactions
+            # Note: Funding payments may come through as a specific trade_type
+            fills = self.get_fills_live(
+                product_id=product_id,
+                start_date=start_date,
+                end_date=end_date,
+                limit=1000,
+            )
+
+            # Filter for funding-related entries
+            funding_payments = []
+            for fill in fills:
+                trade_type = fill.get("trade_type", "")
+                if "FUNDING" in str(trade_type).upper():
+                    funding_payments.append({
+                        "product_id": fill.get("product_id"),
+                        "timestamp": fill.get("trade_time") or fill.get("sequence_timestamp"),
+                        "amount": fill.get("size") or fill.get("commission"),
+                        "side": fill.get("side"),
+                        "trade_type": trade_type,
+                    })
+
+            logger.debug("Fetched %d funding payments", len(funding_payments))
+            return funding_payments
+
+        except Exception as e:
+            logger.error("Error fetching CFM funding payments: %s", e)
+            return []
+
+    def is_readonly_available(self) -> bool:
+        """
+        Check if readonly API access is configured and available.
+
+        Returns:
+            True if COINBASE_READONLY_API_KEY is configured, False otherwise
+        """
+        return self._get_readonly_client() is not None

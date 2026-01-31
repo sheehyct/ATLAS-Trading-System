@@ -70,6 +70,17 @@ from dashboard.components.crypto_panel import (
     create_closed_trades_table as create_crypto_closed_table,
     create_performance_metrics,
 )
+# Coinbase CFM panel for manual derivatives trading P/L
+from dashboard.components.coinbase_cfm_panel import (
+    create_coinbase_cfm_panel,
+    create_crypto_summary_display as create_cfm_crypto_summary,
+    create_commodity_summary_display as create_cfm_commodity_summary,
+    create_positions_table as create_cfm_positions_table,
+    create_closed_trades_table as create_cfm_closed_table,
+    create_funding_table as create_cfm_funding_table,
+    create_performance_display as create_cfm_performance_display,
+    create_by_product_table as create_cfm_by_product_table,
+)
 # Session EQUITY-52: Unified STRAT Analytics panel
 # Dashboard Overhaul: Added create_open_positions_tab
 from dashboard.components.strat_analytics_panel import (
@@ -92,6 +103,7 @@ from dashboard.data_loaders.live_loader import LiveDataLoader
 from dashboard.data_loaders.orders_loader import OrdersDataLoader
 from dashboard.data_loaders.options_loader import OptionsDataLoader
 from dashboard.data_loaders.crypto_loader import CryptoDataLoader
+from dashboard.data_loaders.coinbase_cfm_loader import CoinbaseCFMLoader
 
 # Import visualizations
 from dashboard.visualizations.regime_viz import (
@@ -255,6 +267,17 @@ try:
 except Exception as e:
     logger.warning(f"CryptoDataLoader initialization failed: {e}")
     crypto_loader = None
+
+# Coinbase CFM loader for manual derivatives trading P/L
+try:
+    cfm_loader = CoinbaseCFMLoader()
+    if cfm_loader._connected:
+        logger.info("CoinbaseCFMLoader initialized with readonly API access")
+    else:
+        logger.warning(f"CoinbaseCFMLoader not connected: {cfm_loader.init_error}")
+except Exception as e:
+    logger.warning(f"CoinbaseCFMLoader initialization failed: {e}")
+    cfm_loader = None
 
 # ============================================
 # DIAGNOSTIC ENDPOINT (Session EQUITY-51)
@@ -471,6 +494,17 @@ app.layout = dbc.Container([
                             'font-weight': 'bold'
                         }
                     ),
+
+                    # Tab 6: Coinbase CFM (Manual Derivatives Trading P/L)
+                    dbc.Tab(
+                        label='Coinbase CFM',
+                        tab_id='coinbase-cfm-tab',
+                        label_style={'color': COLORS['text_primary']},
+                        active_label_style={
+                            'color': '#F7931A',  # Bitcoin orange
+                            'font-weight': 'bold'
+                        }
+                    ),
                 ],
             ),
         ], className='p-0')
@@ -523,6 +557,9 @@ def render_tab_content(active_tab):
     elif active_tab == 'strat-analytics-tab':
         # Session EQUITY-52: Unified STRAT Analytics panel
         return create_strat_analytics_panel()
+    elif active_tab == 'coinbase-cfm-tab':
+        # Coinbase CFM manual derivatives trading P/L
+        return create_coinbase_cfm_panel()
     else:
         return html.Div('Tab content not found')
 
@@ -2260,6 +2297,112 @@ def restore_strategy_selection(stored_strategy):
 def restore_market_selection(stored_market):
     """Restore market selection from session storage."""
     return stored_market or 'options'
+
+
+# ============================================
+# COINBASE CFM CALLBACKS
+# ============================================
+
+@app.callback(
+    [Output('cfm-crypto-summary', 'children'),
+     Output('cfm-commodity-summary', 'children')],
+    [Input('cfm-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_cfm_summaries(n_intervals, active_tab):
+    """Update Coinbase CFM P/L summaries."""
+    from dash import no_update
+
+    if active_tab != 'coinbase-cfm-tab':
+        return no_update, no_update
+
+    if cfm_loader is None or not cfm_loader._connected:
+        from dashboard.components.coinbase_cfm_panel import _create_api_error_placeholder
+        error = cfm_loader.init_error if cfm_loader else "CFM loader not initialized"
+        return _create_api_error_placeholder(error), _create_api_error_placeholder(error)
+
+    try:
+        summary = cfm_loader.get_combined_summary()
+
+        crypto_summary = create_cfm_crypto_summary(summary.get('crypto_perps', {}))
+        commodity_summary = create_cfm_commodity_summary(summary.get('commodity_futures', {}))
+
+        return crypto_summary, commodity_summary
+    except Exception as e:
+        logger.error(f"Error updating CFM summaries: {e}")
+        from dashboard.components.coinbase_cfm_panel import _create_api_error_placeholder
+        return _create_api_error_placeholder(str(e)), _create_api_error_placeholder(str(e))
+
+
+@app.callback(
+    [Output('cfm-positions-table', 'children'),
+     Output('cfm-positions-count', 'children')],
+    [Input('cfm-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_cfm_positions(n_intervals, active_tab):
+    """Update Coinbase CFM open positions table."""
+    from dash import no_update
+
+    if active_tab != 'coinbase-cfm-tab':
+        return no_update, no_update
+
+    if cfm_loader is None or not cfm_loader._connected:
+        from dashboard.components.coinbase_cfm_panel import _create_api_error_placeholder
+        return _create_api_error_placeholder("CFM loader not connected"), ""
+
+    try:
+        positions = cfm_loader.get_open_positions()
+        table = create_cfm_positions_table(positions)
+        count_text = f"({len(positions)} positions)"
+        return table, count_text
+    except Exception as e:
+        logger.error(f"Error updating CFM positions: {e}")
+        from dashboard.components.coinbase_cfm_panel import _create_api_error_placeholder
+        return _create_api_error_placeholder(str(e)), ""
+
+
+@app.callback(
+    Output('cfm-tab-content', 'children'),
+    [Input('cfm-tabs', 'active_tab'),
+     Input('cfm-refresh-interval', 'n_intervals'),
+     Input('tabs', 'active_tab')]
+)
+def update_cfm_tab_content(cfm_tab, n_intervals, main_tab):
+    """Update Coinbase CFM tab content based on selected sub-tab."""
+    from dash import no_update
+
+    if main_tab != 'coinbase-cfm-tab':
+        return no_update
+
+    if cfm_loader is None or not cfm_loader._connected:
+        from dashboard.components.coinbase_cfm_panel import _create_api_error_placeholder
+        return _create_api_error_placeholder("CFM loader not connected")
+
+    try:
+        if cfm_tab == 'cfm-closed-tab':
+            trades = cfm_loader.get_closed_trades(limit=50)
+            return create_cfm_closed_table(trades)
+
+        elif cfm_tab == 'cfm-funding-tab':
+            payments = cfm_loader.get_funding_payments(days=30)
+            return create_cfm_funding_table(payments)
+
+        elif cfm_tab == 'cfm-performance-tab':
+            metrics = cfm_loader.get_performance_metrics()
+            return create_cfm_performance_display(metrics)
+
+        elif cfm_tab == 'cfm-by-product-tab':
+            pnl_by_product = cfm_loader.get_pnl_by_product()
+            return create_cfm_by_product_table(pnl_by_product)
+
+        else:
+            return html.Div("Select a tab")
+
+    except Exception as e:
+        logger.error(f"Error updating CFM tab content: {e}")
+        from dashboard.components.coinbase_cfm_panel import _create_api_error_placeholder
+        return _create_api_error_placeholder(str(e))
 
 
 # ============================================

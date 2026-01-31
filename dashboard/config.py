@@ -489,6 +489,16 @@ REFRESH_INTERVALS = {
     'portfolio_metrics': 60000,   # 1 minute
     'regime_update': 300000,      # 5 minutes
     'backtest_cache': 3600000,    # 1 hour
+    'coinbase_cfm': 300000,       # 5 minutes (respects API rate limits)
+}
+
+# ============================================
+# COINBASE CFM PRODUCTS
+# ============================================
+
+CFM_PRODUCTS = {
+    'crypto_perps': ['BIP', 'ETP', 'SOP', 'ADP', 'XRP'],  # BTC, ETH, SOL, ADA, XRP perpetuals
+    'commodity_futures': ['SLRH', 'GOLJ'],                # Silver, Gold futures
 }
 
 # ============================================
