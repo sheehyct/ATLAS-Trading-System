@@ -74,6 +74,7 @@ from crypto.trading.sizing import (
     calculate_position_size_leverage_first,
     should_skip_trade,
 )
+from crypto.trading.fees import analyze_fee_impact
 
 logger = logging.getLogger(__name__)
 
@@ -427,6 +428,69 @@ class CryptoSignalDaemon:
         from datetime import timedelta
         return now_utc - timedelta(hours=5)
 
+    def _check_fee_profitability(
+        self,
+        symbol: str,
+        entry_price: float,
+        stop_price: float,
+        target_price: float,
+        available_balance: float,
+        leverage: float,
+    ) -> tuple:
+        """
+        Check if trade is profitable after accounting for fees.
+
+        Session EQUITY-99: Reject trades where fees consume too much of target profit.
+
+        Args:
+            symbol: Trading symbol (e.g., "BTC-USD")
+            entry_price: Entry price
+            stop_price: Stop loss price
+            target_price: Target price
+            available_balance: Available account balance
+            leverage: Position leverage
+
+        Returns:
+            (should_skip, reason) - True if trade should be skipped due to fees
+        """
+        if not config.FEE_PROFITABILITY_FILTER_ENABLED:
+            return False, ""
+
+        # Calculate stop and target percentages
+        stop_pct = abs(entry_price - stop_price) / entry_price
+        target_pct = abs(target_price - entry_price) / entry_price
+
+        if target_pct <= 0:
+            return True, "Target percentage is zero or negative"
+
+        try:
+            fee_analysis = analyze_fee_impact(
+                account_value=available_balance,
+                leverage=leverage,
+                price=entry_price,
+                symbol=symbol,
+                stop_percent=stop_pct,
+                target_percent=target_pct,
+            )
+
+            fee_pct_of_target = fee_analysis.get("fee_as_pct_of_target", 0)
+
+            if fee_pct_of_target > config.MAX_FEE_PCT_OF_TARGET:
+                return True, (
+                    f"Fees {fee_pct_of_target:.1%} of target profit "
+                    f"(max: {config.MAX_FEE_PCT_OF_TARGET:.1%})"
+                )
+
+            logger.debug(
+                f"Fee check passed: {symbol} fees={fee_pct_of_target:.1%} of target, "
+                f"net R:R={fee_analysis.get('net_rr_ratio', 0):.2f}"
+            )
+            return False, ""
+
+        except Exception as e:
+            logger.warning(f"Fee analysis failed for {symbol}: {e}")
+            return False, ""  # Allow trade on analysis failure
+
     def _execute_trade(self, event: CryptoTriggerEvent) -> None:
         """
         Execute trade via paper trader with time-based leverage.
@@ -500,8 +564,22 @@ class CryptoSignalDaemon:
             )
             return
 
-        # Calculate position size
+        # Fee profitability filter (Session EQUITY-99)
         available_balance = self.paper_trader.get_available_balance()
+        skip_fee, fee_reason = self._check_fee_profitability(
+            symbol=signal.symbol,
+            entry_price=event.current_price,
+            stop_price=stop_price,
+            target_price=target_price,
+            available_balance=available_balance,
+            leverage=max_leverage,
+        )
+        if skip_fee:
+            logger.info(f"SKIPPING TRADE (FEES): {signal.symbol} - {fee_reason}")
+            return
+
+        # Calculate position size
+        # Note: available_balance already fetched above for fee check
 
         if config.LEVERAGE_FIRST_SIZING:
             position_size, implied_leverage, actual_risk = calculate_position_size_leverage_first(
@@ -559,6 +637,7 @@ class CryptoSignalDaemon:
                 entry_bar_type=entry_bar_type,
                 entry_bar_high=signal.setup_bar_high,
                 entry_bar_low=signal.setup_bar_low,
+                leverage_tier=tier,  # Session EQUITY-99: Track for deadline enforcement
             )
 
             if trade is None:

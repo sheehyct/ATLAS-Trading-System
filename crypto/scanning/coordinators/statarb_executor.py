@@ -14,7 +14,9 @@ import logging
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Protocol, Set
 
+from crypto import config
 from crypto.config import get_max_leverage_for_symbol
+from crypto.trading.fees import calculate_round_trip_fee, calculate_num_contracts
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +249,42 @@ class CryptoStatArbExecutor:
         if long_qty <= 0 or short_qty <= 0:
             logger.warning("StatArb entry skipped: invalid quantities")
             return
+
+        # Fee profitability check (Session EQUITY-99)
+        if config.FEE_PROFITABILITY_FILTER_ENABLED:
+            try:
+                # Calculate contracts and fees for each leg
+                long_contracts = calculate_num_contracts(
+                    signal.long_notional, long_price, signal.long_symbol
+                )
+                short_contracts = calculate_num_contracts(
+                    signal.short_notional, short_price, signal.short_symbol
+                )
+
+                total_rt_fees = (
+                    calculate_round_trip_fee(signal.long_notional, long_contracts)
+                    + calculate_round_trip_fee(signal.short_notional, short_contracts)
+                )
+
+                # StatArb target is mean reversion - estimate 2% profit expectation
+                total_notional = signal.long_notional + signal.short_notional
+                expected_profit = total_notional * 0.02
+
+                if expected_profit > 0:
+                    fee_pct = total_rt_fees / expected_profit
+                    if fee_pct > config.MAX_FEE_PCT_OF_TARGET:
+                        logger.info(
+                            f"STATARB SKIPPED (FEES): Fees ${total_rt_fees:.2f} = "
+                            f"{fee_pct:.1%} of expected profit "
+                            f"(max: {config.MAX_FEE_PCT_OF_TARGET:.1%})"
+                        )
+                        return
+                    logger.debug(
+                        f"StatArb fee check passed: fees {fee_pct:.1%} of expected profit"
+                    )
+            except Exception as e:
+                logger.warning(f"StatArb fee check failed: {e}")
+                # Continue with entry on fee check failure
 
         signal_type_str = signal.signal_type.value
 

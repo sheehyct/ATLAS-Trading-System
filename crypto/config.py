@@ -325,6 +325,19 @@ MIN_REWARD_RISK: float = 1.5
 EXPECTED_TRADES_PER_MONTH: int = 3  # 1-5 per month
 
 # =============================================================================
+# FEE PROFITABILITY FILTER (Session EQUITY-99)
+# =============================================================================
+# Reject trades where fees consume too much of expected profit
+
+# Enable fee profitability filter at entry
+FEE_PROFITABILITY_FILTER_ENABLED: bool = True
+
+# Maximum acceptable fee as percentage of target profit
+# 0.20 = reject if fees > 20% of expected profit
+MAX_FEE_PCT_OF_TARGET: float = 0.20
+
+
+# =============================================================================
 # SIMULATION / PAPER TRADING
 # =============================================================================
 

@@ -102,6 +102,8 @@ class SimulatedTrade:
     entry_bar_low: float = 0.0  # Setup bar low for Type 3 detection
     intrabar_high: float = 0.0  # Highest price since entry
     intrabar_low: float = float("inf")  # Lowest price since entry
+    # Session EQUITY-99: Leverage tier tracking for deadline enforcement
+    leverage_tier: str = "swing"  # "intraday" (10x, 4PM deadline) or "swing" (4x, no deadline)
     # Session Jan 24, 2026: Fee and cost tracking
     entry_fee: float = 0.0  # Fee paid on entry
     exit_fee: float = 0.0  # Fee paid on exit
@@ -312,6 +314,8 @@ class PaperTrader:
         slippage_rate: float = DEFAULT_SLIPPAGE_RATE,
         # Session EQUITY-91: Strategy attribution
         strategy: str = "strat",
+        # Session EQUITY-99: Leverage tier for deadline enforcement
+        leverage_tier: str = "swing",
     ) -> Optional[SimulatedTrade]:
         """
         Open a new simulated trade with margin reservation, fees, and slippage.
@@ -397,6 +401,7 @@ class PaperTrader:
             priority_rank=priority_rank,
             margin_reserved=margin_required,
             strategy=strategy,  # Session EQUITY-91
+            leverage_tier=leverage_tier,  # Session EQUITY-99
             entry_bar_type=entry_bar_type,
             entry_bar_high=entry_bar_high,
             entry_bar_low=entry_bar_low,

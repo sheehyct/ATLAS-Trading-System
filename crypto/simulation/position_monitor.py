@@ -7,11 +7,17 @@ Designed to run within the crypto daemon polling loop.
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+import pytz
+
+from crypto.config import INTRADAY_WINDOW_END_HOUR_ET, time_until_intraday_close_et
 from crypto.exchange.coinbase_client import CoinbaseClient
 from crypto.simulation.paper_trader import PaperTrader, SimulatedTrade
+
+# ET timezone for deadline checking
+ET_TIMEZONE = pytz.timezone("America/New_York")
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +120,7 @@ class CryptoPositionMonitor:
         Check if a trade should be exited.
 
         Exit Priority (per STRAT methodology - Session EQUITY-67):
+        0.5. Intraday Deadline (4PM ET for intraday leverage positions) - Session EQUITY-99
         1. Target Hit (highest priority)
         2. Pattern Invalidated (Type 3 evolution)
         3. Stop Hit (lowest priority)
@@ -125,6 +132,12 @@ class CryptoPositionMonitor:
         Returns:
             ExitSignal if exit condition met, None otherwise
         """
+        # Priority 0.5: Check intraday deadline (Session EQUITY-99)
+        # Highest priority - must close before 4PM ET if using intraday leverage
+        deadline_signal = self._check_intraday_deadline(trade, current_price)
+        if deadline_signal:
+            return deadline_signal
+
         # Calculate unrealized P&L (needed for all exit types)
         if trade.side == "BUY":
             unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
@@ -243,6 +256,62 @@ class CryptoPositionMonitor:
                 reason="PATTERN",  # Pattern invalidated
                 current_price=current_price,
                 trigger_price=0.0,  # Not applicable for pattern invalidation
+                unrealized_pnl=unrealized_pnl,
+                unrealized_pnl_percent=unrealized_pnl_percent,
+            )
+
+        return None
+
+    def _check_intraday_deadline(
+        self, trade: SimulatedTrade, current_price: float
+    ) -> Optional[ExitSignal]:
+        """
+        Check if intraday position must be closed before 4PM ET deadline.
+
+        Session EQUITY-99: Positions opened with intraday leverage (10x)
+        must be closed before 4PM ET when leverage requirement increases.
+        Exit 5 minutes before deadline to ensure reliable execution.
+
+        Args:
+            trade: Trade to check
+            current_price: Current market price
+
+        Returns:
+            ExitSignal if deadline approaching, None otherwise
+        """
+        # Only check trades with intraday leverage tier
+        leverage_tier = getattr(trade, "leverage_tier", "swing")
+        if leverage_tier != "intraday":
+            return None
+
+        now_et = datetime.now(ET_TIMEZONE)
+
+        # Calculate time until 4PM ET deadline
+        time_remaining = time_until_intraday_close_et(now_et)
+        minutes_remaining = time_remaining.total_seconds() / 60
+
+        # Exit 5 minutes before deadline (3:55 PM ET)
+        if 0 < minutes_remaining <= 5:
+            # Calculate P&L
+            if trade.side == "BUY":
+                unrealized_pnl = (current_price - trade.entry_price) * trade.quantity
+            else:
+                unrealized_pnl = (trade.entry_price - current_price) * trade.quantity
+
+            unrealized_pnl_percent = (
+                unrealized_pnl / (trade.entry_price * trade.quantity)
+            ) * 100
+
+            logger.warning(
+                f"INTRADAY DEADLINE EXIT: {trade.trade_id} {trade.symbol} - "
+                f"{minutes_remaining:.1f} min until 4PM ET, leverage_tier={leverage_tier}"
+            )
+
+            return ExitSignal(
+                trade=trade,
+                reason="INTRADAY_DEADLINE",
+                current_price=current_price,
+                trigger_price=0.0,  # Not applicable for deadline
                 unrealized_pnl=unrealized_pnl,
                 unrealized_pnl_percent=unrealized_pnl_percent,
             )
