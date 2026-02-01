@@ -10,14 +10,22 @@ Supports:
 Fee Structure (Coinbase CFM - Verified Jan 24, 2026):
 - Taker fee: 0.07% + $0.15/contract
 - Maker fee: 0.065% + $0.15/contract
+
+Leverage Tiers:
+- Intraday (6PM-4PM ET): Higher leverage available
+- Overnight/Swing (4PM-6PM ET + weekends): Lower leverage required
 """
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
+
+# Eastern timezone for leverage window calculations
+ET = ZoneInfo("America/New_York")
 
 
 # =============================================================================
@@ -87,6 +95,116 @@ def get_contract_multiplier(product_id: str) -> float:
     """
     base = extract_base_symbol(product_id)
     return CFM_CONTRACT_MULTIPLIERS.get(base, 1.0)
+
+
+# =============================================================================
+# LEVERAGE TIERS - VERIFIED Feb 1, 2026
+# =============================================================================
+# Intraday window: 6PM ET to 4PM ET next day (22 hours)
+# Overnight/Swing: 4PM ET to 6PM ET (2 hours) + weekends
+
+INTRADAY_START_HOUR = 18  # 6PM ET
+INTRADAY_END_HOUR = 16    # 4PM ET
+
+# Leverage by tier and product - VERIFIED from Coinbase CFM platform
+LEVERAGE_TIERS: Dict[str, Dict[str, float]] = {
+    "intraday": {
+        # Crypto - 10x intraday for majors, 5x for altcoins
+        "BIP": 10.0, "ETP": 10.0, "SOP": 5.0, "ADP": 5.0, "XRP": 5.0,
+        # Commodities
+        "SLR": 8.9, "SLRH": 8.9,
+        "GOL": 19.7, "GOLJ": 19.7,
+    },
+    "overnight": {
+        # Crypto - VERIFIED Jan 24, 2026
+        "BIP": 4.1, "ETP": 4.0, "SOP": 2.7, "ADP": 3.4, "XRP": 2.6,
+        # Commodities - VERIFIED Feb 1, 2026
+        "SLR": 8.9, "SLRH": 8.9,      # Same as intraday
+        "GOL": 19.7, "GOLJ": 19.7,    # Same as intraday (verify when market open)
+    },
+}
+
+DEFAULT_LEVERAGE = 4.0  # Conservative fallback
+
+
+def is_intraday_window(timestamp: datetime) -> bool:
+    """
+    Check if timestamp is within intraday leverage window.
+
+    Intraday: 6PM ET to 4PM ET next day (22 hours).
+    Overnight: 4PM ET to 6PM ET (2 hours).
+    Weekend: Friday 4PM ET to Sunday 6PM ET = overnight tier.
+
+    Args:
+        timestamp: Trade timestamp (UTC or timezone-aware)
+
+    Returns:
+        True if intraday leverage available at this time
+    """
+    # Convert to ET
+    if timestamp.tzinfo is None:
+        # Assume UTC if naive
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    ts_et = timestamp.astimezone(ET)
+
+    hour = ts_et.hour
+    weekday = ts_et.weekday()  # 0=Monday, 4=Friday, 5=Saturday, 6=Sunday
+
+    # Weekend check: Friday after 4PM through Sunday before 6PM
+    if weekday == 4 and hour >= INTRADAY_END_HOUR:  # Friday 4PM+
+        return False
+    if weekday == 5:  # Saturday
+        return False
+    if weekday == 6 and hour < INTRADAY_START_HOUR:  # Sunday before 6PM
+        return False
+
+    # Intraday window: hour >= 18 OR hour < 16
+    return hour >= INTRADAY_START_HOUR or hour < INTRADAY_END_HOUR
+
+
+def get_leverage_tier(timestamp: datetime) -> str:
+    """
+    Get leverage tier for a given timestamp.
+
+    Args:
+        timestamp: Trade timestamp
+
+    Returns:
+        "intraday" or "overnight"
+    """
+    return "intraday" if is_intraday_window(timestamp) else "overnight"
+
+
+def get_leverage_for_product(product_id: str, timestamp: datetime) -> float:
+    """
+    Get max leverage for a product at a specific time.
+
+    Args:
+        product_id: CFM product ID (e.g., 'BIP-20DEC30-CDE')
+        timestamp: Trade timestamp
+
+    Returns:
+        Maximum leverage available
+    """
+    base = extract_base_symbol(product_id)
+    tier = get_leverage_tier(timestamp)
+    return LEVERAGE_TIERS.get(tier, {}).get(base, DEFAULT_LEVERAGE)
+
+
+def calculate_margin_required(notional: float, leverage: float) -> float:
+    """
+    Calculate margin required for a position.
+
+    Args:
+        notional: Total notional value in USD
+        leverage: Leverage used
+
+    Returns:
+        Margin required in USD
+    """
+    if leverage <= 0:
+        return notional
+    return notional / leverage
 
 
 def extract_base_symbol(product_id: str) -> str:
@@ -273,6 +391,7 @@ class CFMRealizedPL:
     Realized P/L from a closed position.
 
     Created when a closing trade is matched against open lots via FIFO.
+    Includes leverage tier tracking for capital efficiency analysis.
     """
     product_id: str
     base_symbol: str
@@ -285,17 +404,24 @@ class CFMRealizedPL:
     exit_fee: float
     gross_pnl: float          # P/L before fees
     net_pnl: float            # P/L after fees
-    pnl_percent: float        # % return
+    pnl_percent: float        # % return on notional
     hold_duration: timedelta
     entry_time: datetime
     exit_time: datetime
     side: str                 # Direction of original position
     product_type: str         # crypto_perp or commodity_future
+    # Leverage tier tracking
+    leverage_tier: str = ""           # "intraday" or "overnight"
+    leverage_used: float = 1.0        # Actual leverage for this trade
+    notional_value: float = 0.0       # Total notional in USD
+    margin_required: float = 0.0      # Margin needed at entry
+    roi_on_margin: float = 0.0        # % return on margin (capital efficiency)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "product_id": self.product_id,
             "base_symbol": self.base_symbol,
+            "asset_name": CFM_SYMBOL_MAP.get(self.base_symbol, self.base_symbol),
             "open_fill_id": self.open_fill_id,
             "close_fill_id": self.close_fill_id,
             "quantity": self.quantity,
@@ -311,6 +437,12 @@ class CFMRealizedPL:
             "exit_time": self.exit_time.isoformat(),
             "side": self.side,
             "product_type": self.product_type,
+            # Leverage tracking
+            "leverage_tier": self.leverage_tier,
+            "leverage_used": self.leverage_used,
+            "notional_value": self.notional_value,
+            "margin_required": self.margin_required,
+            "roi_on_margin": self.roi_on_margin,
         }
 
 
@@ -320,6 +452,7 @@ class CFMOpenPosition:
     Aggregated open position for a product.
 
     Combines multiple lots into a single position view.
+    Includes leverage tier tracking for margin analysis.
     """
     product_id: str
     base_symbol: str
@@ -332,13 +465,24 @@ class CFMOpenPosition:
     current_price: Optional[float] = None
     product_type: str = ""
     lots: List[CFMLot] = field(default_factory=list)
+    # Leverage tier tracking
+    leverage_tier: str = ""           # Based on current time
+    leverage_available: float = 1.0   # Max leverage right now
+    notional_value: float = 0.0       # Total notional in USD
+    margin_required: float = 0.0      # Current margin requirement
+    unrealized_roi: float = 0.0       # % return on margin
 
-    def update_unrealized_pnl(self, current_price: float) -> None:
-        """Update unrealized P/L with current market price."""
+    def update_unrealized_pnl(self, current_price: float, now: Optional[datetime] = None) -> None:
+        """
+        Update unrealized P/L with current market price.
+
+        Args:
+            current_price: Current market price
+            now: Current timestamp for leverage tier calculation (default: now)
+        """
         self.current_price = current_price
 
         # Get contract multiplier for this product
-        # CFM contracts represent fractions of the underlying asset
         contract_multiplier = get_contract_multiplier(self.product_id)
 
         # Calculate unrealized P/L with contract multiplier
@@ -354,8 +498,18 @@ class CFMOpenPosition:
         self.unrealized_pnl -= self.total_fees
 
         # Notional = price * contracts * contract_multiplier
-        notional = self.avg_entry_price * self.quantity * contract_multiplier
-        self.unrealized_pnl_percent = (self.unrealized_pnl / notional * 100) if notional > 0 else 0.0
+        self.notional_value = current_price * self.quantity * contract_multiplier
+        self.unrealized_pnl_percent = (self.unrealized_pnl / self.notional_value * 100) if self.notional_value > 0 else 0.0
+
+        # Calculate leverage tier based on current time
+        if now is None:
+            now = datetime.now(timezone.utc)
+        self.leverage_tier = get_leverage_tier(now)
+        self.leverage_available = get_leverage_for_product(self.product_id, now)
+
+        # Calculate margin required and ROI
+        self.margin_required = calculate_margin_required(self.notional_value, self.leverage_available)
+        self.unrealized_roi = (self.unrealized_pnl / self.margin_required * 100) if self.margin_required > 0 else 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -371,6 +525,12 @@ class CFMOpenPosition:
             "unrealized_pnl_percent": self.unrealized_pnl_percent,
             "product_type": self.product_type,
             "num_lots": len(self.lots),
+            # Leverage tracking
+            "leverage_tier": self.leverage_tier,
+            "leverage_available": self.leverage_available,
+            "notional_value": self.notional_value,
+            "margin_required": self.margin_required,
+            "unrealized_roi": self.unrealized_roi,
         }
 
 
@@ -534,6 +694,14 @@ class CoinbaseCFMCalculator:
         # Hold duration
         hold_duration = close_txn.timestamp - lot.acquired_at
 
+        # Determine leverage tier at entry time
+        leverage_tier = get_leverage_tier(lot.acquired_at)
+        leverage_used = get_leverage_for_product(lot.product_id, lot.acquired_at)
+
+        # Calculate margin required and ROI on margin
+        margin_required = calculate_margin_required(notional, leverage_used)
+        roi_on_margin = (net_pnl / margin_required * 100) if margin_required > 0 else 0.0
+
         realized = CFMRealizedPL(
             product_id=lot.product_id,
             base_symbol=lot.base_symbol,
@@ -552,6 +720,12 @@ class CoinbaseCFMCalculator:
             exit_time=close_txn.timestamp,
             side=lot.side,
             product_type=classify_product(lot.product_id),
+            # Leverage tracking
+            leverage_tier=leverage_tier,
+            leverage_used=leverage_used,
+            notional_value=notional,
+            margin_required=margin_required,
+            roi_on_margin=roi_on_margin,
         )
 
         self._realized_pnl.append(realized)
@@ -673,6 +847,53 @@ class CoinbaseCFMCalculator:
         return {
             "crypto_perp": summarize(crypto_trades),
             "commodity_future": summarize(commodity_trades),
+        }
+
+    def get_pnl_by_leverage_tier(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get P/L breakdown by leverage tier (intraday vs overnight).
+
+        Returns:
+            Dict with 'intraday' and 'overnight' keys containing:
+            - gross_pnl, net_pnl, total_fees, trade_count, win_rate
+            - avg_leverage, total_notional, total_margin, avg_roi
+        """
+        intraday_trades = [r for r in self._realized_pnl if r.leverage_tier == "intraday"]
+        overnight_trades = [r for r in self._realized_pnl if r.leverage_tier == "overnight"]
+
+        def summarize_tier(trades: List[CFMRealizedPL]) -> Dict[str, Any]:
+            if not trades:
+                return {
+                    "gross_pnl": 0.0,
+                    "net_pnl": 0.0,
+                    "total_fees": 0.0,
+                    "trade_count": 0,
+                    "win_rate": 0.0,
+                    "avg_leverage": 0.0,
+                    "total_notional": 0.0,
+                    "total_margin": 0.0,
+                    "avg_roi": 0.0,
+                }
+
+            winners = [t for t in trades if t.net_pnl > 0]
+            total_notional = sum(t.notional_value for t in trades)
+            total_margin = sum(t.margin_required for t in trades)
+
+            return {
+                "gross_pnl": sum(t.gross_pnl for t in trades),
+                "net_pnl": sum(t.net_pnl for t in trades),
+                "total_fees": sum(t.entry_fee + t.exit_fee for t in trades),
+                "trade_count": len(trades),
+                "win_rate": len(winners) / len(trades) * 100 if trades else 0.0,
+                "avg_leverage": sum(t.leverage_used for t in trades) / len(trades),
+                "total_notional": total_notional,
+                "total_margin": total_margin,
+                "avg_roi": sum(t.roi_on_margin for t in trades) / len(trades) if trades else 0.0,
+            }
+
+        return {
+            "intraday": summarize_tier(intraday_trades),
+            "overnight": summarize_tier(overnight_trades),
         }
 
     def get_performance_metrics(self) -> Dict[str, Any]:
