@@ -43,6 +43,46 @@ CFM_SYMBOL_MAP = {
     "GOLJ": "Gold",
 }
 
+# =============================================================================
+# CONTRACT MULTIPLIERS - CRITICAL FOR P/L CALCULATION
+# =============================================================================
+# CFM "nano" contracts represent a fraction of the underlying asset.
+# P/L = price_diff * num_contracts * contract_size
+#
+# VERIFIED from crypto/statarb/RESEARCH_HANDOFF.md (January 24, 2026)
+# and crypto/config.py
+#
+# Sources:
+# - https://www.metrotrade.com/what-are-nano-bitcoin-futures/
+# - https://www.marketswiki.com/wiki/Nano_Ether_Perpetual_Futures
+# - https://info.tradovate.com/coinbase-derivatives-nano-bitcoin
+
+CFM_CONTRACT_MULTIPLIERS: Dict[str, float] = {
+    # Crypto Perpetuals - VERIFIED Jan 24, 2026
+    "BIP": 0.01,      # 0.01 BTC per contract (Nano Bitcoin)
+    "ETP": 0.1,       # 0.1 ETH per contract (Nano Ether)
+    "SOP": 5.0,       # 5.0 SOL per contract
+    "ADP": 1000.0,    # 1000 ADA per contract
+    "XRP": 500.0,     # 500 XRP per contract
+    # Commodity Futures - TODO: verify actual specs
+    "SLRH": 1.0,      # Silver - need to verify contract specs
+    "GOLJ": 0.1,      # Gold - need to verify contract specs
+}
+
+
+def get_contract_multiplier(product_id: str) -> float:
+    """
+    Get the contract multiplier for a CFM product.
+
+    Args:
+        product_id: CFM product ID (e.g., 'BIP-20DEC30-CDE')
+
+    Returns:
+        Contract multiplier (e.g., 0.01 for BIP = 1/100 BTC per contract)
+    """
+    base = extract_base_symbol(product_id)
+    return CFM_CONTRACT_MULTIPLIERS.get(base, 1.0)
+
 
 def extract_base_symbol(product_id: str) -> str:
     """
@@ -292,15 +332,24 @@ class CFMOpenPosition:
         """Update unrealized P/L with current market price."""
         self.current_price = current_price
 
+        # Get contract multiplier for this product
+        # CFM contracts represent fractions of the underlying asset
+        contract_multiplier = get_contract_multiplier(self.product_id)
+
+        # Calculate unrealized P/L with contract multiplier
+        # P/L = price_diff * contracts * contract_size
         if self.side == "BUY":
-            self.unrealized_pnl = (current_price - self.avg_entry_price) * self.quantity
+            price_diff = current_price - self.avg_entry_price
         else:
-            self.unrealized_pnl = (self.avg_entry_price - current_price) * self.quantity
+            price_diff = self.avg_entry_price - current_price
+
+        self.unrealized_pnl = price_diff * self.quantity * contract_multiplier
 
         # Subtract fees for accurate unrealized P/L
         self.unrealized_pnl -= self.total_fees
 
-        notional = self.avg_entry_price * self.quantity
+        # Notional = price * contracts * contract_multiplier
+        notional = self.avg_entry_price * self.quantity * contract_multiplier
         self.unrealized_pnl_percent = (self.unrealized_pnl / notional * 100) if notional > 0 else 0.0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -452,17 +501,29 @@ class CoinbaseCFMCalculator:
         # Calculate fees proportionally
         entry_fee_portion = (qty / lot.quantity) * lot.fee if lot.quantity > 0 else 0
 
-        # Calculate gross P/L
-        if lot.side == "BUY":
-            gross_pnl = (close_txn.price - lot.cost_basis + (entry_fee_portion / qty if qty > 0 else 0)) * qty
-        else:
-            gross_pnl = (lot.cost_basis - (entry_fee_portion / qty if qty > 0 else 0) - close_txn.price) * qty
+        # Get contract multiplier for this product
+        # CFM contracts represent fractions of the underlying asset
+        # e.g., BIP = 0.01 BTC per contract, so 100 contracts = 1 BTC exposure
+        contract_multiplier = get_contract_multiplier(lot.product_id)
 
-        # Net P/L after exit fee
-        net_pnl = gross_pnl - exit_fee
+        # Calculate gross P/L with contract multiplier
+        # P/L = price_diff * num_contracts * contract_size
+        # For LONG (BUY): profit when price goes UP
+        # For SHORT (SELL): profit when price goes DOWN
+        price_diff = close_txn.price - lot.cost_basis
+        if lot.side == "SELL":
+            # Short position: profit = entry_price - exit_price
+            price_diff = lot.cost_basis - close_txn.price
 
-        # Calculate percentage
-        notional = lot.cost_basis * qty
+        # Gross P/L = price movement * contracts * contract multiplier
+        gross_pnl = price_diff * qty * contract_multiplier
+
+        # Net P/L after fees (entry fee already in cost_basis, subtract exit fee)
+        net_pnl = gross_pnl - exit_fee - entry_fee_portion
+
+        # Calculate percentage based on notional value
+        # Notional = price * contracts * contract_multiplier
+        notional = lot.cost_basis * qty * contract_multiplier
         pnl_percent = (net_pnl / notional * 100) if notional > 0 else 0.0
 
         # Hold duration
