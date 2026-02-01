@@ -79,6 +79,13 @@ class CryptoDetectedSignal:
     # Maintenance window flag
     has_maintenance_gap: bool = False
 
+    # Spot/Derivative tracking (Session EQUITY-99)
+    # When using spot data for signal detection but executing on derivatives:
+    # - data_symbol: Symbol used for OHLCV data (e.g., "BTC-USD" spot)
+    # - execution_symbol: Symbol for actual trading (e.g., "BIP-20DEC30-CDE" derivative)
+    data_symbol: str = ""       # Symbol used for detection (e.g., BTC-USD)
+    execution_symbol: str = ""  # Symbol for trading (e.g., BIP-20DEC30-CDE)
+
     def to_dict(self) -> dict:
         """Convert signal to dictionary for serialization."""
         return {
@@ -96,6 +103,8 @@ class CryptoDetectedSignal:
             "setup_bar_high": self.setup_bar_high,
             "setup_bar_low": self.setup_bar_low,
             "has_maintenance_gap": self.has_maintenance_gap,
+            "data_symbol": self.data_symbol,
+            "execution_symbol": self.execution_symbol,
             "context": {
                 "atr_14": self.context.atr_14,
                 "atr_percent": self.context.atr_percent,

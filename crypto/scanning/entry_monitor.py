@@ -306,22 +306,45 @@ class CryptoEntryMonitor:
     # PRICE FETCHING
     # =========================================================================
 
-    def _fetch_prices(self, symbols: List[str]) -> Dict[str, float]:
+    def _fetch_prices(
+        self,
+        symbols: List[str],
+        use_spot: Optional[bool] = None,
+    ) -> Dict[str, float]:
         """
-        Fetch current prices for symbols.
+        Fetch current prices for symbols, optionally using spot prices.
+
+        Session EQUITY-99: When use_spot=True and spot data is available,
+        fetches spot prices instead of derivative prices for cleaner
+        trigger detection. The key remains the trading symbol.
 
         Args:
-            symbols: List of symbols to fetch
+            symbols: List of trading symbols to fetch
+            use_spot: Use spot prices if available. None uses config default.
 
         Returns:
-            Dict mapping symbol to current price
+            Dict mapping trading symbol to current price (spot or derivative)
         """
+        from crypto.utils.symbol_resolver import SymbolResolver
+
+        if use_spot is None:
+            use_spot = config.USE_SPOT_FOR_TRIGGERS
+
         prices = {}
 
         for symbol in symbols:
             try:
-                price = self.client.get_current_price(symbol)
+                # Resolve to spot symbol if enabled and available
+                price_symbol = symbol
+                if use_spot and SymbolResolver.has_spot_data(symbol):
+                    spot = SymbolResolver.get_spot_symbol(symbol)
+                    if spot:
+                        price_symbol = spot
+                        logger.debug(f"Using spot price {price_symbol} for {symbol} trigger")
+
+                price = self.client.get_current_price(price_symbol)
                 if price is not None and price > 0:
+                    # Key stays as trading symbol, value is the price (spot or derivative)
                     prices[symbol] = price
             except Exception as e:
                 logger.error(f"Error fetching price for {symbol}: {e}")

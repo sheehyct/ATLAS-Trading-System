@@ -139,6 +139,12 @@ class CryptoDaemonConfig:
     statarb_pairs: List[tuple] = field(default_factory=list)  # e.g., [("ADA-USD", "XRP-USD")]
     statarb_config: Optional[Any] = None  # StatArbConfig instance
 
+    # Spot/Derivative Architecture (Session EQUITY-99)
+    # Use spot data for cleaner price action in signal detection
+    # Execute trades on derivatives for actual trading
+    use_spot_for_signals: bool = config.USE_SPOT_FOR_SIGNALS
+    use_spot_for_triggers: bool = config.USE_SPOT_FOR_TRIGGERS
+
 
 class CryptoSignalDaemon:
     """
@@ -621,9 +627,13 @@ class CryptoSignalDaemon:
         # Execute via paper trader
         entry_bar_type = "2U" if direction == "LONG" else "2D"
 
+        # Session EQUITY-99: Use execution_symbol if set, otherwise fall back to symbol
+        # This allows signal detection on spot data while executing on derivatives
+        execution_symbol = getattr(signal, 'execution_symbol', None) or signal.symbol
+
         try:
             trade = self.paper_trader.open_trade(
-                symbol=signal.symbol,
+                symbol=execution_symbol,
                 side=side,
                 quantity=position_size,
                 entry_price=event.current_price,
@@ -642,13 +652,13 @@ class CryptoSignalDaemon:
 
             if trade is None:
                 logger.warning(
-                    f"Trade rejected: insufficient margin for {signal.symbol}"
+                    f"Trade rejected: insufficient margin for {execution_symbol}"
                 )
                 return
 
             self._execution_count += 1
             logger.info(
-                f"TRADE OPENED: {trade.trade_id} {signal.symbol} {side} "
+                f"TRADE OPENED: {trade.trade_id} {execution_symbol} {side} "
                 f"qty={position_size:.6f} @ ${event.current_price:,.2f} "
                 f"({implied_leverage:.1f}x leverage, ${actual_risk:.2f} risk)"
             )
@@ -669,7 +679,7 @@ class CryptoSignalDaemon:
             )
 
         except Exception as e:
-            logger.warning(f"Failed to open trade for {signal.symbol}: {e}")
+            logger.warning(f"Failed to open trade for {execution_symbol}: {e}")
 
     # =========================================================================
     # SCANNING
@@ -875,10 +885,13 @@ class CryptoSignalDaemon:
 
         side = "BUY" if direction == "LONG" else "SELL"
 
+        # Session EQUITY-99: Use execution_symbol if set, otherwise fall back to symbol
+        execution_symbol = getattr(signal, 'execution_symbol', None) or signal.symbol
+
         # Execute trade
         try:
             trade = self.paper_trader.open_trade(
-                symbol=signal.symbol,
+                symbol=execution_symbol,
                 side=side,
                 quantity=position_size,
                 entry_price=current_price,
@@ -893,13 +906,13 @@ class CryptoSignalDaemon:
 
             if trade is None:
                 logger.warning(
-                    f"Trade rejected: insufficient margin for {signal.symbol}"
+                    f"Trade rejected: insufficient margin for {execution_symbol}"
                 )
                 return
 
             self._execution_count += 1
             logger.info(
-                f"TRADE OPENED (TRIGGERED): {trade.trade_id} {signal.symbol} {side} "
+                f"TRADE OPENED (TRIGGERED): {trade.trade_id} {execution_symbol} {side} "
                 f"qty={position_size:.6f} @ ${current_price:,.2f} "
                 f"({implied_leverage:.1f}x leverage, ${actual_risk:.2f} risk)"
             )

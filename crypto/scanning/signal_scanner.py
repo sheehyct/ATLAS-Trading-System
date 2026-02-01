@@ -152,23 +152,46 @@ class CryptoSignalScanner:
     # =========================================================================
 
     def _fetch_data(
-        self, symbol: str, timeframe: str, lookback_bars: int = 100
+        self,
+        symbol: str,
+        timeframe: str,
+        lookback_bars: int = 100,
+        use_spot: Optional[bool] = None,
     ) -> Optional[pd.DataFrame]:
         """
-        Fetch OHLCV data from Coinbase.
+        Fetch OHLCV data from Coinbase, optionally using spot for cleaner price action.
 
         No market hours filter needed for 24/7 crypto markets.
         Marks bars that overlap maintenance window.
 
+        Session EQUITY-99: When use_spot=True and spot data is available,
+        fetches spot data instead of derivative data for cleaner price action
+        in signal detection. Derivatives can have artificial wicks during
+        low liquidity periods.
+
         Args:
-            symbol: Trading symbol (e.g., 'BTC-PERP-INTX')
+            symbol: Trading symbol (e.g., 'BIP-20DEC30-CDE')
             timeframe: Timeframe ('15m', '1h', '4h', '1d', '1w')
             lookback_bars: Number of bars to fetch
+            use_spot: Use spot data if available. None uses config default.
 
         Returns:
             DataFrame with OHLCV columns and is_maintenance_gap flag
         """
         try:
+            # Session EQUITY-99: Resolve to spot symbol if enabled and available
+            from crypto.utils.symbol_resolver import SymbolResolver
+
+            if use_spot is None:
+                use_spot = config.USE_SPOT_FOR_SIGNALS
+
+            data_symbol = symbol
+            if use_spot and SymbolResolver.has_spot_data(symbol):
+                spot = SymbolResolver.get_spot_symbol(symbol)
+                if spot:
+                    data_symbol = spot
+                    logger.debug(f"Using spot data {data_symbol} for {symbol} signals")
+
             # Map timeframe format for Coinbase client
             tf_map = {
                 "15m": "15m",
@@ -180,7 +203,7 @@ class CryptoSignalScanner:
             interval = tf_map.get(timeframe, "1h")
 
             df = self.client.get_historical_ohlcv(
-                symbol=symbol,
+                symbol=data_symbol,
                 interval=interval,
                 limit=lookback_bars,
             )
@@ -967,14 +990,24 @@ class CryptoSignalScanner:
         """
         Scan a single symbol/timeframe for all STRAT patterns.
 
+        Session EQUITY-99: Uses spot data for pattern detection when available
+        and configured, while setting execution_symbol to the derivative
+        for actual trading.
+
         Args:
-            symbol: Trading symbol (e.g., 'BTC-PERP-INTX')
+            symbol: Trading symbol (e.g., 'BIP-20DEC30-CDE')
             timeframe: Timeframe ('15m', '1h', '4h', '1d', '1w')
             lookback_bars: How many bars to analyze
 
         Returns:
-            List of detected signals
+            List of detected signals with data_symbol and execution_symbol set
         """
+        # Session EQUITY-99: Determine data_symbol used for fetching
+        from crypto.utils.symbol_resolver import SymbolResolver
+
+        data_symbol = SymbolResolver.resolve_data_symbol(symbol)
+        execution_symbol = symbol  # Always execute on the trading symbol
+
         df = self._fetch_data(symbol, timeframe, lookback_bars)
         if df is None or df.empty:
             return []
@@ -1035,6 +1068,9 @@ class CryptoSignalScanner:
                         setup_bar_low=p.get("setup_bar_low", 0.0),
                         setup_bar_timestamp=setup_ts,
                         has_maintenance_gap=p.get("has_maintenance_gap", False),
+                        # Session EQUITY-99: Track spot/derivative symbols
+                        data_symbol=data_symbol,
+                        execution_symbol=execution_symbol,
                     )
                     signals.append(signal)
 
@@ -1146,6 +1182,9 @@ class CryptoSignalScanner:
                     prior_bar_high=p.get("prior_bar_high", 0.0),
                     prior_bar_low=p.get("prior_bar_low", 0.0),
                     has_maintenance_gap=p.get("has_maintenance_gap", False),
+                    # Session EQUITY-99: Track spot/derivative symbols
+                    data_symbol=data_symbol,
+                    execution_symbol=execution_symbol,
                 )
                 signals.append(signal)
 

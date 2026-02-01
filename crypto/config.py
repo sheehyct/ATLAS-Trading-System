@@ -418,6 +418,34 @@ TRADE_LOG_PATH: str = "crypto/logs/trades.log"
 
 
 # =============================================================================
+# SPOT/DERIVATIVE SYMBOL MAPPING (Session EQUITY-99)
+# =============================================================================
+# Use spot data for cleaner price action in signal detection
+# Execute trades on derivatives for actual trading
+#
+# Problem: CFM derivatives can have artificial long wicks during low liquidity
+# periods, creating false STRAT signals. Using spot data for signal detection
+# provides cleaner price action while executing trades on derivatives.
+
+DERIVATIVE_TO_SPOT: Dict[str, str] = {
+    "BIP-20DEC30-CDE": "BTC-USD",
+    "ETP-20DEC30-CDE": "ETH-USD",
+}
+SPOT_TO_DERIVATIVE: Dict[str, str] = {v: k for k, v in DERIVATIVE_TO_SPOT.items()}
+
+# Base assets that have reliable spot data available
+SPOT_DATA_AVAILABLE: set = {"BTC", "ETH", "SOL"}
+
+# Feature toggles - enable/disable spot data usage
+USE_SPOT_FOR_SIGNALS: bool = True  # Use spot data for pattern detection
+USE_SPOT_FOR_TRIGGERS: bool = True  # Use spot prices for entry triggers
+
+# Maximum divergence threshold between spot and derivative prices
+# Skip trade if spot/derivative prices diverge more than this percentage
+MAX_SPOT_DERIVATIVE_DIVERGENCE: float = 0.02  # 2%
+
+
+# =============================================================================
 # LEVERAGE TIER HELPER FUNCTIONS
 # =============================================================================
 

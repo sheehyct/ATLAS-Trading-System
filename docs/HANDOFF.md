@@ -1,9 +1,85 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 29, 2026 (Session EQUITY-97)
+**Last Updated:** January 31, 2026 (Session EQUITY-99)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Trade Analytics Integration COMPLETE
-**Status:** EQUITY-97 COMPLETE - Trade analytics wired into equity daemon, historical trades migrated
+**Phase:** Paper Trading - Spot/Derivative Architecture COMPLETE
+**Status:** EQUITY-99 COMPLETE - Two-layer data architecture implemented for crypto signals
+
+---
+
+## Session EQUITY-99: Spot Signal Detection + Derivative Execution Architecture (COMPLETE)
+
+**Date:** January 31, 2026
+**Environment:** Claude Code Desktop (Opus 4.5)
+**Status:** COMPLETE - Spot data for signals, derivative data for execution
+
+### What Was Accomplished
+
+1. **Two-Layer Data Architecture**
+   - Problem: CFM derivatives have artificial long wicks during low liquidity periods
+   - Solution: Use spot data (BTC-USD) for pattern detection, derivative (BIP-20DEC30-CDE) for execution
+   - Config toggles: `USE_SPOT_FOR_SIGNALS`, `USE_SPOT_FOR_TRIGGERS`
+
+2. **SymbolResolver Utility (NEW)**
+   - Created `crypto/utils/symbol_resolver.py` (~150 lines)
+   - Methods: `get_spot_symbol()`, `get_derivative_symbol()`, `has_spot_data()`, `get_base_asset()`
+   - Convenience methods: `resolve_data_symbol()`, `resolve_price_symbol()`
+
+3. **Scanner Integration**
+   - Modified `_fetch_data()` to use spot data when enabled
+   - Modified `scan_symbol_timeframe()` to populate `data_symbol` and `execution_symbol` fields
+   - All signals now track which symbol was used for detection vs execution
+
+4. **Entry Monitor Integration**
+   - Modified `_fetch_prices()` to use spot prices for trigger detection
+   - Key remains trading symbol, value is spot price (when available)
+
+5. **Daemon Integration**
+   - Added `use_spot_for_signals` and `use_spot_for_triggers` to CryptoDaemonConfig
+   - Updated `_execute_trade()` to use `execution_symbol` from signal
+
+6. **StatArb Compatibility**
+   - ADA/XRP continue using derivative data unchanged (no spot mapping available)
+   - `SymbolResolver.has_spot_data("ADA-USD")` returns False
+
+7. **Test Coverage**
+   - 40 unit tests for SymbolResolver (all passing)
+   - 19 integration tests for spot/derivative flow (all passing)
+   - 187 existing crypto tests still passing
+
+### Files Created
+
+| File | Lines | Description |
+|------|-------|-------------|
+| `crypto/utils/__init__.py` | 5 | Package init |
+| `crypto/utils/symbol_resolver.py` | ~150 | Symbol mapping utilities |
+| `tests/test_crypto/test_symbol_resolver.py` | ~250 | 40 unit tests |
+| `tests/test_crypto/test_spot_derivative.py` | ~300 | 19 integration tests |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `crypto/config.py` | +28 lines (symbol mappings, feature toggles) |
+| `crypto/scanning/signal_scanner.py` | +51 lines (spot data fetching, field population) |
+| `crypto/scanning/entry_monitor.py` | +33 lines (spot price fetching) |
+| `crypto/scanning/models.py` | +9 lines (data_symbol, execution_symbol fields) |
+| `crypto/scanning/daemon.py` | +27 lines (config fields, execution_symbol usage) |
+
+### Symbol Mapping
+
+| Derivative | Spot | Base Asset |
+|------------|------|------------|
+| BIP-20DEC30-CDE | BTC-USD | BTC |
+| ETP-20DEC30-CDE | ETH-USD | ETH |
+| ADA-USD | N/A | ADA (StatArb only) |
+| XRP-USD | N/A | XRP (StatArb only) |
+
+### Deferred
+
+- VPS deployment verification (commit 98d8a2c)
+- Dashboard TradingView charts fix
+- Monitor spot/derivative architecture in production logs
 
 ---
 
