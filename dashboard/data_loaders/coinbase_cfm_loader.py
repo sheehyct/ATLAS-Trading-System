@@ -569,6 +569,60 @@ class CoinbaseCFMLoader:
             }
 
     # =========================================================================
+    # CUMULATIVE P/L SERIES (FOR CHARTING)
+    # =========================================================================
+
+    def get_cumulative_pnl_series(self) -> List[Dict]:
+        """
+        Get cumulative P/L time series for charting.
+
+        Returns:
+            List of dicts with date, daily_pnl, cumulative_pnl, trade_count
+        """
+        if not self._connected:
+            return []
+
+        cache_key = "cumulative_pnl_series"
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            self._fetch_and_process_fills()
+            series = self._calculator.get_cumulative_pnl_series()
+            self._set_cached(cache_key, series)
+            return series
+
+        except Exception as e:
+            logger.error(f"Error getting cumulative P/L series: {e}")
+            return []
+
+    def get_pnl_by_product_series(self) -> Dict[str, List[Dict]]:
+        """
+        Get cumulative P/L time series per product for charting.
+
+        Returns:
+            Dict mapping product symbol to list of P/L data points
+        """
+        if not self._connected:
+            return {}
+
+        cache_key = "pnl_by_product_series"
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            self._fetch_and_process_fills()
+            series = self._calculator.get_pnl_by_product_series()
+            self._set_cached(cache_key, series)
+            return series
+
+        except Exception as e:
+            logger.error(f"Error getting P/L by product series: {e}")
+            return {}
+
+    # =========================================================================
     # STATUS METHODS
     # =========================================================================
 

@@ -80,6 +80,7 @@ from dashboard.components.coinbase_cfm_panel import (
     create_funding_table as create_cfm_funding_table,
     create_performance_display as create_cfm_performance_display,
     create_by_product_table as create_cfm_by_product_table,
+    create_equity_curve_display as create_cfm_equity_curve,
 )
 # Session EQUITY-52: Unified STRAT Analytics panel
 # Dashboard Overhaul: Added create_open_positions_tab
@@ -2383,6 +2384,11 @@ def update_cfm_tab_content(cfm_tab, n_intervals, main_tab):
         if cfm_tab == 'cfm-closed-tab':
             trades = cfm_loader.get_closed_trades(limit=50)
             return create_cfm_closed_table(trades)
+
+        elif cfm_tab == 'cfm-equity-tab':
+            cumulative_series = cfm_loader.get_cumulative_pnl_series()
+            product_series = cfm_loader.get_pnl_by_product_series()
+            return create_cfm_equity_curve(cumulative_series, product_series)
 
         elif cfm_tab == 'cfm-funding-tab':
             payments = cfm_loader.get_funding_payments(days=30)

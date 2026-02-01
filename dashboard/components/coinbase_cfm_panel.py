@@ -17,6 +17,7 @@ Pattern: Based on crypto_panel.py
 
 import dash_bootstrap_components as dbc
 from dash import dcc, html
+import plotly.graph_objects as go
 from typing import List, Dict, Any
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -284,6 +285,7 @@ def create_coinbase_cfm_panel():
                     dbc.CardHeader([
                         dbc.Tabs([
                             dbc.Tab(label='Closed Trades', tab_id='cfm-closed-tab'),
+                            dbc.Tab(label='Equity Curve', tab_id='cfm-equity-tab'),
                             dbc.Tab(label='Funding', tab_id='cfm-funding-tab'),
                             dbc.Tab(label='Performance', tab_id='cfm-performance-tab'),
                             dbc.Tab(label='By Product', tab_id='cfm-by-product-tab'),
@@ -844,3 +846,183 @@ def create_by_product_table(pnl_by_product: Dict) -> html.Table:
         'width': '100%',
         'borderCollapse': 'collapse',
     })
+
+
+# ============================================
+# EQUITY CURVE CHART
+# ============================================
+
+def create_equity_curve_display(
+    cumulative_series: List[Dict],
+    product_series: Dict[str, List[Dict]]
+) -> html.Div:
+    """
+    Create equity curve chart with cumulative P/L and per-product breakdown.
+
+    Args:
+        cumulative_series: List of {date, daily_pnl, cumulative_pnl} from loader
+        product_series: Dict mapping product to list of {date, cumulative_pnl}
+
+    Returns:
+        HTML Div with equity curve chart and summary stats
+    """
+    if not cumulative_series:
+        return _create_no_data_placeholder('No trade history for equity curve')
+
+    # Extract data for main cumulative chart
+    dates = [d['date'] for d in cumulative_series]
+    cumulative_pnl = [d['cumulative_pnl'] for d in cumulative_series]
+
+    # Final P/L value
+    final_pnl = cumulative_pnl[-1] if cumulative_pnl else 0
+    pnl_color = DARK_THEME['accent_green'] if final_pnl >= 0 else DARK_THEME['accent_red']
+
+    # Create main equity curve figure
+    fig = go.Figure()
+
+    # Add cumulative P/L line
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=cumulative_pnl,
+        mode='lines',
+        name='Cumulative P/L',
+        line=dict(color=DARK_THEME['accent_cyan'], width=2),
+        fill='tozeroy',
+        fillcolor='rgba(34, 211, 238, 0.1)',
+    ))
+
+    # Add zero line
+    fig.add_hline(y=0, line_dash="dash", line_color=DARK_THEME['text_muted'], opacity=0.5)
+
+    # Style the chart
+    fig.update_layout(
+        template='plotly_dark',
+        paper_bgcolor=DARK_THEME['card_bg'],
+        plot_bgcolor=DARK_THEME['card_bg'],
+        margin=dict(l=50, r=20, t=40, b=40),
+        height=300,
+        title=dict(
+            text='Cumulative Realized P/L',
+            font=dict(size=14, color=DARK_THEME['text_primary']),
+            x=0.5,
+        ),
+        xaxis=dict(
+            showgrid=True,
+            gridcolor=DARK_THEME['border'],
+            tickfont=dict(color=DARK_THEME['text_secondary'], size=10),
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor=DARK_THEME['border'],
+            tickfont=dict(color=DARK_THEME['text_secondary'], size=10),
+            tickprefix='$',
+        ),
+        showlegend=False,
+        hovermode='x unified',
+    )
+
+    # Create per-product chart if data available
+    product_fig = None
+    if product_series:
+        product_fig = go.Figure()
+
+        for symbol, series in product_series.items():
+            if series:
+                p_dates = [d['date'] for d in series]
+                p_cumulative = [d['cumulative_pnl'] for d in series]
+                color = PRODUCT_COLORS.get(symbol, DARK_THEME['accent_cyan'])
+
+                product_fig.add_trace(go.Scatter(
+                    x=p_dates,
+                    y=p_cumulative,
+                    mode='lines',
+                    name=symbol,
+                    line=dict(color=color, width=2),
+                ))
+
+        product_fig.add_hline(y=0, line_dash="dash", line_color=DARK_THEME['text_muted'], opacity=0.5)
+
+        product_fig.update_layout(
+            template='plotly_dark',
+            paper_bgcolor=DARK_THEME['card_bg'],
+            plot_bgcolor=DARK_THEME['card_bg'],
+            margin=dict(l=50, r=20, t=40, b=40),
+            height=250,
+            title=dict(
+                text='P/L by Product',
+                font=dict(size=14, color=DARK_THEME['text_primary']),
+                x=0.5,
+            ),
+            xaxis=dict(
+                showgrid=True,
+                gridcolor=DARK_THEME['border'],
+                tickfont=dict(color=DARK_THEME['text_secondary'], size=10),
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridcolor=DARK_THEME['border'],
+                tickfont=dict(color=DARK_THEME['text_secondary'], size=10),
+                tickprefix='$',
+            ),
+            legend=dict(
+                orientation='h',
+                yanchor='bottom',
+                y=1.02,
+                xanchor='center',
+                x=0.5,
+                font=dict(size=10, color=DARK_THEME['text_secondary']),
+            ),
+            hovermode='x unified',
+        )
+
+    # Calculate summary stats
+    total_trades = cumulative_series[-1].get('total_trades', len(cumulative_series)) if cumulative_series else 0
+    max_pnl = max(cumulative_pnl) if cumulative_pnl else 0
+    min_pnl = min(cumulative_pnl) if cumulative_pnl else 0
+    max_drawdown = min_pnl if min_pnl < 0 else 0
+
+    # Build the display
+    children = [
+        # Summary row
+        dbc.Row([
+            dbc.Col([
+                html.Div([
+                    html.Small('Total P/L', style={'color': DARK_THEME['text_secondary']}),
+                    html.H4(f'${final_pnl:+,.2f}', style={'color': pnl_color, 'marginBottom': '0'})
+                ], style={'textAlign': 'center'})
+            ], width=3),
+            dbc.Col([
+                html.Div([
+                    html.Small('Peak P/L', style={'color': DARK_THEME['text_secondary']}),
+                    html.H5(f'${max_pnl:+,.2f}', style={
+                        'color': DARK_THEME['accent_green'] if max_pnl > 0 else DARK_THEME['text_muted'],
+                        'marginBottom': '0'
+                    })
+                ], style={'textAlign': 'center'})
+            ], width=3),
+            dbc.Col([
+                html.Div([
+                    html.Small('Max Drawdown', style={'color': DARK_THEME['text_secondary']}),
+                    html.H5(f'${max_drawdown:,.2f}', style={
+                        'color': DARK_THEME['accent_red'] if max_drawdown < 0 else DARK_THEME['text_muted'],
+                        'marginBottom': '0'
+                    })
+                ], style={'textAlign': 'center'})
+            ], width=3),
+            dbc.Col([
+                html.Div([
+                    html.Small('Total Trades', style={'color': DARK_THEME['text_secondary']}),
+                    html.H5(f'{total_trades}', style={'color': DARK_THEME['text_primary'], 'marginBottom': '0'})
+                ], style={'textAlign': 'center'})
+            ], width=3),
+        ], className='mb-3'),
+
+        # Main equity curve
+        dcc.Graph(figure=fig, config={'displayModeBar': False}),
+    ]
+
+    # Add per-product chart if available
+    if product_fig:
+        children.append(dcc.Graph(figure=product_fig, config={'displayModeBar': False}))
+
+    return html.Div(children, style={'padding': '0.5rem'})

@@ -712,3 +712,80 @@ class CoinbaseCFMCalculator:
             "net_funding": received - paid,
             "payment_count": len(self._funding_payments),
         }
+
+    def get_cumulative_pnl_series(self) -> List[Dict[str, Any]]:
+        """
+        Generate cumulative P/L time series for charting.
+
+        Returns:
+            List of dicts with timestamp, daily_pnl, cumulative_pnl, trade_count
+            sorted by timestamp ascending.
+        """
+        if not self._realized_pnl:
+            return []
+
+        # Sort trades by exit time
+        sorted_trades = sorted(self._realized_pnl, key=lambda r: r.exit_time)
+
+        # Group by date and calculate daily/cumulative P/L
+        from collections import defaultdict
+        daily_pnl: Dict[str, float] = defaultdict(float)
+        daily_trades: Dict[str, int] = defaultdict(int)
+
+        for trade in sorted_trades:
+            date_key = trade.exit_time.strftime("%Y-%m-%d")
+            daily_pnl[date_key] += trade.net_pnl
+            daily_trades[date_key] += 1
+
+        # Build cumulative series
+        series = []
+        cumulative = 0.0
+        total_trades = 0
+
+        for date_key in sorted(daily_pnl.keys()):
+            cumulative += daily_pnl[date_key]
+            total_trades += daily_trades[date_key]
+            series.append({
+                "date": date_key,
+                "daily_pnl": round(daily_pnl[date_key], 2),
+                "cumulative_pnl": round(cumulative, 2),
+                "trade_count": daily_trades[date_key],
+                "total_trades": total_trades,
+            })
+
+        return series
+
+    def get_pnl_by_product_series(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Generate cumulative P/L time series per product for charting.
+
+        Returns:
+            Dict mapping product symbol to list of cumulative P/L data points.
+        """
+        if not self._realized_pnl:
+            return {}
+
+        from collections import defaultdict
+
+        # Group trades by product and date
+        product_daily: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+
+        for trade in self._realized_pnl:
+            date_key = trade.exit_time.strftime("%Y-%m-%d")
+            product_daily[trade.base_symbol][date_key] += trade.net_pnl
+
+        # Build cumulative series per product
+        result = {}
+        for symbol, daily_data in product_daily.items():
+            series = []
+            cumulative = 0.0
+            for date_key in sorted(daily_data.keys()):
+                cumulative += daily_data[date_key]
+                series.append({
+                    "date": date_key,
+                    "daily_pnl": round(daily_data[date_key], 2),
+                    "cumulative_pnl": round(cumulative, 2),
+                })
+            result[symbol] = series
+
+        return result
