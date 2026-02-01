@@ -21,26 +21,62 @@ Usage:
         closed = loader.get_closed_trades()
 """
 
+import importlib.util
 import logging
 import os
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Import Coinbase client and calculator
+
+def _load_module_from_file(module_name: str, file_path: Path):
+    """
+    Load a module directly from its file path without triggering package __init__.py.
+
+    This avoids importing heavy dependencies (like numba via strat.bar_classifier)
+    that are in the crypto package's __init__.py but not needed for CFM operations.
+    """
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load module spec from {file_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+# Import Coinbase client and calculator using direct file loading
+# to avoid triggering crypto/__init__.py which imports numba-dependent modules
 try:
-    from crypto.exchange.coinbase_client import CoinbaseClient
-    from crypto.analytics.coinbase_cfm_calculator import (
-        CoinbaseCFMCalculator,
-        CFMOpenPosition,
-        CFM_SYMBOL_MAP,
-        CRYPTO_PERPS,
-        COMMODITY_FUTURES,
-    )
+    # Determine the project root (vectorbt-workspace)
+    _this_file = Path(__file__).resolve()
+    _project_root = _this_file.parent.parent.parent  # dashboard/data_loaders -> dashboard -> project
+
+    # Load coinbase_cfm_calculator directly (no external deps beyond stdlib)
+    _calc_path = _project_root / "crypto" / "analytics" / "coinbase_cfm_calculator.py"
+    _calc_module = _load_module_from_file("coinbase_cfm_calculator_direct", _calc_path)
+
+    CoinbaseCFMCalculator = _calc_module.CoinbaseCFMCalculator
+    CFMOpenPosition = _calc_module.CFMOpenPosition
+    CFM_SYMBOL_MAP = _calc_module.CFM_SYMBOL_MAP
+    CRYPTO_PERPS = _calc_module.CRYPTO_PERPS
+    COMMODITY_FUTURES = _calc_module.COMMODITY_FUTURES
+
+    # Load coinbase_client directly (requires coinbase-advanced-py, pandas, requests)
+    _client_path = _project_root / "crypto" / "exchange" / "coinbase_client.py"
+    _client_module = _load_module_from_file("coinbase_client_direct", _client_path)
+
+    CoinbaseClient = _client_module.CoinbaseClient
+
     _IMPORTS_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"CFM imports not available: {e}")
+    _IMPORTS_AVAILABLE = False
+except Exception as e:
+    logger.warning(f"CFM imports failed: {e}")
     _IMPORTS_AVAILABLE = False
 
 # Import database persistence layer
