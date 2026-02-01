@@ -12,9 +12,10 @@ pandas>=2.1.0
 numpy>=1.26.0
 scipy>=1.16.0
 
-# Trading APIs (Alpaca + Tiingo)
+# Trading APIs (Alpaca + Tiingo + Coinbase)
 alpaca-py>=0.42.0
 alpaca-trade-api>=3.2.0
+coinbase-advanced-py>=1.8.2
 requests>=2.32.4
 
 # Async HTTP clients for dashboard performance
