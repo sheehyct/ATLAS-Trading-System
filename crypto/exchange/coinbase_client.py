@@ -869,10 +869,12 @@ class CoinbaseClient:
             if product_id:
                 kwargs["product_id"] = product_id
             if start_date:
-                kwargs["start_sequence_timestamp"] = start_date.isoformat() + "Z"
+                # Format as RFC3339 UTC timestamp (e.g., 2025-02-01T12:00:00Z)
+                kwargs["start_sequence_timestamp"] = start_date.strftime("%Y-%m-%dT%H:%M:%SZ")
             if end_date:
-                kwargs["end_sequence_timestamp"] = end_date.isoformat() + "Z"
+                kwargs["end_sequence_timestamp"] = end_date.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+            logger.info(f"Fetching fills with params: {kwargs}")
             response = client.get_fills(**kwargs)
 
             # Parse response
@@ -885,11 +887,11 @@ class CoinbaseClient:
             for fill in fills:
                 result.append(self._fill_to_dict(fill))
 
-            logger.debug("Fetched %d fills from Coinbase", len(result))
+            logger.info("Fetched %d fills from Coinbase", len(result))
             return result
 
         except Exception as e:
-            logger.error("Error fetching fills from Coinbase: %s", e)
+            logger.error("Error fetching fills from Coinbase: %s", e, exc_info=True)
             return []
 
     def _fill_to_dict(self, fill: Any) -> Dict[str, Any]:
