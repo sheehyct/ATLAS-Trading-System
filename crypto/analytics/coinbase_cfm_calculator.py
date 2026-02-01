@@ -30,7 +30,7 @@ FIXED_FEE_PER_CONTRACT: float = 0.15  # $0.15 per contract
 
 # Product classification
 CRYPTO_PERPS = ["BIP", "ETP", "SOP", "ADP", "XRP"]
-COMMODITY_FUTURES = ["SLRH", "GOLJ"]
+COMMODITY_FUTURES = ["SLR", "SLRH", "GOL", "GOLJ"]  # Include base and dated symbols
 
 # Symbol to asset mapping
 CFM_SYMBOL_MAP = {
@@ -39,7 +39,9 @@ CFM_SYMBOL_MAP = {
     "SOP": "Solana",
     "ADP": "Cardano",
     "XRP": "XRP",
+    "SLR": "Silver",
     "SLRH": "Silver",
+    "GOL": "Gold",
     "GOLJ": "Gold",
 }
 
@@ -64,9 +66,12 @@ CFM_CONTRACT_MULTIPLIERS: Dict[str, float] = {
     "SOP": 5.0,       # 5.0 SOL per contract
     "ADP": 1000.0,    # 1000 ADA per contract
     "XRP": 500.0,     # 500 XRP per contract
-    # Commodity Futures - TODO: verify actual specs
-    "SLRH": 1.0,      # Silver - need to verify contract specs
-    "GOLJ": 0.1,      # Gold - need to verify contract specs
+    # Commodity Futures - VERIFIED Feb 1, 2026
+    # Source: https://www.coinbase.com/blog/coinbase-derivatives-expands-futures-offering-to-include-oil-and-gold
+    "SLR": 50.0,      # 50 troy ounces of silver per contract
+    "SLRH": 50.0,     # Silver March expiry (H = March)
+    "GOL": 1.0,       # 1 troy ounce of gold per contract
+    "GOLJ": 1.0,      # Gold April expiry (J = April)
 }
 
 
