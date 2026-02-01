@@ -31,6 +31,10 @@ pandas-market-calendars>=4.0.0
 # Configuration
 python-dotenv>=1.1.1
 
+# Database (PostgreSQL persistence for CFM P/L history)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+
 # Logging/utilities
 rich>=13.7.1
 

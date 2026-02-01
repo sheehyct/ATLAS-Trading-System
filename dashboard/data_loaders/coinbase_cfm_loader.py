@@ -43,6 +43,14 @@ except ImportError as e:
     logger.warning(f"CFM imports not available: {e}")
     _IMPORTS_AVAILABLE = False
 
+# Import database persistence layer
+try:
+    from dashboard.data_loaders.cfm_database import CFMDatabase
+    _DATABASE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"CFM database not available: {e}")
+    _DATABASE_AVAILABLE = False
+
 
 # Cache TTL in seconds (5 minutes)
 DEFAULT_CACHE_TTL = 300
@@ -76,6 +84,8 @@ class CoinbaseCFMLoader:
         self.init_error: Optional[str] = None
         self._cache_ttl = cache_ttl
         self._cache: Dict[str, tuple] = {}  # key -> (timestamp, data)
+        self._db: Optional[Any] = None
+        self._db_connected = False
 
         if not _IMPORTS_AVAILABLE:
             self.init_error = "CFM modules not available"
@@ -108,6 +118,19 @@ class CoinbaseCFMLoader:
             self.init_error = str(e)
             logger.error(f"CoinbaseCFMLoader init error: {e}")
 
+        # Initialize database persistence (optional - graceful fallback if not available)
+        if _DATABASE_AVAILABLE:
+            try:
+                self._db = CFMDatabase()
+                if self._db.is_connected():
+                    self._db_connected = True
+                    fill_count = self._db.get_fill_count()
+                    logger.info(f"CoinbaseCFMLoader database connected ({fill_count} historical fills)")
+                else:
+                    logger.info(f"CoinbaseCFMLoader database not connected: {self._db.init_error}")
+            except Exception as e:
+                logger.warning(f"CoinbaseCFMLoader database init failed: {e}")
+
     # =========================================================================
     # CACHING
     # =========================================================================
@@ -137,10 +160,18 @@ class CoinbaseCFMLoader:
 
     def _fetch_and_process_fills(self, days: int = 90, force_refresh: bool = False) -> bool:
         """
-        Fetch fills from Coinbase and process with calculator.
+        Fetch fills from Coinbase and database, merge, and process with calculator.
+
+        Strategy:
+        1. Load ALL historical fills from database (these are permanent)
+        2. Fetch recent fills from Coinbase API (last N days)
+        3. Save new API fills to database for future persistence
+        4. Merge database + API fills and process
+
+        This ensures P/L data is never lost even after Coinbase API limits access.
 
         Args:
-            days: Number of days of history to fetch
+            days: Number of days of API history to fetch
             force_refresh: If True, bypass cache
 
         Returns:
@@ -157,23 +188,50 @@ class CoinbaseCFMLoader:
                 return True
 
         try:
-            # Fetch fills
+            all_fills = []
+
+            # Step 1: Load historical fills from database (permanent storage)
+            if self._db_connected and self._db:
+                db_fills = self._db.get_all_fills()
+                if db_fills:
+                    all_fills.extend(db_fills)
+                    logger.info(f"Loaded {len(db_fills)} historical fills from database")
+
+            # Step 2: Fetch recent fills from Coinbase API
             end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days)
 
-            fills = self._client.get_fills_live(
+            api_fills = self._client.get_fills_live(
                 start_date=start_date,
                 end_date=end_date,
                 limit=1000,
             )
 
-            if fills:
-                self._calculator.process_fills(fills)
+            if api_fills:
+                logger.info(f"Fetched {len(api_fills)} fills from Coinbase API")
+
+                # Step 3: Save new fills to database for persistence
+                if self._db_connected and self._db:
+                    saved_count = self._db.save_fills(api_fills)
+                    if saved_count > 0:
+                        logger.info(f"Persisted {saved_count} new fills to database")
+
+                # Step 4: Merge API fills with database fills (deduplicate by fill_id)
+                existing_ids = {f.get("entry_id") or f.get("trade_id") for f in all_fills}
+                for fill in api_fills:
+                    fill_id = fill.get("entry_id") or fill.get("trade_id")
+                    if fill_id and fill_id not in existing_ids:
+                        all_fills.append(fill)
+                        existing_ids.add(fill_id)
+
+            # Process all fills (historical + recent)
+            if all_fills:
+                self._calculator.process_fills(all_fills)
                 self._set_cached(cache_key, True)
-                logger.info(f"Processed {len(fills)} CFM fills from Coinbase")
+                logger.info(f"Processed {len(all_fills)} total CFM fills")
                 return True
             else:
-                logger.warning("No CFM fills returned from Coinbase")
+                logger.warning("No CFM fills available")
                 return False
 
         except Exception as e:
