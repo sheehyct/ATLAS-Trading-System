@@ -149,7 +149,7 @@ def _td_style():
 def _create_loading_placeholder(message: str = 'Loading...'):
     """Create loading placeholder."""
     return html.Div([
-        dbc.Spinner(size='sm', color='info', className='me-2'),
+        dbc.Spinner(size='sm', color='info', spinner_class_name='me-2'),
         html.Span(message, style={'color': DARK_THEME['text_secondary']})
     ], style={
         'textAlign': 'center',
