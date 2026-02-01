@@ -36,17 +36,24 @@ TAKER_FEE_RATE: float = 0.0007     # 0.07%
 MAKER_FEE_RATE: float = 0.00065   # 0.065%
 FIXED_FEE_PER_CONTRACT: float = 0.15  # $0.15 per contract
 
-# Product classification
-CRYPTO_PERPS = ["BIP", "ETP", "SOP", "ADP", "XRP"]
+# Product classification (includes alternate asset names)
+CRYPTO_PERPS = ["BIP", "ETP", "SOP", "ADP", "XRP", "BTC", "ETH", "SOL", "ADA"]
 COMMODITY_FUTURES = ["SLR", "SLRH", "GOL", "GOLJ"]  # Include base and dated symbols
 
-# Symbol to asset mapping
+# Symbol to asset mapping (includes alternate asset names)
 CFM_SYMBOL_MAP = {
+    # Primary CFM symbols
     "BIP": "Bitcoin",
     "ETP": "Ethereum",
     "SOP": "Solana",
     "ADP": "Cardano",
     "XRP": "XRP",
+    # Alternate asset names (for space-separated product IDs)
+    "BTC": "Bitcoin",
+    "ETH": "Ethereum",
+    "SOL": "Solana",
+    "ADA": "Cardano",
+    # Commodities
     "SLR": "Silver",
     "SLRH": "Silver",
     "GOL": "Gold",
@@ -69,11 +76,17 @@ CFM_SYMBOL_MAP = {
 
 CFM_CONTRACT_MULTIPLIERS: Dict[str, float] = {
     # Crypto Perpetuals - VERIFIED Jan 24, 2026
+    # Primary CFM symbols
     "BIP": 0.01,      # 0.01 BTC per contract (Nano Bitcoin)
     "ETP": 0.1,       # 0.1 ETH per contract (Nano Ether)
     "SOP": 5.0,       # 5.0 SOL per contract
     "ADP": 1000.0,    # 1000 ADA per contract
     "XRP": 500.0,     # 500 XRP per contract
+    # Alternate asset names (for space-separated product IDs like "ADA PERP CDE")
+    "BTC": 0.01,      # Alias for BIP
+    "ETH": 0.1,       # Alias for ETP
+    "SOL": 5.0,       # Alias for SOP
+    "ADA": 1000.0,    # Alias for ADP
     # Commodity Futures - VERIFIED Feb 1, 2026
     # Source: https://www.coinbase.com/blog/coinbase-derivatives-expands-futures-offering-to-include-oil-and-gold
     "SLR": 50.0,      # 50 troy ounces of silver per contract
@@ -111,6 +124,8 @@ LEVERAGE_TIERS: Dict[str, Dict[str, float]] = {
     "intraday": {
         # Crypto - 10x intraday for majors, 5x for altcoins
         "BIP": 10.0, "ETP": 10.0, "SOP": 5.0, "ADP": 5.0, "XRP": 5.0,
+        # Alternate asset names
+        "BTC": 10.0, "ETH": 10.0, "SOL": 5.0, "ADA": 5.0,
         # Commodities
         "SLR": 8.9, "SLRH": 8.9,
         "GOL": 19.7, "GOLJ": 19.7,
@@ -118,6 +133,8 @@ LEVERAGE_TIERS: Dict[str, Dict[str, float]] = {
     "overnight": {
         # Crypto - VERIFIED Jan 24, 2026
         "BIP": 4.1, "ETP": 4.0, "SOP": 2.7, "ADP": 3.4, "XRP": 2.6,
+        # Alternate asset names
+        "BTC": 4.1, "ETH": 4.0, "SOL": 2.7, "ADA": 3.4,
         # Commodities - VERIFIED Feb 1, 2026
         "SLR": 8.9, "SLRH": 8.9,      # Same as intraday
         "GOL": 19.7, "GOLJ": 19.7,    # Same as intraday (verify when market open)
@@ -211,13 +228,38 @@ def extract_base_symbol(product_id: str) -> str:
     """
     Extract base symbol from CFM product ID.
 
-    Examples:
+    Handles multiple formats:
         'BIP-20DEC30-CDE' -> 'BIP'
         'SLRH-20MAR26-CDE' -> 'SLRH'
+        'ADA PERP CDE 3000' -> 'ADP'
+        'BTC PERP CDE 0.01' -> 'BIP'
+        'ETH PERP CDE' -> 'ETP'
+        'SLR 25 FEB 26 CDE' -> 'SLR'
     """
     if not product_id:
         return ""
-    return product_id.split("-")[0].upper()
+
+    product_id = product_id.upper().strip()
+
+    # Handle space-separated format (e.g., "ADA PERP CDE 3000")
+    if " " in product_id and "-" not in product_id:
+        first_word = product_id.split()[0]
+        # Map full asset names to CFM symbols
+        asset_to_symbol = {
+            "ADA": "ADP",   # Cardano -> ADP
+            "BTC": "BIP",   # Bitcoin -> BIP
+            "ETH": "ETP",   # Ethereum -> ETP
+            "SOL": "SOP",   # Solana -> SOP
+            "XRP": "XRP",   # XRP stays XRP
+            "SLR": "SLR",   # Silver
+            "SLRH": "SLRH",
+            "GOL": "GOL",   # Gold
+            "GOLJ": "GOLJ",
+        }
+        return asset_to_symbol.get(first_word, first_word)
+
+    # Handle dash-separated format (e.g., "BIP-20DEC30-CDE")
+    return product_id.split("-")[0]
 
 
 def classify_product(product_id: str) -> str:
