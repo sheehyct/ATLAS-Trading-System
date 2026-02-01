@@ -864,18 +864,21 @@ class CoinbaseClient:
             return []
 
         try:
-            # Build query parameters
-            kwargs = {"limit": limit}
-            if product_id:
-                kwargs["product_id"] = product_id
-            if start_date:
-                # Format as RFC3339 UTC timestamp (e.g., 2025-02-01T12:00:00Z)
-                kwargs["start_sequence_timestamp"] = start_date.strftime("%Y-%m-%dT%H:%M:%SZ")
-            if end_date:
-                kwargs["end_sequence_timestamp"] = end_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+            # Format timestamps as RFC3339 UTC (e.g., 2025-02-01T12:00:00Z)
+            start_ts = start_date.strftime("%Y-%m-%dT%H:%M:%SZ") if start_date else None
+            end_ts = end_date.strftime("%Y-%m-%dT%H:%M:%SZ") if end_date else None
+            # SDK expects product_ids as List[str], not product_id as str
+            product_ids = [product_id] if product_id else None
 
-            logger.info(f"Fetching fills with params: {kwargs}")
-            response = client.get_fills(**kwargs)
+            logger.info(
+                f"Fetching fills: product_ids={product_ids}, start={start_ts}, end={end_ts}, limit={limit}"
+            )
+            response = client.get_fills(
+                product_ids=product_ids,
+                start_sequence_timestamp=start_ts,
+                end_sequence_timestamp=end_ts,
+                limit=limit,
+            )
 
             # Parse response
             if hasattr(response, "fills"):
