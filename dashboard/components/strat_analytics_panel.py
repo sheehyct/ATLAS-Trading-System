@@ -1647,7 +1647,8 @@ def _create_equity_chart(history: List[Dict], benchmark_data: List[Dict] = None)
         bottom_color = 'rgba(255, 59, 92, 0.02)'
 
     # DB-7: Prepare benchmark series if available
-    series_types = ['Area']
+    # EQUITY-100: dash_tvlwc requires lowercase series types ('area', 'line', etc.)
+    series_types = ['area']
     series_list = [series_data]
     series_options = [{
         'lineColor': line_color,
@@ -1671,7 +1672,7 @@ def _create_equity_chart(history: List[Dict], benchmark_data: List[Dict] = None)
                 benchmark_series.append({'time': str(t), 'value': float(ret)})
 
         if benchmark_series:
-            series_types.append('Line')
+            series_types.append('line')
             series_list.append(benchmark_series)
             series_options.append({
                 'color': COLORS['accent_electric'],  # Blue for SPY
