@@ -1168,6 +1168,159 @@ class SignalDaemon:
             logger.error(f"Failed to run daily audit: {e}")
             self._error_count += 1
 
+    def _run_eod_exit_job(self) -> None:
+        """
+        EQUITY-100: Dedicated EOD exit job for 1H positions.
+
+        Runs at 15:50, 15:53, 15:55, 15:57, 15:59 ET with retry logic.
+        Multiple scheduled attempts ensure 1H positions exit before market close.
+        """
+        if self.position_monitor is None:
+            return
+
+        try:
+            # Get all tracked positions
+            positions = self.position_monitor.get_tracked_positions()
+            hourly_positions = [
+                p for p in positions
+                if p.timeframe and p.timeframe.upper() in ['1H', '60MIN', '60M']
+            ]
+
+            if not hourly_positions:
+                logger.debug("EOD exit job: No 1H positions to exit")
+                return
+
+            logger.warning(
+                f"EOD EXIT JOB: Found {len(hourly_positions)} 1H position(s) to exit"
+            )
+
+            for pos in hourly_positions:
+                # Create exit signal for EOD
+                exit_signal = ExitSignal(
+                    osi_symbol=pos.osi_symbol,
+                    signal_key=pos.signal_key,
+                    reason=ExitReason.EOD_EXIT,
+                    underlying_price=pos.underlying_price or 0.0,
+                    current_option_price=pos.current_price,
+                    unrealized_pnl=pos.unrealized_pnl,
+                    dte=pos.dte,
+                    details="Dedicated EOD exit job for 1H trade",
+                )
+
+                # Execute with retry
+                result = self._execute_eod_exit_with_retry(exit_signal, max_retries=3)
+
+                if result:
+                    self._exit_count += 1
+                    logger.info(f"EOD EXIT SUCCESS: {pos.signal_key} ({pos.osi_symbol})")
+                else:
+                    logger.error(
+                        f"EOD EXIT FAILED: {pos.signal_key} ({pos.osi_symbol}) - "
+                        f"will retry on next scheduled job"
+                    )
+
+        except Exception as e:
+            logger.error(f"EOD exit job error: {e}")
+            self._error_count += 1
+
+    def _execute_eod_exit_with_retry(
+        self,
+        exit_signal: ExitSignal,
+        max_retries: int = 3,
+        retry_delay: float = 2.0
+    ) -> Optional[Dict[str, Any]]:
+        """
+        EQUITY-100: Execute EOD exit with retry logic and exponential backoff.
+
+        Args:
+            exit_signal: ExitSignal to execute
+            max_retries: Maximum retry attempts
+            retry_delay: Base delay between retries (exponential backoff)
+
+        Returns:
+            Order result if successful, None if all retries failed
+        """
+        for attempt in range(max_retries):
+            try:
+                result = self.position_monitor.execute_exit(exit_signal)
+                if result:
+                    return result
+
+                # Failed but no exception - wait and retry
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)
+                    logger.warning(
+                        f"EOD exit attempt {attempt + 1} failed for {exit_signal.osi_symbol}, "
+                        f"retrying in {wait_time:.1f}s"
+                    )
+                    time.sleep(wait_time)
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)
+                    logger.warning(
+                        f"EOD exit attempt {attempt + 1} error for {exit_signal.osi_symbol}: {e}, "
+                        f"retrying in {wait_time:.1f}s"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(
+                        f"EOD exit failed after {max_retries} attempts for "
+                        f"{exit_signal.osi_symbol}: {e}"
+                    )
+
+        return None
+
+    def _run_market_open_stale_check(self) -> None:
+        """
+        EQUITY-100: Market open stale position check.
+
+        Runs at 9:31 AM ET to detect 1H positions that survived overnight
+        and exits them immediately. This is a safety net for positions that
+        escaped the EOD exit window.
+        """
+        if self.position_monitor is None:
+            return
+
+        try:
+            positions = self.position_monitor.get_tracked_positions()
+
+            for pos in positions:
+                # Only check 1H positions
+                if not pos.timeframe or pos.timeframe.upper() not in ['1H', '60MIN', '60M']:
+                    continue
+
+                # Check if position is stale (entered on previous trading day)
+                if self.position_monitor._is_stale_1h_position(pos.entry_time):
+                    logger.warning(
+                        f"STALE 1H DETECTED at market open: {pos.signal_key} "
+                        f"({pos.osi_symbol}) - entered {pos.entry_time}"
+                    )
+
+                    # Force exit this stale position
+                    exit_signal = ExitSignal(
+                        osi_symbol=pos.osi_symbol,
+                        signal_key=pos.signal_key,
+                        reason=ExitReason.EOD_EXIT,
+                        underlying_price=pos.underlying_price or 0.0,
+                        current_option_price=pos.current_price,
+                        unrealized_pnl=pos.unrealized_pnl,
+                        dte=pos.dte,
+                        details=f"STALE 1H position - entered {pos.entry_time.strftime('%Y-%m-%d')}, exiting at market open",
+                    )
+
+                    result = self._execute_eod_exit_with_retry(exit_signal, max_retries=3)
+
+                    if result:
+                        self._exit_count += 1
+                        logger.info(f"STALE 1H EXITED: {pos.signal_key} ({pos.osi_symbol})")
+                    else:
+                        logger.error(f"STALE 1H EXIT FAILED: {pos.signal_key} ({pos.osi_symbol})")
+
+        except Exception as e:
+            logger.error(f"Market open stale check error: {e}")
+            self._error_count += 1
+
     def _setup_signal_handlers(self) -> None:
         """Setup OS signal handlers for graceful shutdown."""
         def handle_shutdown(signum, frame):
@@ -1279,6 +1432,65 @@ class SignalDaemon:
             logger.info("Daily trade audit scheduled for 4:30 PM ET")
         except Exception as e:
             logger.warning(f"Failed to schedule daily audit: {e}")
+
+        # EQUITY-100: Dedicated EOD exit jobs for 1H positions
+        # Multiple scheduled times ensure exits happen before market close
+        if self.position_monitor is not None:
+            try:
+                from apscheduler.triggers.cron import CronTrigger
+
+                # Schedule EOD exit jobs at 15:50, 15:53, 15:55, 15:57, 15:59 ET
+                eod_times = [
+                    (15, 50),  # First attempt - 10 min buffer
+                    (15, 53),  # Second attempt
+                    (15, 55),  # Third attempt (original EOD time)
+                    (15, 57),  # Fourth attempt
+                    (15, 59),  # Final attempt - 1 min buffer
+                ]
+
+                for hour, minute in eod_times:
+                    job_id = f'eod_exit_{hour}_{minute:02d}'
+                    eod_trigger = CronTrigger(
+                        hour=hour,
+                        minute=minute,
+                        day_of_week='mon-fri',
+                        timezone='America/New_York'
+                    )
+                    self.scheduler._scheduler.add_job(
+                        func=self._run_eod_exit_job,
+                        trigger=eod_trigger,
+                        id=job_id,
+                        name=f'EOD Exit {hour}:{minute:02d} ET',
+                        replace_existing=True
+                    )
+
+                logger.info("EOD exit jobs scheduled at 15:50, 15:53, 15:55, 15:57, 15:59 ET")
+            except Exception as e:
+                logger.warning(f"Failed to schedule EOD exit jobs: {e}")
+
+        # EQUITY-100: Market open stale 1H position check
+        # Safety net to exit positions that survived overnight
+        if self.position_monitor is not None:
+            try:
+                from apscheduler.triggers.cron import CronTrigger
+
+                stale_check_trigger = CronTrigger(
+                    hour=9,
+                    minute=31,
+                    day_of_week='mon-fri',
+                    timezone='America/New_York'
+                )
+                self.scheduler._scheduler.add_job(
+                    func=self._run_market_open_stale_check,
+                    trigger=stale_check_trigger,
+                    id='market_open_stale_check',
+                    name='Market Open Stale 1H Check',
+                    replace_existing=True
+                )
+
+                logger.info("Market open stale 1H check scheduled for 9:31 AM ET")
+            except Exception as e:
+                logger.warning(f"Failed to schedule market open stale check: {e}")
 
         # Start scheduler
         self.scheduler.start()

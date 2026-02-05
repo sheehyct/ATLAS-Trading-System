@@ -1000,6 +1000,41 @@ class PositionMonitor:
 
         return False
 
+    def _is_within_eod_grace_period(self, grace_seconds: int = 60) -> bool:
+        """
+        EQUITY-100: Check if we're within the EOD grace period after market close.
+
+        Allows EOD exits for up to 60 seconds after 16:00 ET.
+        This handles cases where the EOD exit job fires at 15:59 but
+        execution takes a few seconds.
+
+        Args:
+            grace_seconds: Number of seconds after close to allow exits
+
+        Returns:
+            True if within grace period (16:00:00 - 16:01:00 ET)
+        """
+        import pytz
+        from datetime import timedelta
+
+        et = pytz.timezone('America/New_York')
+        now_et = datetime.now(et)
+
+        # Only applies on trading days
+        if not self._market_hours_validator.is_trading_day(now_et.date()):
+            return False
+
+        # Get today's market schedule
+        schedule = self._market_hours_validator.get_schedule(now_et.date())
+        if not schedule.is_trading_day or not schedule.market_close:
+            return False
+
+        market_close = schedule.market_close.astimezone(et)
+        grace_end = market_close.replace(second=0, microsecond=0) + timedelta(seconds=grace_seconds)
+
+        # Check if we're in the grace period (after close, before grace end)
+        return market_close <= now_et <= grace_end
+
     def execute_exit(self, exit_signal: ExitSignal) -> Optional[Dict[str, Any]]:
         """
         Execute an exit for a position.
@@ -1012,15 +1047,23 @@ class PositionMonitor:
         """
         # Session 83K-77: Skip exits outside market hours
         # Session EQUITY-95: All exits respect market hours, including EOD.
-        # EOD fires at 15:59 while market is still open (< 16:00). After close,
-        # exits are blocked here; stale 1H positions exit next morning via
-        # _is_stale_1h_position() check at market open.
+        # EQUITY-100: Added 1-minute grace period for EOD exits after market close.
+        # This handles cases where EOD exit job fires at 15:59 but execution takes time.
         if not self._is_market_hours():
-            logger.debug(
-                f"Skipping exit for {exit_signal.osi_symbol}: "
-                f"outside market hours ({exit_signal.reason.value})"
-            )
-            return None
+            # Check if this is an EOD exit within the grace period
+            is_eod_exit = exit_signal.reason == ExitReason.EOD_EXIT
+            if is_eod_exit and self._is_within_eod_grace_period():
+                logger.warning(
+                    f"EOD grace period: Allowing exit for {exit_signal.osi_symbol} "
+                    f"after market close ({exit_signal.reason.value})"
+                )
+            else:
+                # EQUITY-100: Upgraded from debug to warning for visibility
+                logger.warning(
+                    f"Skipping exit for {exit_signal.osi_symbol}: "
+                    f"outside market hours ({exit_signal.reason.value})"
+                )
+                return None
 
         if not self.trading_client:
             logger.error("No trading client - cannot execute exit")
