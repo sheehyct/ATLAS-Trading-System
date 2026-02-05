@@ -151,3 +151,7 @@ matplotlib_mcp/
 # *.html - NOW TRACKED (reports)
 # *.ipynb - NOW TRACKED (notebooks)
 .mcp.json
+
+# VectorBT Pro (proprietary - do not commit)
+VectorBT Pro Official Documentation/
+vectorbtpro/
