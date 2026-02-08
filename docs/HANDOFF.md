@@ -1,9 +1,80 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** January 31, 2026 (Session EQUITY-99)
+**Last Updated:** February 8, 2026 (Session EQUITY-101)
 **Current Branch:** `main`
-**Phase:** Paper Trading - Spot/Derivative Architecture COMPLETE
-**Status:** EQUITY-99 COMPLETE - Two-layer data architecture implemented for crypto signals
+**Phase:** Comprehensive Audit + Tier 1-2 Bug Fixes
+**Status:** EQUITY-101 IN PROGRESS - Audit complete, critical bugs fixed and deployed
+
+---
+
+## Session EQUITY-101: Comprehensive Audit + Bug Fixes (IN PROGRESS)
+
+**Date:** February 8, 2026
+**Environment:** Claude Code (Opus 4.6)
+**Status:** Tier 1 COMPLETE, Tier 2 partial
+
+### What Was Accomplished
+
+1. **Comprehensive Project Audit** (Plan: `bright-stargazing-cookie.md`)
+   - 6 unfixed bugs, 20+ incomplete tasks, 15 tech debt items catalogued
+   - Sources: HANDOFF.md, OpenMemory, codebase grep, output/ reports
+
+2. **Tier 1 Fixes (DEPLOYED to VPS)**
+   - VPS deployment verified and updated (5 commits deployed)
+   - Re-enabled MIN_SIGNAL_RISK_REWARD from 0.0 to 1.0 (crypto/config.py)
+   - Fixed 6 bare except clauses in statarb files
+
+3. **Tier 2 Fixes (DEPLOYED to VPS)**
+   - Fixed duplicate Discord alerts (_entry_alerts_sent dedup)
+   - Fixed duplicate ORDER EXECUTION (_executed_signal_keys dedup)
+     - Alpaca trade log confirmed: 2 buy orders seconds apart for same option (HOOD, DIA, NVDA, NFLX)
+     - Guards added at all 3 execution paths in daemon.py
+   - Removed stale nested crypto/clri/ (standalone repo is source of truth)
+   - MFE/MAE: Pipeline wired correctly since EQUITY-97, awaiting first live trade
+
+4. **Other**
+   - Fixed mypy PostToolUse hook for non-Python files (settings.json)
+   - Created docs/SESSION_LOG.md for /resume workaround
+   - Analyzed full Alpaca trade log (~35 round-trips, ~43% win rate, ~-$700 net)
+
+### Commits: d3e9059, a93ba28, 3ba9b3d
+
+### Key Finding: Dashboard Trade Metadata Broken
+
+Dashboard shows ALL trades as "Unclassified" pattern and "No" TFC continuity.
+This means signal-to-trade metadata correlation is broken -- pattern type and TFC
+score are not being stored/displayed for closed trades. Without this data, we
+cannot validate whether the strategy is selecting correct patterns or whether
+TFC filtering is working. This is a diagnostic blind spot.
+
+### Next Session (EQUITY-102) Priorities
+
+1. **Fix signal-to-trade metadata correlation**
+   - Dashboard must show pattern type and TFC score for each closed trade
+   - Investigate why signal_store data is not reaching the closed trades view
+   - Likely gap: Alpaca positions lack STRAT metadata, need signal_store correlation
+
+2. **Backfill historical trades with signal metadata**
+   - Use Alpaca order log + signal_store to retroactively populate pattern/TFC data
+   - Populate MFE/MAE using historical 1-min price data for each holding period
+   - This serves as a diagnostic tool to expose entry/exit bugs
+
+3. **Port 4 equity fixes to crypto pipeline** (informed by backfill findings)
+   - Stale setup validation (equity daemon.py:786-877)
+   - Type 3 invalidation (equity position_monitor.py:1030-1056)
+   - TFC re-evaluation at entry (equity daemon.py:933-1056)
+   - Stale 1H position detection (equity position_monitor.py:1132-1180)
+
+4. **Remaining Tier 2-3 items**
+   - Dashboard TradingView charts fix
+   - StatArb test suite (7 files, 0 tests)
+   - Remaining Phase 3 test coverage (~130 tests)
+
+**Full audit plan:** `C:\Users\sheeh\.claude\plans\bright-stargazing-cookie.md`
+
+### Open Positions (as of Feb 8)
+- NVDA260213P00185000 (2 contracts, STOP signal pending market open Monday)
+- META260213P00660000 (1 contract)
 
 ---
 
