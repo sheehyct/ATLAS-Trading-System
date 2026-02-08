@@ -391,8 +391,8 @@ MIN_MAGNITUDE_PCT: float = 0.5
 
 # Minimum reward:risk ratio for signals
 # Lowered from 1.5 to 1.0 to allow daily timeframe patterns (Session CRYPTO-8)
-# TEMPORARY: Disabled (0.0) for testing to capture more trade data (Session EQUITY-23)
-MIN_SIGNAL_RISK_REWARD: float = 0.0
+# Re-enabled from 0.0 (Session EQUITY-101 audit)
+MIN_SIGNAL_RISK_REWARD: float = 1.0
 
 # Signal expiry (how long SETUP signals remain valid)
 SIGNAL_EXPIRY_HOURS: int = 24
