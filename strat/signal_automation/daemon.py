@@ -408,11 +408,11 @@ class SignalDaemon:
         # Re-evaluate TFC and optionally block entry if alignment degraded significantly.
         tfc_blocked, tfc_reason = self._reevaluate_tfc_at_entry(signal)
 
-        # EQUITY-102: Write re-evaluated TFC back to signal store
-        # This ensures trade_metadata.json (written by executor) gets correct TFC values
-        tfc_data = self._execution_coordinator._last_tfc_assessment
-        if tfc_data is not None:
-            tfc_score, tfc_alignment = tfc_data
+        # EQUITY-102: Write re-evaluated TFC back to signal store so
+        # trade_metadata and downstream consumers get correct TFC values
+        tfc_assessment = self._execution_coordinator.last_tfc_assessment
+        if tfc_assessment is not None:
+            tfc_score, tfc_alignment = tfc_assessment
             self.signal_store.update_tfc(signal.signal_key, tfc_score, tfc_alignment)
 
         if tfc_blocked:

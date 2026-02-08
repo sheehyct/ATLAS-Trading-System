@@ -2,6 +2,15 @@
 
 > **Token-optimized rules file. Detailed examples in `docs/CLAUDE_REFERENCE.md`.**
 
+## Session Management
+
+When resuming a session, always start by summarizing:
+1. What was in progress
+2. What was completed
+3. What still needs to be done
+
+Ask user to confirm before continuing.
+
 ## 1. Session Start (MANDATORY)
 
 ```
@@ -79,6 +88,14 @@ Before claiming ANY functionality works:
 - Test it (run the actual code)
 - Verify output (check results are correct)
 - Show evidence (paste actual output)
+
+## Code Editing
+
+Before editing files, check if they might be open in another editor (Claude Desktop, VS Code). If working on shared files like velocity.py, confirm with user first.
+
+## Integration
+
+When integrating code from external sources (Claude Desktop, other repos), first verify API compatibility by reading both the source and target interfaces. Create adapter code if signatures don't match.
 
 ## 9. Project Structure
 
@@ -213,6 +230,6 @@ Schwab Level 1 Options (cash account):
 
 ---
 
-**Version:** 3.4 (December 29, 2025)
+**Version:** 3.5 (February 6, 2026)
 **Status:** PRODUCTION - Token-optimized
 **Details:** See `docs/CLAUDE_REFERENCE.md` for verbose examples

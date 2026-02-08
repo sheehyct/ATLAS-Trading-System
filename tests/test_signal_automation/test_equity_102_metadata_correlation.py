@@ -173,13 +173,9 @@ class TestExecutionCoordinatorTfcWriteback:
         evaluator.evaluate_tfc.return_value = assessment
         return evaluator
 
-    def test_last_tfc_assessment_stored_after_reeval(self, mock_config, mock_tfc_evaluator):
-        """Test _last_tfc_assessment is set after successful TFC re-evaluation."""
-        coord = ExecutionCoordinator(
-            config=mock_config,
-            tfc_evaluator=mock_tfc_evaluator,
-        )
-
+    @pytest.fixture
+    def mock_signal(self):
+        """Create a reusable mock signal for TFC reeval tests."""
         signal = MagicMock()
         signal.tfc_score = 0
         signal.tfc_alignment = ''
@@ -189,26 +185,33 @@ class TestExecutionCoordinatorTfcWriteback:
         signal.timeframe = '1D'
         signal.pattern_type = '3-1-2U'
         signal.signal_key = 'test_key'
+        return signal
 
-        blocked, reason = coord.reevaluate_tfc_at_entry(signal)
+    def test_last_tfc_assessment_stored_after_reeval(self, mock_config, mock_tfc_evaluator, mock_signal):
+        """Test last_tfc_assessment is set after successful TFC re-evaluation."""
+        coord = ExecutionCoordinator(
+            config=mock_config,
+            tfc_evaluator=mock_tfc_evaluator,
+        )
 
-        assert coord._last_tfc_assessment is not None
-        score, alignment = coord._last_tfc_assessment
+        coord.reevaluate_tfc_at_entry(mock_signal)
+
+        assert coord.last_tfc_assessment is not None
+        score, alignment = coord.last_tfc_assessment
         assert score == 4
         assert alignment == '4/5 BULLISH'
 
     def test_last_tfc_assessment_none_when_disabled(self, mock_config):
-        """Test _last_tfc_assessment is None when TFC reeval disabled."""
+        """Test last_tfc_assessment is None when TFC reeval disabled."""
         mock_config.tfc_reeval_enabled = False
         coord = ExecutionCoordinator(config=mock_config)
 
-        signal = MagicMock()
-        blocked, reason = coord.reevaluate_tfc_at_entry(signal)
+        coord.reevaluate_tfc_at_entry(MagicMock())
 
-        assert coord._last_tfc_assessment is None
+        assert coord.last_tfc_assessment is None
 
-    def test_last_tfc_assessment_none_on_error(self, mock_config, mock_tfc_evaluator):
-        """Test _last_tfc_assessment is None when evaluation errors."""
+    def test_last_tfc_assessment_none_on_error(self, mock_config, mock_tfc_evaluator, mock_signal):
+        """Test last_tfc_assessment is None when evaluation errors."""
         mock_tfc_evaluator.evaluate_tfc.side_effect = ConnectionError("Network error")
         coord = ExecutionCoordinator(
             config=mock_config,
@@ -216,45 +219,27 @@ class TestExecutionCoordinatorTfcWriteback:
             on_error=Mock(),
         )
 
-        signal = MagicMock()
-        signal.tfc_score = 0
-        signal.tfc_alignment = ''
-        signal.passes_flexible = True
-        signal.direction = 'CALL'
-        signal.symbol = 'SPY'
-        signal.timeframe = '1D'
-        signal.pattern_type = '3-1-2U'
-        signal.signal_key = 'test_key'
+        coord.reevaluate_tfc_at_entry(mock_signal)
 
-        blocked, reason = coord.reevaluate_tfc_at_entry(signal)
+        assert coord.last_tfc_assessment is None
 
-        assert coord._last_tfc_assessment is None
-
-    def test_last_tfc_assessment_reset_between_calls(self, mock_config, mock_tfc_evaluator):
-        """Test _last_tfc_assessment is reset at the start of each call."""
+    def test_last_tfc_assessment_reset_between_calls(self, mock_config, mock_tfc_evaluator, mock_signal):
+        """Test last_tfc_assessment is reset at the start of each call."""
         coord = ExecutionCoordinator(
             config=mock_config,
             tfc_evaluator=mock_tfc_evaluator,
         )
 
-        signal = MagicMock()
-        signal.tfc_score = 3
-        signal.tfc_alignment = '3/4 BULLISH'
-        signal.passes_flexible = True
-        signal.direction = 'CALL'
-        signal.symbol = 'SPY'
-        signal.timeframe = '1D'
-        signal.pattern_type = '3-1-2U'
-        signal.signal_key = 'test_key'
-
         # First call succeeds
-        coord.reevaluate_tfc_at_entry(signal)
-        assert coord._last_tfc_assessment is not None
+        mock_signal.tfc_score = 3
+        mock_signal.tfc_alignment = '3/4 BULLISH'
+        coord.reevaluate_tfc_at_entry(mock_signal)
+        assert coord.last_tfc_assessment is not None
 
         # Second call with disabled reeval should reset
         coord._config.tfc_reeval_enabled = False
-        coord.reevaluate_tfc_at_entry(signal)
-        assert coord._last_tfc_assessment is None
+        coord.reevaluate_tfc_at_entry(mock_signal)
+        assert coord.last_tfc_assessment is None
 
 
 # =============================================================================
@@ -523,10 +508,12 @@ class TestGetClosedTradesRemoteMetadata:
 
         mock_loader.client.get_closed_trades.return_value = []
 
-        with patch.object(mock_loader, '_load_trade_metadata', return_value={}) as mock_load:
-            with patch.object(mock_loader, '_load_executions', return_value={}):
-                with patch.object(mock_loader, '_load_enriched_tfc_data', return_value={}):
-                    trades = mock_loader.get_closed_trades(days=30)
+        with (
+            patch.object(mock_loader, '_load_trade_metadata', return_value={}) as mock_load,
+            patch.object(mock_loader, '_load_executions', return_value={}),
+            patch.object(mock_loader, '_load_enriched_tfc_data', return_value={}),
+        ):
+            trades = mock_loader.get_closed_trades(days=30)
 
         mock_load.assert_called_once()
         mock_get.assert_not_called()

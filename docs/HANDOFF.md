@@ -1,13 +1,54 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 8, 2026 (Session EQUITY-101)
+**Last Updated:** February 8, 2026 (Session EQUITY-102)
 **Current Branch:** `main`
-**Phase:** Comprehensive Audit + Tier 1-2 Bug Fixes
-**Status:** EQUITY-101 IN PROGRESS - Audit complete, critical bugs fixed and deployed
+**Phase:** Signal-to-Trade Metadata Correlation
+**Status:** EQUITY-102 COMPLETE - Metadata pipeline connected, VPS deployed
 
 ---
 
-## Session EQUITY-101: Comprehensive Audit + Bug Fixes (IN PROGRESS)
+## Session EQUITY-102: Fix Signal-to-Trade Metadata Correlation (COMPLETE)
+
+**Date:** February 8, 2026
+**Environment:** Claude Code (Opus 4.6)
+**Status:** COMPLETE - Dashboard can now display pattern/TFC for closed trades
+
+### What Was Accomplished
+
+1. **TFC Writeback Pipeline (Fix 3)** - Added `SignalStore.update_tfc()` method and wired it into daemon's entry trigger handler. After TFC re-evaluation at entry, scores are written back to signal_store BEFORE executor saves trade_metadata.json. Prevents tfc_score=0 for all future trades.
+
+2. **`/trade_metadata` VPS API Endpoint (Fix 1)** - New endpoint on the VPS daemon API that merges two data sources: trade_metadata.json (written by executor at order time) + signal_store signals (with EQUITY-102 TFC writeback). Returns combined dict keyed by OSI symbol. Serving 108 entries at deploy time.
+
+3. **Dashboard Remote Metadata Fetch (Fix 2)** - Modified `options_loader.get_closed_trades()` to call VPS API `/trade_metadata` when `use_remote=True` (Railway deployment). Added `_fetch_trade_metadata_from_api()` method. Local mode unchanged.
+
+4. **Code Quality** - Added `last_tfc_assessment` property to ExecutionCoordinator (encapsulation), simplified merge logic in API endpoint, extracted test fixtures. 18 unit tests with full coverage.
+
+### Root Cause
+
+Dashboard on Railway reads `use_remote=True` -> `signal_store=None`. Trade metadata was only on VPS disk (trade_metadata.json written by executor). No API endpoint existed to bridge the gap. Additionally, TFC scores were always 0 because re-evaluation happened but results were never persisted.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/signal_store.py` | Added `update_tfc()` method |
+| `strat/signal_automation/api/server.py` | Added `/trade_metadata` endpoint |
+| `strat/signal_automation/coordinators/execution_coordinator.py` | Added `_last_tfc_assessment` + property |
+| `strat/signal_automation/daemon.py` | TFC writeback after re-eval |
+| `dashboard/data_loaders/options_loader.py` | Remote metadata fetch |
+| `tests/.../test_equity_102_metadata_correlation.py` | 18 new tests |
+
+### Commits: 568051b
+
+### Remaining (EQUITY-103)
+
+- **Fix 4: Backfill** - Run one-time backfill of enriched_trades.json for ~40 historical trades
+- **End-to-end verification** - Confirm Railway dashboard shows pattern/TFC for closed trades
+- **Crypto port** - 4 equity fixes still need porting to crypto pipeline
+
+---
+
+## Session EQUITY-101: Comprehensive Audit + Bug Fixes (COMPLETE)
 
 **Date:** February 8, 2026
 **Environment:** Claude Code (Opus 4.6)

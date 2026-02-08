@@ -496,14 +496,11 @@ def get_trade_metadata():
                 }
 
                 if osi not in metadata:
-                    # Not in trade_metadata.json at all - use signal data
                     metadata[osi] = signal_data
-                else:
-                    # Merge: signal_store TFC takes priority (has writeback data)
-                    existing = metadata[osi]
-                    if signal.tfc_score and (not existing.get('tfc_score') or existing.get('tfc_score') == 0):
-                        existing['tfc_score'] = signal.tfc_score
-                        existing['tfc_alignment'] = signal.tfc_alignment
+                elif signal.tfc_score and not metadata[osi].get('tfc_score'):
+                    # Signal store TFC takes priority over missing/zero file data
+                    metadata[osi]['tfc_score'] = signal.tfc_score
+                    metadata[osi]['tfc_alignment'] = signal.tfc_alignment
 
             logger.debug(f"Merged signal_store data, total entries: {len(metadata)}")
         except Exception as e:

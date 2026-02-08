@@ -538,6 +538,11 @@ class ExecutionCoordinator:
                 logger.error(f"Entry alert error: {e}")
 
     @property
+    def last_tfc_assessment(self) -> Optional[tuple[int, str]]:
+        """Return TFC assessment from most recent reevaluate_tfc_at_entry() call."""
+        return self._last_tfc_assessment
+
+    @property
     def config(self) -> ExecutionConfig:
         """Return current execution configuration."""
         return self._config
