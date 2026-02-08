@@ -128,6 +128,7 @@ class SignalDaemon:
         self._execution_count = 0
         self._exit_count = 0
         self._entry_alerts_sent: set = set()  # EQUITY-101: Dedup entry alerts
+        self._executed_signal_keys: set = set()  # EQUITY-101: Dedup execution
 
         # Initialize components
         self._setup_alerters()
@@ -426,6 +427,12 @@ class SignalDaemon:
 
         # Execute if executor available
         if self.executor is not None:
+            # EQUITY-101: Prevent duplicate execution of same signal
+            if signal.signal_key in self._executed_signal_keys:
+                logger.info(f"Skipping duplicate execution: {signal.signal_key}")
+                return
+            self._executed_signal_keys.add(signal.signal_key)
+
             try:
                 # Session 83K-73: Pass StoredSignal directly to executor
                 # The executor expects StoredSignal (has signal_key attribute)
@@ -533,6 +540,12 @@ class SignalDaemon:
 
                             if signal_key in executed_symbols:
                                 continue
+
+                            # EQUITY-101: Skip if already executed via another path
+                            if signal.signal_key in self._executed_signal_keys:
+                                logger.debug(f"Skipping already-executed TRIGGERED: {signal.signal_key}")
+                                continue
+                            self._executed_signal_keys.add(signal.signal_key)
 
                             result = self._execute_triggered_pattern(signal)
                             if result and result.state == ExecutionState.ORDER_SUBMITTED:
@@ -645,6 +658,12 @@ class SignalDaemon:
                                     f"{signal.pattern_type} ({signal.timeframe})"
                                 )
                                 continue
+
+                            # EQUITY-101: Skip if already executed via another path
+                            if signal.signal_key in self._executed_signal_keys:
+                                logger.debug(f"Skipping already-executed TRIGGERED: {signal.signal_key}")
+                                continue
+                            self._executed_signal_keys.add(signal.signal_key)
 
                             result = self._execute_triggered_pattern(signal)
                             if result and result.state == ExecutionState.ORDER_SUBMITTED:
