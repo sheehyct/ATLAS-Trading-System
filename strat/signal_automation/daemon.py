@@ -407,6 +407,14 @@ class SignalDaemon:
         # TFC can change between pattern detection and entry trigger (hours/days later).
         # Re-evaluate TFC and optionally block entry if alignment degraded significantly.
         tfc_blocked, tfc_reason = self._reevaluate_tfc_at_entry(signal)
+
+        # EQUITY-102: Write re-evaluated TFC back to signal store
+        # This ensures trade_metadata.json (written by executor) gets correct TFC values
+        tfc_data = self._execution_coordinator._last_tfc_assessment
+        if tfc_data is not None:
+            tfc_score, tfc_alignment = tfc_data
+            self.signal_store.update_tfc(signal.signal_key, tfc_score, tfc_alignment)
+
         if tfc_blocked:
             logger.warning(
                 f"TFC REEVAL REJECTED: {signal.symbol} {signal.pattern_type} {signal.direction} "

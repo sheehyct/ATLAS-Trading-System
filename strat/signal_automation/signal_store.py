@@ -501,6 +501,33 @@ class SignalStore:
         logger.debug(f"Set executed_osi_symbol for {signal_key}: {osi_symbol}")
         return True
 
+    def update_tfc(self, signal_key: str, tfc_score: int, tfc_alignment: str) -> bool:
+        """
+        Update TFC score and alignment for a signal after re-evaluation.
+
+        EQUITY-102: Write TFC data back to signal store after re-evaluation
+        at entry time, so trade_metadata and downstream consumers get correct
+        TFC values instead of the stale tfc_score=0 from initial detection.
+
+        Args:
+            signal_key: Signal key to update
+            tfc_score: Re-evaluated TFC strength score
+            tfc_alignment: Re-evaluated TFC alignment label
+
+        Returns:
+            True if updated, False if signal not found
+        """
+        if signal_key not in self._signals:
+            logger.warning(f"Cannot update TFC - signal not found: {signal_key}")
+            return False
+
+        signal = self._signals[signal_key]
+        signal.tfc_score = tfc_score
+        signal.tfc_alignment = tfc_alignment
+        self._save()
+        logger.debug(f"Updated TFC for {signal_key}: score={tfc_score}, alignment={tfc_alignment}")
+        return True
+
     def get_signal_by_osi_symbol(self, osi_symbol: str) -> Optional[StoredSignal]:
         """
         Look up a signal by the OSI symbol of the executed option.

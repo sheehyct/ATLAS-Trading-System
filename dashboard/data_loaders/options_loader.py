@@ -474,8 +474,13 @@ class OptionsDataLoader:
                 options_only=True
             )
 
-            # Session DB-2: Load trade metadata (primary source for patterns)
-            trade_metadata = self._load_trade_metadata()
+            # EQUITY-102: Fetch trade metadata from VPS API in remote mode
+            # This is the primary source - executor writes pattern/TFC at order time
+            if self.use_remote and self.vps_api_url:
+                trade_metadata = self._fetch_trade_metadata_from_api()
+            else:
+                # Session DB-2: Load trade metadata from local file
+                trade_metadata = self._load_trade_metadata()
 
             # Load executions to link patterns (fallback)
             executions = self._load_executions()
@@ -617,6 +622,33 @@ class OptionsDataLoader:
 
         except Exception as e:
             logger.debug(f"Could not load trade metadata: {e}")
+            return {}
+
+    def _fetch_trade_metadata_from_api(self) -> Dict[str, Dict]:
+        """
+        Fetch trade metadata from VPS API endpoint.
+
+        EQUITY-102: In remote mode (Railway), the dashboard can't read local files
+        on VPS. This fetches the combined trade_metadata + signal_store data from
+        the /trade_metadata API endpoint.
+
+        Returns:
+            Dict mapping OSI symbol to metadata dict
+        """
+        if not self.vps_api_url:
+            return {}
+
+        url = f"{self.vps_api_url.rstrip('/')}/trade_metadata"
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict):
+                logger.debug(f"Fetched {len(data)} trade metadata entries from VPS API")
+                return data
+            return {}
+        except requests.RequestException as e:
+            logger.error(f"Error fetching trade metadata from VPS API: {e}")
             return {}
 
     def _load_enriched_tfc_data(self) -> Dict[str, Dict]:

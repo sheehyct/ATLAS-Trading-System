@@ -82,6 +82,8 @@ class ExecutionCoordinator:
         self._alerters = alerters or []
         self._on_execution = on_execution or (lambda: None)
         self._on_error = on_error or (lambda: None)
+        # EQUITY-102: Store last TFC assessment for writeback by caller
+        self._last_tfc_assessment: Optional[tuple[int, str]] = None
 
     def execute_triggered_pattern(self, signal: StoredSignal) -> Optional[ExecutionResult]:
         """
@@ -357,6 +359,7 @@ class ExecutionCoordinator:
         Re-evaluate TFC alignment at entry time and check if entry should be blocked.
 
         Session EQUITY-49: TFC Re-evaluation at Entry.
+        EQUITY-102: Now also returns current TFC data for writeback to signal store.
 
         TFC can change between pattern detection and entry trigger (hours/days later).
         This method:
@@ -364,6 +367,7 @@ class ExecutionCoordinator:
         2. Compares with original TFC at detection time
         3. Logs the comparison for audit trail
         4. Optionally blocks entry if TFC degraded significantly or flipped direction
+        5. Stores current TFC data in self._last_tfc_assessment for caller to write back
 
         Args:
             signal: The stored signal about to be executed
@@ -371,6 +375,9 @@ class ExecutionCoordinator:
         Returns:
             Tuple of (should_block: bool, reason: str)
         """
+        # EQUITY-102: Reset last assessment
+        self._last_tfc_assessment = None
+
         # Check if TFC re-evaluation is enabled
         if not self._config.tfc_reeval_enabled:
             return False, ""
@@ -437,6 +444,9 @@ class ExecutionCoordinator:
         # Session EQUITY-62: Default to False for safety (fail-closed)
         current_passes = getattr(current_tfc, 'passes_flexible', False)
         current_direction = getattr(current_tfc, 'direction', '') or ""
+
+        # EQUITY-102: Store current TFC for writeback by caller
+        self._last_tfc_assessment = (current_strength, current_alignment)
 
         # Calculate strength change
         strength_delta = current_strength - original_strength

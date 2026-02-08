@@ -20,7 +20,9 @@ Usage:
     run_api(host='0.0.0.0', port=8081)
 """
 
+import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Dict, List, Any
 
 from flask import Flask, jsonify, request
@@ -445,3 +447,66 @@ def get_signals_by_category():
             'triggered': [],
             'low_magnitude': []
         })
+
+
+@app.route('/trade_metadata')
+def get_trade_metadata():
+    """
+    EQUITY-102: Trade metadata for closed trade pattern/TFC correlation.
+
+    Merges two data sources:
+    1. trade_metadata.json (written by executor at order time)
+    2. signal_store signals with executed_osi_symbol (for TFC writeback data)
+
+    Returns:
+        Dict mapping OSI symbol -> {pattern_type, timeframe, tfc_score, tfc_alignment, ...}
+    """
+    metadata = {}
+
+    # Source 1: Load trade_metadata.json from disk
+    try:
+        metadata_file = Path('data/executions/trade_metadata.json')
+        if metadata_file.exists():
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+            logger.debug(f"Loaded {len(metadata)} entries from trade_metadata.json")
+    except Exception as e:
+        logger.error(f"Error loading trade_metadata.json: {e}")
+
+    # Source 2: Merge signal_store data (has updated TFC from EQUITY-102 writeback)
+    if _daemon is not None and _daemon.signal_store is not None:
+        try:
+            all_signals = _daemon.signal_store.load_signals()
+            for signal in all_signals.values():
+                if not signal.executed_osi_symbol:
+                    continue
+
+                osi = signal.executed_osi_symbol
+                signal_data = {
+                    'pattern_type': signal.pattern_type,
+                    'timeframe': signal.timeframe,
+                    'tfc_score': signal.tfc_score,
+                    'tfc_alignment': signal.tfc_alignment,
+                    'direction': signal.direction,
+                    'symbol': signal.symbol,
+                    'entry_trigger': signal.entry_trigger,
+                    'stop_price': signal.stop_price,
+                    'target_price': signal.target_price,
+                    'detected_time': str(signal.detected_time) if signal.detected_time else None,
+                }
+
+                if osi not in metadata:
+                    # Not in trade_metadata.json at all - use signal data
+                    metadata[osi] = signal_data
+                else:
+                    # Merge: signal_store TFC takes priority (has writeback data)
+                    existing = metadata[osi]
+                    if signal.tfc_score and (not existing.get('tfc_score') or existing.get('tfc_score') == 0):
+                        existing['tfc_score'] = signal.tfc_score
+                        existing['tfc_alignment'] = signal.tfc_alignment
+
+            logger.debug(f"Merged signal_store data, total entries: {len(metadata)}")
+        except Exception as e:
+            logger.error(f"Error merging signal_store data: {e}")
+
+    return jsonify(metadata)
