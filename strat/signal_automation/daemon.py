@@ -127,6 +127,7 @@ class SignalDaemon:
         self._error_count = 0
         self._execution_count = 0
         self._exit_count = 0
+        self._entry_alerts_sent: set = set()  # EQUITY-101: Dedup entry alerts
 
         # Initialize components
         self._setup_alerters()
@@ -444,14 +445,19 @@ class SignalDaemon:
                     )
 
                     # Send alert (Session 83K-77: simplified Discord alerts)
-                    for alerter in self.alerters:
-                        try:
-                            if isinstance(alerter, DiscordAlerter):
-                                alerter.send_entry_alert(signal, result)
-                            elif isinstance(alerter, LoggingAlerter):
-                                alerter.log_execution(result)
-                        except Exception as e:
-                            logger.error(f"Alert error: {e}")
+                    # EQUITY-101: Dedup - skip if alert already sent for this signal
+                    if signal.signal_key not in self._entry_alerts_sent:
+                        self._entry_alerts_sent.add(signal.signal_key)
+                        for alerter in self.alerters:
+                            try:
+                                if isinstance(alerter, DiscordAlerter):
+                                    alerter.send_entry_alert(signal, result)
+                                elif isinstance(alerter, LoggingAlerter):
+                                    alerter.log_execution(result)
+                            except Exception as e:
+                                logger.error(f"Alert error: {e}")
+                    else:
+                        logger.debug(f"Skipping duplicate entry alert: {signal.signal_key}")
 
             except Exception as e:
                 logger.error(f"Execution error for {signal.symbol}: {e}")
