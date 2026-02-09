@@ -41,6 +41,14 @@
 
 ## OpenMemory Configuration
 
+**IMPORTANT:** After copying via flash drive, you must rebuild `node_modules/` in both
+OpenMemory instances (`npm install` in each `backend/` dir). The native `sqlite3` module
+has compiled binaries tied to the source machine. See 02-environment.md Phase 5 for details.
+
+A previous bug where `console.log` in the `oninitialized` callback corrupted the stdio
+MCP transport has been fixed in the source code. The fix (changed to `console.error`)
+is already in `backend/src/mcp/index.ts` and will copy over with the flash drive.
+
 ### ATLAS Instance (.env at C:\Dev\openmemory\.env)
 ```
 OM_PORT=8080

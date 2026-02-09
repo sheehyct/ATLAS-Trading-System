@@ -140,7 +140,10 @@ Once all 46 validation checks pass:
 | `uv sync` fails on VBT Pro | Check GITHUB_TOKEN is set in environment (not just .env) |
 | TA-LIB import fails | Verify `C:\ta-lib\c\lib\ta_lib.lib` exists, check 64-bit match |
 | MCP server won't start | Check .mcp.json paths match actual locations on this machine |
+| OpenMemory connects then drops | Delete `node_modules/` and run `npm install` in backend dir. The `sqlite3` native module must be compiled for this machine. |
+| OpenMemory "JSON Parse error: Unexpected identifier MCP" | The `console.log` -> `console.error` fix in `backend/src/mcp/index.ts` may have been reverted. Check line 306 uses `console.error`, not `console.log`. |
 | OpenMemory connection error | Verify `npm install` ran in backend dir, check OM_DB_PATH in .env |
+| Python imports segfault or fail | Did you delete .venv before running `uv sync`? Copied .venv has binaries from old machine. |
 | SSH to VPS fails | Copy ~/.ssh/ from laptop, check `ssh-add` |
 | Hooks don't fire | Check settings.json hook paths match new machine paths |
 | Plugins missing | Run `claude plugin list` -- they should auto-enable from settings |

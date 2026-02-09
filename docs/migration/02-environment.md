@@ -198,33 +198,40 @@ Note: CLRI uses Python 3.11 in Docker (`python:3.11-slim`). Local venv can use 3
 
 ## Phase 5: OpenMemory Setup
 
+### IMPORTANT: node_modules and the stdio fix
+
+Like .venv, the `node_modules/` directory contains native binaries (e.g., the `sqlite3`
+module) compiled for the source machine. You MUST delete and rebuild it on the new machine.
+
+Also, a critical bug was fixed in `backend/src/mcp/index.ts`: the `oninitialized` callback
+was using `console.log` which writes to stdout -- the same pipe used by the MCP JSON-RPC
+protocol. This caused the MCP connection to drop immediately after connecting with:
+`JSON Parse error: Unexpected identifier "MCP"`. The fix changed `console.log` to
+`console.error` so diagnostic messages go to stderr instead. This fix is already in the
+source code and will travel with the flash drive copy.
+
 ### 5.1 ATLAS Instance
 ```powershell
-# Create directory structure
-mkdir C:\Dev\openmemory\data
-mkdir C:\Dev\openmemory\backups
-
-# Copy database from laptop
-# (transfer atlas_memory.sqlite, 16.5 MB)
-# (transfer backups/, ~300 MB, 23 files)
-
-# Copy backend code
-# (or clone from source)
-
-# Install dependencies
+# If copied via flash drive, the directory already exists.
+# Delete and rebuild node_modules (native binaries are machine-specific):
 cd C:\Dev\openmemory\backend
+rmdir /s /q node_modules
 npm install
 
-# Copy .env (contains OPENAI_API_KEY and OM_DB_PATH)
-# UPDATE OM_DB_PATH if directory structure differs
+# Verify .env exists and has correct paths:
+#   OM_DB_PATH=C:/Dev/openmemory/data/atlas_memory.sqlite
+#   OPENAI_API_KEY=sk-proj-...
+# UPDATE OM_DB_PATH if directory structure differs on this machine.
+
+# Verify database exists (should have 525+ memories):
+dir C:\Dev\openmemory\data\atlas_memory.sqlite
 ```
 
 ### 5.2 CLRI Instance
 ```powershell
-mkdir C:\Dev\openmemory-clri\data
-mkdir C:\Dev\openmemory-clri\backups
-
+# Delete and rebuild node_modules:
 cd C:\Dev\openmemory-clri\backend
+rmdir /s /q node_modules
 npm install
 
 # Copy .env (port 8081, separate from ATLAS on 8080)
