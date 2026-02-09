@@ -152,6 +152,12 @@ matplotlib_mcp/
 # *.ipynb - NOW TRACKED (notebooks)
 .mcp.json
 
+# Large files and generated output
+Books/
+output/
+--start
+*.bak
+
 # VectorBT Pro (proprietary - do not commit)
 VectorBT Pro Official Documentation/
 vectorbtpro/
