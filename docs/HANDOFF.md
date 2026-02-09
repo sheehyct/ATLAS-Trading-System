@@ -1,9 +1,54 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 8, 2026 (Session EQUITY-102)
+**Last Updated:** February 8, 2026 (Session EQUITY-103)
 **Current Branch:** `main`
-**Phase:** Signal-to-Trade Metadata Correlation
-**Status:** EQUITY-102 COMPLETE - Metadata pipeline connected, VPS deployed
+**Phase:** Trade Analytics and Dashboard Data Pipeline
+**Status:** EQUITY-103 COMPLETE - Historical trade backfill deployed, API serving 110 entries
+
+---
+
+## Session EQUITY-103: Backfill Historical Trades (COMPLETE)
+
+**Date:** February 8, 2026
+**Environment:** Claude Code (Opus 4.6)
+**Status:** COMPLETE - 54 trades backfilled with pattern/TFC data, /trade_metadata API live
+
+### What Was Accomplished
+
+1. **Two-Tier Signal Matching** - Extended `backfill_trade_tfc.py` with `match_signal_to_trade()`: Tier 1 uses O(1) OSI symbol lookup, Tier 2 fuzzy-matches by underlying + direction + time proximity (60min triggered window / 24h detected window). Achieved 94.4% match rate (51/54 trades).
+
+2. **Smart TFC Strategy** - Reuses signal_store TFC scores when `tfc_score > 0` (no API calls). Only falls back to retroactive calculation for unmatched trades. Result: 51 reused, 3 calculated retroactively.
+
+3. **trade_metadata.json Output** - New `write_trade_metadata()` function writes backfilled entries merged with existing executor data. Preserves executor-written entries as authoritative. Added 24 new entries to existing 27.
+
+4. **`/trade_metadata` on Signal API** - Discovered the `/trade_metadata` route was in daemon's `server.py` but NOT in `signal_api.py` (the actual VPS API service on port 5000). Added the endpoint with file + signal store merge logic. Fixed 404 blocking dashboard.
+
+5. **CLI Enhancements** - Added `--dry-run` (verify matching without writes/API calls), `--write-metadata` (output trade_metadata.json), changed default `--days` to 45.
+
+6. **Code Simplification** - Extracted `_normalize_tz()` helper, named constants for magic numbers, decomposed signal_api.py route handler into `_load_trade_metadata_file()` and `_merge_signal_store_tfc()`.
+
+### Key Metrics
+
+- 54 trades processed (Jan 20 - Feb 5, 2026)
+- 110 total entries in /trade_metadata API (27 executor + 24 backfilled + 59 signal store)
+- 108/110 have pattern types, 57/110 have TFC > 0
+- Overall: 44.4% win rate, -$490 P&L
+- TFC >= 4: 25.0% win rate but +$231 P&L (larger winners)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `scripts/backfill_trade_tfc.py` | Signal matching, smart TFC, metadata output, CLI flags |
+| `scripts/signal_api.py` | Added `/trade_metadata` endpoint to VPS API |
+
+### Commits: d2c10d6
+
+### Remaining (EQUITY-104)
+
+- **Dashboard E2E** - Verify Railway dashboard shows pattern/TFC for closed trades
+- **Crypto port** - 4 equity fixes still need porting to crypto pipeline
+- **Analytics** - Pattern performance analysis, TFC >= 4 P&L investigation
 
 ---
 

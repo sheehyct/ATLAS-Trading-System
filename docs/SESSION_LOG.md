@@ -10,6 +10,11 @@ Quick-reference for resuming sessions. Each entry includes the session name, dat
 
 <!-- New sessions are prepended below this line -->
 
+## EQUITY-103 - 2026-02-08 12:46
+- **Resume:** `claude --resume 30b4afc9-d681-4548-b013-a82611c77ddb`
+- **Search:** `claude --resume "EQUITY-103"`
+- **Branch:** main
+
 ## EQUITY-102 | Fix Signal-to-Trade Metadata Correlation
 - **Date:** 2026-02-08
 - **Resume:** `claude --resume f9f2240c-5c03-44c2-8939-ec50b1e9a663`

@@ -85,6 +85,23 @@ def parse_osi_symbol(osi_symbol: str) -> Tuple[str, str]:
     return underlying, option_type
 
 
+def _normalize_tz(dt: datetime, reference: datetime) -> datetime:
+    """Align timezone awareness of dt to match reference for safe comparison."""
+    if dt.tzinfo is None and reference.tzinfo is not None:
+        return pytz.UTC.localize(dt)
+    if dt.tzinfo is not None and reference.tzinfo is None:
+        return dt.replace(tzinfo=None)
+    return dt
+
+
+# Statuses eligible for Tier 2 detected_time matching
+_TIER2_ELIGIBLE_STATUSES = ('TRIGGERED', 'HISTORICAL_TRIGGERED', 'ALERTED', 'DETECTED')
+
+# Time windows for Tier 2 matching (seconds)
+_TRIGGERED_WINDOW_SECS = 3600    # 60 minutes
+_DETECTED_WINDOW_SECS = 86400    # 24 hours
+
+
 def match_signal_to_trade(
     osi_symbol: str,
     underlying: str,
@@ -119,56 +136,27 @@ def match_signal_to_trade(
 
     # Tier 2: Fuzzy matching by underlying + direction + time proximity
     all_signals = signal_store.load_signals()
+    expected_direction = 'bullish' if option_type == 'CALL' else 'bearish'
     candidates = []
 
     for sig in all_signals.values():
-        # Must match underlying symbol
-        if sig.symbol != underlying:
+        if sig.symbol != underlying or sig.direction != expected_direction:
             continue
 
-        # Must match direction (CALL -> bullish, PUT -> bearish)
-        expected_direction = 'bullish' if option_type == 'CALL' else 'bearish'
-        if sig.direction != expected_direction:
-            continue
-
-        # Time proximity check - two windows:
-        # Window A: triggered_at within 60 min of buy_time (tight, for live triggers)
-        # Window B: detected_time within 24h AND status is TRIGGERED/HISTORICAL_TRIGGERED
-        #           (looser, for signals detected before entry)
-        triggered_match = False
-        detected_match = False
-        time_delta = None
-
+        # Window A: triggered_at within 60 min (tight, for live triggers)
         if sig.triggered_at:
-            triggered_dt = sig.triggered_at
-            # Make timezone-aware for comparison
-            if triggered_dt.tzinfo is None and buy_time.tzinfo is not None:
-                triggered_dt = pytz.UTC.localize(triggered_dt)
-            elif triggered_dt.tzinfo is not None and buy_time.tzinfo is None:
-                triggered_dt = triggered_dt.replace(tzinfo=None)
-
+            triggered_dt = _normalize_tz(sig.triggered_at, buy_time)
             delta = abs((triggered_dt - buy_time).total_seconds())
-            if delta < 3600:  # 60 minutes
-                triggered_match = True
-                time_delta = delta
+            if delta < _TRIGGERED_WINDOW_SECS:
+                candidates.append((sig, delta, 'triggered'))
+                continue
 
-        if not triggered_match and sig.detected_time:
-            detected_dt = sig.detected_time
-            # Make timezone-aware for comparison
-            if detected_dt.tzinfo is None and buy_time.tzinfo is not None:
-                detected_dt = pytz.UTC.localize(detected_dt)
-            elif detected_dt.tzinfo is not None and buy_time.tzinfo is None:
-                detected_dt = detected_dt.replace(tzinfo=None)
-
+        # Window B: detected_time within 24h for eligible statuses
+        if sig.detected_time and sig.status in _TIER2_ELIGIBLE_STATUSES:
+            detected_dt = _normalize_tz(sig.detected_time, buy_time)
             delta = abs((detected_dt - buy_time).total_seconds())
-            if delta < 86400:  # 24 hours
-                if sig.status in ('TRIGGERED', 'HISTORICAL_TRIGGERED', 'ALERTED', 'DETECTED'):
-                    detected_match = True
-                    time_delta = delta
-
-        if triggered_match or detected_match:
-            match_type = 'triggered' if triggered_match else 'detected'
-            candidates.append((sig, time_delta, match_type))
+            if delta < _DETECTED_WINDOW_SECS:
+                candidates.append((sig, delta, 'detected'))
 
     if not candidates:
         return None
@@ -480,22 +468,19 @@ def write_trade_metadata(
             'tfc_alignment': trade.get('tfc_alignment', ''),
             'direction': trade.get('direction'),
             'symbol': trade.get('underlying'),
+            'backfilled_at': datetime.now().isoformat(),
         }
 
-        # Add signal-specific fields if we have a matched signal
+        # Attach signal-specific fields when a matched signal exists
         if signal:
-            entry['entry_trigger'] = signal.entry_trigger
-            entry['stop_price'] = signal.stop_price
-            entry['target_price'] = signal.target_price
-            entry['magnitude_pct'] = signal.magnitude_pct
-            entry['risk_reward'] = signal.risk_reward
-            entry['signal_key'] = signal.signal_key
-        else:
-            entry['entry_trigger'] = None
-            entry['stop_price'] = None
-            entry['target_price'] = None
-
-        entry['backfilled_at'] = datetime.now().isoformat()
+            entry.update({
+                'entry_trigger': signal.entry_trigger,
+                'stop_price': signal.stop_price,
+                'target_price': signal.target_price,
+                'magnitude_pct': signal.magnitude_pct,
+                'risk_reward': signal.risk_reward,
+                'signal_key': signal.signal_key,
+            })
 
         existing[osi_symbol] = entry
         new_count += 1
@@ -605,18 +590,18 @@ def backfill_all_trades(
             matched_signals[osi_symbol] = signal
 
             # Track match tier for diagnostics
-            if signal:
-                if signal.executed_osi_symbol == osi_symbol:
-                    tier1_matches += 1
-                else:
-                    tier2_matches += 1
+            if not signal:
+                no_matches += 1
+                match_label = "None"
+            elif signal.executed_osi_symbol == osi_symbol:
+                tier1_matches += 1
+                match_label = "Tier1"
+            else:
+                tier2_matches += 1
+                match_label = "Tier2"
 
             pattern_type = signal.pattern_type if signal else None
-            timeframe = signal.timeframe if signal else '1D'  # Default assumption
-
-            match_label = "Tier1" if signal and signal.executed_osi_symbol == osi_symbol else (
-                "Tier2" if signal else "None"
-            )
+            timeframe = signal.timeframe if signal else '1D'
             logger.info(
                 f"  Underlying: {underlying}, Direction: {direction}, "
                 f"Pattern: {pattern_type or 'Unknown'}, TF: {timeframe}, "
@@ -629,7 +614,7 @@ def backfill_all_trades(
             aligned_tfs = []
             passes_flexible = False
 
-            if signal and signal.tfc_score and signal.tfc_score > 0:
+            if signal and signal.tfc_score:
                 # Smart path: reuse signal store TFC
                 tfc_score = signal.tfc_score
                 aligned_tfs = [tf.strip() for tf in signal.tfc_alignment.split(',') if tf.strip()]
@@ -659,11 +644,7 @@ def backfill_all_trades(
                     passes_flexible = tfc_score >= 4
                     logger.debug(f"  Added detection TF {timeframe} to aligned list (entry = aligned)")
             else:
-                # Dry run without signal TFC - show what would happen
                 logger.info(f"  Dry run: would calculate retroactive TFC")
-
-            if not signal:
-                no_matches += 1
 
             logger.info(f"  TFC: {tfc_score}/4, Aligned: {aligned_tfs}, Passes: {passes_flexible}")
 

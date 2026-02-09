@@ -23,6 +23,8 @@ from strat.signal_automation.signal_store import SignalStore
 
 logger = logging.getLogger(__name__)
 
+TRADE_METADATA_FILE = project_root / 'data' / 'executions' / 'trade_metadata.json'
+
 app = Flask(__name__)
 signal_store = SignalStore()
 
@@ -78,6 +80,50 @@ def get_stats():
     return jsonify(signal_store.get_stats())
 
 
+def _load_trade_metadata_file() -> dict:
+    """Load trade_metadata.json from disk, returning empty dict on failure."""
+    if not TRADE_METADATA_FILE.exists():
+        return {}
+    try:
+        with open(TRADE_METADATA_FILE, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading trade_metadata.json: {e}")
+        return {}
+
+
+def _merge_signal_store_tfc(metadata: dict) -> None:
+    """Overlay signal store TFC data onto metadata dict (mutates in place)."""
+    try:
+        all_signals = signal_store.load_signals()
+    except Exception as e:
+        logger.error(f"Error loading signal store: {e}")
+        return
+
+    for signal in all_signals.values():
+        if not signal.executed_osi_symbol:
+            continue
+
+        osi = signal.executed_osi_symbol
+        signal_data = {
+            'pattern_type': signal.pattern_type,
+            'timeframe': signal.timeframe,
+            'tfc_score': signal.tfc_score,
+            'tfc_alignment': signal.tfc_alignment,
+            'direction': signal.direction,
+            'symbol': signal.symbol,
+            'entry_trigger': signal.entry_trigger,
+            'stop_price': signal.stop_price,
+            'target_price': signal.target_price,
+        }
+
+        if osi not in metadata:
+            metadata[osi] = signal_data
+        elif signal.tfc_score and not metadata[osi].get('tfc_score'):
+            metadata[osi]['tfc_score'] = signal.tfc_score
+            metadata[osi]['tfc_alignment'] = signal.tfc_alignment
+
+
 @app.route('/trade_metadata')
 def get_trade_metadata():
     """
@@ -90,45 +136,8 @@ def get_trade_metadata():
     Returns:
         Dict mapping OSI symbol -> {pattern_type, timeframe, tfc_score, tfc_alignment, ...}
     """
-    metadata = {}
-
-    # Source 1: Load trade_metadata.json from disk
-    try:
-        metadata_file = project_root / 'data' / 'executions' / 'trade_metadata.json'
-        if metadata_file.exists():
-            with open(metadata_file, 'r') as f:
-                metadata = json.load(f)
-    except Exception as e:
-        logger.error(f"Error loading trade_metadata.json: {e}")
-
-    # Source 2: Merge signal_store data (has updated TFC from EQUITY-102 writeback)
-    try:
-        all_signals = signal_store.load_signals()
-        for signal in all_signals.values():
-            if not signal.executed_osi_symbol:
-                continue
-
-            osi = signal.executed_osi_symbol
-            signal_data = {
-                'pattern_type': signal.pattern_type,
-                'timeframe': signal.timeframe,
-                'tfc_score': signal.tfc_score,
-                'tfc_alignment': signal.tfc_alignment,
-                'direction': signal.direction,
-                'symbol': signal.symbol,
-                'entry_trigger': signal.entry_trigger,
-                'stop_price': signal.stop_price,
-                'target_price': signal.target_price,
-            }
-
-            if osi not in metadata:
-                metadata[osi] = signal_data
-            elif signal.tfc_score and not metadata[osi].get('tfc_score'):
-                metadata[osi]['tfc_score'] = signal.tfc_score
-                metadata[osi]['tfc_alignment'] = signal.tfc_alignment
-    except Exception as e:
-        logger.error(f"Error merging signal store data: {e}")
-
+    metadata = _load_trade_metadata_file()
+    _merge_signal_store_tfc(metadata)
     return jsonify(metadata)
 
 
