@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
 """
-Retroactive TFC Backfill for Historical Trades (EQUITY-55)
+Retroactive TFC Backfill for Historical Trades (EQUITY-55, EQUITY-103)
 
 PURPOSE:
     Calculate Timeframe Continuity (TFC) for all closed trades to enable
     analysis of TFC correlation with trade outcomes.
 
-    Existing signals have tfc_score=0 because they were detected before
-    the EQUITY-54 fix. This script calculates TFC retroactively at the
-    ENTRY TIME of each trade.
+    EQUITY-55: Original backfill with retroactive TFC calculation.
+    EQUITY-103: Added secondary signal matching, smart TFC (reuse signal store
+    TFC when available), trade_metadata.json output, --dry-run/--write-metadata.
 
 USAGE:
-    python scripts/backfill_trade_tfc.py [--days 90] [--output data/enriched_trades.json]
+    # Dry run to verify signal matching quality
+    python scripts/backfill_trade_tfc.py --days 45 --dry-run
+
+    # Full run with metadata output
+    python scripts/backfill_trade_tfc.py --days 45 --write-metadata
 
 OUTPUT:
-    JSON file with enriched trade data and summary statistics comparing
-    win rates WITH vs WITHOUT TFC >= 4 alignment.
+    - data/enriched_trades.json: Enriched trade data with TFC and summary stats
+    - data/executions/trade_metadata.json: Pattern/TFC metadata keyed by OSI symbol
+      (merged with existing entries, used by /trade_metadata API)
 
 DESIGN:
-    Uses TimeframeContinuityChecker.check_flexible_continuity_at_datetime()
-    to evaluate TFC AT ENTRY TIME (not current time) to avoid future data leakage.
+    Smart TFC: Reuses signal_store TFC when tfc_score > 0 (no API calls).
+    Falls back to retroactive calculation via AlpacaData only when needed.
+    Secondary signal matching finds signals even without executed_osi_symbol set.
 """
 
 import argparse
@@ -77,6 +83,104 @@ def parse_osi_symbol(osi_symbol: str) -> Tuple[str, str]:
     option_type = 'CALL' if option_char == 'C' else 'PUT'
 
     return underlying, option_type
+
+
+def match_signal_to_trade(
+    osi_symbol: str,
+    underlying: str,
+    option_type: str,
+    buy_time: datetime,
+    signal_store,
+) -> Optional[Any]:
+    """
+    Match a closed trade to its originating signal using two-tier strategy.
+
+    EQUITY-103: Many historical trades lack executed_osi_symbol on the signal,
+    so direct OSI lookup fails. This adds fuzzy matching as a fallback.
+
+    Tier 1: Direct O(1) lookup by executed_osi_symbol (fast path)
+    Tier 2: Search all signals matching (underlying + direction + time proximity)
+
+    Args:
+        osi_symbol: OCC option symbol of the trade
+        underlying: Underlying symbol (e.g., 'SPY')
+        option_type: 'CALL' or 'PUT'
+        buy_time: Trade entry datetime
+        signal_store: SignalStore instance
+
+    Returns:
+        StoredSignal if matched, None otherwise
+    """
+    # Tier 1: Direct OSI symbol lookup (O(1))
+    signal = signal_store.get_signal_by_osi_symbol(osi_symbol)
+    if signal:
+        logger.debug(f"  Tier 1 match (OSI lookup): {signal.signal_key}")
+        return signal
+
+    # Tier 2: Fuzzy matching by underlying + direction + time proximity
+    all_signals = signal_store.load_signals()
+    candidates = []
+
+    for sig in all_signals.values():
+        # Must match underlying symbol
+        if sig.symbol != underlying:
+            continue
+
+        # Must match direction (CALL -> bullish, PUT -> bearish)
+        expected_direction = 'bullish' if option_type == 'CALL' else 'bearish'
+        if sig.direction != expected_direction:
+            continue
+
+        # Time proximity check - two windows:
+        # Window A: triggered_at within 60 min of buy_time (tight, for live triggers)
+        # Window B: detected_time within 24h AND status is TRIGGERED/HISTORICAL_TRIGGERED
+        #           (looser, for signals detected before entry)
+        triggered_match = False
+        detected_match = False
+        time_delta = None
+
+        if sig.triggered_at:
+            triggered_dt = sig.triggered_at
+            # Make timezone-aware for comparison
+            if triggered_dt.tzinfo is None and buy_time.tzinfo is not None:
+                triggered_dt = pytz.UTC.localize(triggered_dt)
+            elif triggered_dt.tzinfo is not None and buy_time.tzinfo is None:
+                triggered_dt = triggered_dt.replace(tzinfo=None)
+
+            delta = abs((triggered_dt - buy_time).total_seconds())
+            if delta < 3600:  # 60 minutes
+                triggered_match = True
+                time_delta = delta
+
+        if not triggered_match and sig.detected_time:
+            detected_dt = sig.detected_time
+            # Make timezone-aware for comparison
+            if detected_dt.tzinfo is None and buy_time.tzinfo is not None:
+                detected_dt = pytz.UTC.localize(detected_dt)
+            elif detected_dt.tzinfo is not None and buy_time.tzinfo is None:
+                detected_dt = detected_dt.replace(tzinfo=None)
+
+            delta = abs((detected_dt - buy_time).total_seconds())
+            if delta < 86400:  # 24 hours
+                if sig.status in ('TRIGGERED', 'HISTORICAL_TRIGGERED', 'ALERTED', 'DETECTED'):
+                    detected_match = True
+                    time_delta = delta
+
+        if triggered_match or detected_match:
+            match_type = 'triggered' if triggered_match else 'detected'
+            candidates.append((sig, time_delta, match_type))
+
+    if not candidates:
+        return None
+
+    # Pick closest match by time
+    candidates.sort(key=lambda x: x[1])
+    best_signal, best_delta, match_type = candidates[0]
+    logger.debug(
+        f"  Tier 2 match ({match_type}, delta={best_delta:.0f}s): "
+        f"{best_signal.signal_key}"
+    )
+    return best_signal
 
 
 def fetch_historical_data(
@@ -330,12 +434,96 @@ def calculate_summary_stats(trades: List[Dict]) -> Dict[str, Any]:
     }
 
 
-def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
+def write_trade_metadata(
+    enriched_trades: List[Dict],
+    matched_signals: Dict[str, Any],
+) -> Dict[str, Dict]:
+    """
+    Write trade_metadata.json for the /trade_metadata API endpoint.
+
+    EQUITY-103: Merges backfilled metadata with existing trade_metadata.json
+    so we don't overwrite entries already there from the executor.
+
+    Args:
+        enriched_trades: List of enriched trade dicts from backfill
+        matched_signals: Dict mapping osi_symbol -> StoredSignal (or None)
+
+    Returns:
+        The final merged metadata dict
+    """
+    metadata_file = PROJECT_ROOT / 'data' / 'executions' / 'trade_metadata.json'
+
+    # Load existing metadata (don't overwrite executor-written entries)
+    existing = {}
+    if metadata_file.exists():
+        try:
+            with open(metadata_file, 'r') as f:
+                existing = json.load(f)
+            logger.info(f"Loaded {len(existing)} existing entries from trade_metadata.json")
+        except Exception as e:
+            logger.warning(f"Could not load existing trade_metadata.json: {e}")
+
+    new_count = 0
+    for trade in enriched_trades:
+        osi_symbol = trade['osi_symbol']
+
+        # Don't overwrite existing entries (executor data is authoritative)
+        if osi_symbol in existing:
+            continue
+
+        signal = matched_signals.get(osi_symbol)
+
+        entry = {
+            'pattern_type': trade.get('pattern_type'),
+            'timeframe': trade.get('timeframe', '1D'),
+            'tfc_score': trade.get('tfc_score'),
+            'tfc_alignment': trade.get('tfc_alignment', ''),
+            'direction': trade.get('direction'),
+            'symbol': trade.get('underlying'),
+        }
+
+        # Add signal-specific fields if we have a matched signal
+        if signal:
+            entry['entry_trigger'] = signal.entry_trigger
+            entry['stop_price'] = signal.stop_price
+            entry['target_price'] = signal.target_price
+            entry['magnitude_pct'] = signal.magnitude_pct
+            entry['risk_reward'] = signal.risk_reward
+            entry['signal_key'] = signal.signal_key
+        else:
+            entry['entry_trigger'] = None
+            entry['stop_price'] = None
+            entry['target_price'] = None
+
+        entry['backfilled_at'] = datetime.now().isoformat()
+
+        existing[osi_symbol] = entry
+        new_count += 1
+
+    # Ensure directory exists and write
+    metadata_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(metadata_file, 'w') as f:
+        json.dump(existing, f, indent=2)
+
+    logger.info(f"Wrote trade_metadata.json: {new_count} new + {len(existing) - new_count} existing = {len(existing)} total")
+    return existing
+
+
+def backfill_all_trades(
+    days: int = 45,
+    dry_run: bool = False,
+    write_metadata: bool = False,
+) -> Dict[str, Any]:
     """
     Main backfill function - processes all closed trades.
 
+    EQUITY-103: Enhanced with secondary signal matching, smart TFC strategy,
+    and trade_metadata.json output.
+
     Args:
         days: How many days back to look for trades
+        dry_run: If True, print matches without writing files
+        write_metadata: If True, also write trade_metadata.json
 
     Returns:
         Dict with trades list, summary statistics, and errors
@@ -344,6 +532,8 @@ def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
     from strat.signal_automation.signal_store import SignalStore
 
     logger.info(f"Starting TFC backfill for trades in last {days} days")
+    if dry_run:
+        logger.info("DRY RUN MODE - no files will be written")
 
     # Initialize Alpaca client
     # Try SMALL account first, fall back to LARGE
@@ -365,6 +555,10 @@ def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
     signal_store = SignalStore()
     logger.info(f"Loaded signal store with {len(signal_store._signals)} signals")
 
+    # Count signals with executed_osi_symbol for diagnostics
+    osi_count = sum(1 for s in signal_store._signals.values() if s.executed_osi_symbol)
+    logger.info(f"  Signals with executed_osi_symbol: {osi_count}")
+
     # Get closed trades (use timezone-aware datetime per CLAUDE.md)
     et = pytz.timezone('America/New_York')
     after = datetime.now(et) - timedelta(days=days)
@@ -373,6 +567,14 @@ def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
 
     enriched = []
     errors = []
+    matched_signals: Dict[str, Any] = {}  # osi_symbol -> StoredSignal or None
+
+    # Tracking for match quality reporting
+    tier1_matches = 0
+    tier2_matches = 0
+    no_matches = 0
+    smart_tfc_reused = 0
+    retroactive_tfc_calculated = 0
 
     for i, trade in enumerate(closed_trades):
         osi_symbol = trade.get('symbol', '')
@@ -392,39 +594,76 @@ def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
             underlying, option_type = parse_osi_symbol(osi_symbol)
             direction = 'bullish' if option_type == 'CALL' else 'bearish'
 
-            # Look up signal for pattern info (may be None)
-            signal = signal_store.get_signal_by_osi_symbol(osi_symbol)
+            # EQUITY-103: Two-tier signal matching
+            signal = match_signal_to_trade(
+                osi_symbol=osi_symbol,
+                underlying=underlying,
+                option_type=option_type,
+                buy_time=entry_time,
+                signal_store=signal_store,
+            )
+            matched_signals[osi_symbol] = signal
+
+            # Track match tier for diagnostics
+            if signal:
+                if signal.executed_osi_symbol == osi_symbol:
+                    tier1_matches += 1
+                else:
+                    tier2_matches += 1
+
             pattern_type = signal.pattern_type if signal else None
             timeframe = signal.timeframe if signal else '1D'  # Default assumption
 
-            logger.info(f"  Underlying: {underlying}, Direction: {direction}, "
-                       f"Pattern: {pattern_type or 'Unknown'}, TF: {timeframe}")
-
-            # Evaluate historical TFC
-            tfc_result = evaluate_historical_tfc(
-                symbol=underlying,
-                entry_time=entry_time,
-                direction=direction,
-                detection_timeframe=timeframe
+            match_label = "Tier1" if signal and signal.executed_osi_symbol == osi_symbol else (
+                "Tier2" if signal else "None"
+            )
+            logger.info(
+                f"  Underlying: {underlying}, Direction: {direction}, "
+                f"Pattern: {pattern_type or 'Unknown'}, TF: {timeframe}, "
+                f"Match: {match_label}"
             )
 
-            tfc_score = tfc_result.get('strength', 0)
-            aligned_tfs = tfc_result.get('aligned_timeframes', [])
-            passes_flexible = tfc_result.get('passes_flexible', False)
+            # EQUITY-103: Smart TFC strategy
+            # If matched signal already has valid TFC, reuse it (no API calls)
+            tfc_score = 0
+            aligned_tfs = []
+            passes_flexible = False
 
-            # Session EQUITY-56: Detection timeframe is aligned BY DEFINITION at entry
-            # Entry triggers when price breaks in expected direction intrabar
-            # Historical data truncated to entry_time may not capture intrabar state
-            # (bar may show as Type 1 if entry was mid-bar before bar close)
-            # Since entry occurred, the bar HAS broken in expected direction
-            if timeframe not in aligned_tfs:
-                aligned_tfs = aligned_tfs.copy()  # Don't mutate original
-                aligned_tfs.append(timeframe)
-                tfc_score = len(aligned_tfs)
-                # Recalculate passes_flexible with corrected score
-                # Using TFC >= 4 as threshold (full timeframe continuity)
+            if signal and signal.tfc_score and signal.tfc_score > 0:
+                # Smart path: reuse signal store TFC
+                tfc_score = signal.tfc_score
+                aligned_tfs = [tf.strip() for tf in signal.tfc_alignment.split(',') if tf.strip()]
                 passes_flexible = tfc_score >= 4
-                logger.debug(f"  Added detection TF {timeframe} to aligned list (entry = aligned)")
+                smart_tfc_reused += 1
+                logger.info(f"  Smart TFC: reusing signal store (score={tfc_score})")
+            elif not dry_run:
+                # Fallback: calculate retroactively (requires API calls)
+                retroactive_tfc_calculated += 1
+                logger.info(f"  Retroactive TFC: calculating via API...")
+                tfc_result = evaluate_historical_tfc(
+                    symbol=underlying,
+                    entry_time=entry_time,
+                    direction=direction,
+                    detection_timeframe=timeframe
+                )
+
+                tfc_score = tfc_result.get('strength', 0)
+                aligned_tfs = tfc_result.get('aligned_timeframes', [])
+                passes_flexible = tfc_result.get('passes_flexible', False)
+
+                # Session EQUITY-56: Detection timeframe is aligned BY DEFINITION at entry
+                if timeframe not in aligned_tfs:
+                    aligned_tfs = aligned_tfs.copy()
+                    aligned_tfs.append(timeframe)
+                    tfc_score = len(aligned_tfs)
+                    passes_flexible = tfc_score >= 4
+                    logger.debug(f"  Added detection TF {timeframe} to aligned list (entry = aligned)")
+            else:
+                # Dry run without signal TFC - show what would happen
+                logger.info(f"  Dry run: would calculate retroactive TFC")
+
+            if not signal:
+                no_matches += 1
 
             logger.info(f"  TFC: {tfc_score}/4, Aligned: {aligned_tfs}, Passes: {passes_flexible}")
 
@@ -444,7 +683,8 @@ def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
                 'tfc_score': tfc_score,
                 'tfc_alignment': ', '.join(aligned_tfs) if aligned_tfs else '',
                 'tfc_passes': passes_flexible,
-                'duration': trade.get('duration', '')
+                'duration': trade.get('duration', ''),
+                'signal_match_tier': match_label,
             })
 
         except Exception as e:
@@ -457,19 +697,40 @@ def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
     # Calculate summary statistics
     summary = calculate_summary_stats(enriched)
 
+    # EQUITY-103: Add match quality stats to summary
+    total_processed = tier1_matches + tier2_matches + no_matches
+    match_rate = ((tier1_matches + tier2_matches) / total_processed * 100) if total_processed > 0 else 0
+    summary['signal_matching'] = {
+        'tier1_osi_matches': tier1_matches,
+        'tier2_fuzzy_matches': tier2_matches,
+        'no_match': no_matches,
+        'match_rate_pct': round(match_rate, 1),
+        'smart_tfc_reused': smart_tfc_reused,
+        'retroactive_tfc_calculated': retroactive_tfc_calculated,
+    }
+
     logger.info(f"Backfill complete: {len(enriched)} trades enriched, {len(errors)} errors")
+    logger.info(f"Signal matching: {tier1_matches} Tier1 + {tier2_matches} Tier2 = "
+                f"{tier1_matches + tier2_matches}/{total_processed} ({match_rate:.0f}%)")
+    logger.info(f"Smart TFC reused: {smart_tfc_reused}, Retroactive: {retroactive_tfc_calculated}")
     logger.info(f"TFC >= 4: {summary['with_tfc_4plus']} trades, "
-               f"win rate {summary['win_rate_with_tfc_4plus']}%")
+                f"win rate {summary['win_rate_with_tfc_4plus']}%")
     logger.info(f"TFC < 4:  {summary['without_tfc_4plus']} trades, "
-               f"win rate {summary['win_rate_without_tfc_4plus']}%")
+                f"win rate {summary['win_rate_without_tfc_4plus']}%")
+
+    # EQUITY-103: Write trade_metadata.json if requested
+    if write_metadata and not dry_run:
+        write_trade_metadata(enriched, matched_signals)
 
     return {
         'generated_at': datetime.now().isoformat(),
-        'version': '1.0',
+        'version': '2.0',
         'backfill_params': {
             'days_back': days,
             'detection_timeframe_default': '1D',
-            'tfc_threshold': 4
+            'tfc_threshold': 4,
+            'dry_run': dry_run,
+            'write_metadata': write_metadata,
         },
         'trades': enriched,
         'summary': summary,
@@ -480,15 +741,23 @@ def backfill_all_trades(days: int = 90) -> Dict[str, Any]:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Retroactive TFC Backfill for Historical Trades (EQUITY-55)'
+        description='Retroactive TFC Backfill for Historical Trades (EQUITY-55/103)'
     )
     parser.add_argument(
-        '--days', type=int, default=90,
-        help='Number of days to look back for trades (default: 90)'
+        '--days', type=int, default=45,
+        help='Number of days to look back for trades (default: 45)'
     )
     parser.add_argument(
         '--output', type=str, default='data/enriched_trades.json',
         help='Output file path (default: data/enriched_trades.json)'
+    )
+    parser.add_argument(
+        '--write-metadata', action='store_true',
+        help='Also write data/executions/trade_metadata.json'
+    )
+    parser.add_argument(
+        '--dry-run', action='store_true',
+        help='Print signal matches without writing files or making API calls'
     )
     parser.add_argument(
         '--verbose', '-v', action='store_true',
@@ -501,26 +770,42 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Run backfill
-    result = backfill_all_trades(days=args.days)
+    result = backfill_all_trades(
+        days=args.days,
+        dry_run=args.dry_run,
+        write_metadata=args.write_metadata,
+    )
 
-    # Ensure output directory exists
-    output_path = PROJECT_ROOT / args.output
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Write enriched_trades.json (unless dry run)
+    if not args.dry_run:
+        output_path = PROJECT_ROOT / args.output
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Write output
-    with open(output_path, 'w') as f:
-        json.dump(result, f, indent=2)
+        with open(output_path, 'w') as f:
+            json.dump(result, f, indent=2)
 
-    logger.info(f"Output written to: {output_path}")
+        logger.info(f"Output written to: {output_path}")
 
     # Print summary
     print("\n" + "="*60)
-    print("TFC BACKFILL SUMMARY")
+    print("TFC BACKFILL SUMMARY" + (" (DRY RUN)" if args.dry_run else ""))
     print("="*60)
     summary = result['summary']
     print(f"Total trades processed: {summary['total_trades']}")
     print(f"Trades with valid TFC:  {summary['trades_with_valid_tfc']}")
     print()
+
+    # EQUITY-103: Signal matching quality
+    matching = summary.get('signal_matching', {})
+    print("SIGNAL MATCHING:")
+    print(f"  Tier 1 (OSI lookup):  {matching.get('tier1_osi_matches', 0)}")
+    print(f"  Tier 2 (fuzzy):       {matching.get('tier2_fuzzy_matches', 0)}")
+    print(f"  No match:             {matching.get('no_match', 0)}")
+    print(f"  Match rate:           {matching.get('match_rate_pct', 0)}%")
+    print(f"  Smart TFC reused:     {matching.get('smart_tfc_reused', 0)}")
+    print(f"  Retroactive TFC:      {matching.get('retroactive_tfc_calculated', 0)}")
+    print()
+
     print(f"WITH TFC >= 4:          {summary['with_tfc_4plus']} trades")
     print(f"  Win rate:             {summary['win_rate_with_tfc_4plus']}%")
     print(f"  Avg P&L:              ${summary['avg_pnl_with_tfc_4plus']:.2f}")
