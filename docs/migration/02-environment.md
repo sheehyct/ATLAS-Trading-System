@@ -98,8 +98,18 @@ dir C:\ta-lib\c\include\ta_libc.h
 
 ## Phase 3: vectorbt-workspace Environment
 
+### 3.0 DELETE Old .venv (CRITICAL if workspace was copied from another machine)
+The .venv directory contains compiled C extensions (.pyd files for numpy, scipy, TA-LIB, etc.)
+that are tied to the source machine. They will segfault or fail to import on a different machine.
+```powershell
+cd C:\Strat_Trading_Bot\vectorbt-workspace
+rmdir /s /q .venv
+```
+Then `uv sync` (step 3.3) will rebuild everything from scratch using the uv.lock file.
+Do NOT try to "fix" the old .venv -- delete and rebuild.
+
 ### 3.1 Copy .env File
-Transfer `vectorbt-workspace/.env` securely from laptop. Contains:
+Transfer `vectorbt-workspace/.env` securely from laptop (or verify it was copied with the folder). Contains:
 ```
 ALPACA_API_KEY, ALPACA_SECRET_KEY, ALPACA_ENDPOINT
 ALPACA_MID_KEY, ALPACA_MID_SECRET, ALPACA_MID_ENDPOINT

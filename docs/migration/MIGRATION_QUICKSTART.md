@@ -42,14 +42,32 @@ These files are NOT in git and must be copied manually:
 
 ---
 
+## IMPORTANT: .venv Directory
+
+The workspace was copied from another machine. The `.venv/` directory contains compiled
+binaries (C extensions, .pyd files) tied to the source machine and WILL NOT WORK here.
+
+**Before running Claude Code or uv sync:**
+```powershell
+cd C:\Strat_Trading_Bot\vectorbt-workspace
+rmdir /s /q .venv
+```
+
+Then `uv sync` will create a fresh .venv with binaries compiled for this machine.
+This is critical -- TA-LIB, numpy, scipy, and other C-extension packages will segfault
+or fail to import if you try to use the copied .venv.
+
+---
+
 ## Running the Migration with Claude Code
 
-After installing Claude Code on the desktop, open a terminal in the cloned vectorbt-workspace
+After installing Claude Code on the desktop, open a terminal in the vectorbt-workspace
 directory and start Claude Code. Then paste this prompt:
 
 ```
-I'm migrating this workspace from my laptop to this desktop. The migration
-documentation is in docs/migration/. Please read all 5 files:
+I'm migrating this workspace from my laptop to this desktop. The files were
+copied via flash drive. The migration documentation is in docs/migration/.
+Please read all 5 files:
 
 - docs/migration/README.md (overview and execution order)
 - docs/migration/01-git-repos.md (repo cloning and worktree setup)
@@ -57,13 +75,19 @@ documentation is in docs/migration/. Please read all 5 files:
 - docs/migration/03-claude-config.md (MCP servers, hooks, skills, plugins, path updates)
 - docs/migration/04-validation.md (46-check smoke test plan)
 
+CRITICAL FIRST STEP: The .venv directory was copied from the old machine and
+contains incompatible compiled binaries. Delete it and rebuild:
+  rmdir /s /q .venv
+  uv sync
+
 Create an agent team with 4 teammates to execute the migration:
 
-1. "git-setup" -- Execute 01-git-repos.md: verify clones, recreate 4 worktrees,
-   checkout branches, run git gc
+1. "git-setup" -- Execute 01-git-repos.md: verify worktrees are intact (they were
+   copied, not cloned), verify remotes, verify all branches are in sync with GitHub
 
-2. "env-setup" -- Execute 02-environment.md: verify system tools are installed,
-   run uv sync, verify VBT Pro and TA-LIB imports, check .env keys are present
+2. "env-setup" -- Execute 02-environment.md: DELETE the old .venv first, then verify
+   system tools are installed, run uv sync to rebuild from scratch, verify VBT Pro
+   and TA-LIB imports, check .env keys are present
 
 3. "config-setup" -- Execute 03-claude-config.md: verify MCP server configs have
    correct paths for this machine, verify hooks exist and compile, verify skills
