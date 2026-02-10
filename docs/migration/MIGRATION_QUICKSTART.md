@@ -100,21 +100,31 @@ Require plan approval before any teammate makes changes. Use delegate mode.
 Each teammate should report exactly which checks passed, failed, or were skipped.
 ```
 
-### If paths are different on the desktop:
-The migration docs assume the same directory structure as the laptop:
+### Username Change: sheeh -> Chris
+
+The desktop username is "Chris" (laptop was "sheeh"). This affects all paths under
+`C:\Users\`. Add this to the Claude prompt above:
+```
+IMPORTANT: The username on this machine is "Chris" not "sheeh".
+All paths referencing C:\Users\sheeh\ must become C:\Users\Chris\.
+This affects: skills paths in CLAUDE.md, session-start.md command paths,
+session-end.md backup paths, and any hook configs referencing the home directory.
+```
+
+Files that need the username updated:
+- `docs/CLAUDE.md` - 3 skill path references (strat-methodology, thetadata-api, backtesting-validation)
+- `.claude/commands/session-start.md` - project path reference
+- `.claude/commands/session-end.md` - OpenMemory backup path
+- `.claude/commands/tech-debt.md` - plans path reference
+- `C:\Users\Chris\.claude\skills\tech-product-review-writer\QUICK_START.md` - 2 path references
+
+### If other paths differ:
+The migration docs assume:
 - `C:\Strat_Trading_Bot\` for repos
 - `C:\Dev\openmemory\` for OpenMemory
 - `C:\ta-lib\` for TA-LIB
-- `C:\Users\<username>\.claude\` for Claude config
 
-If your desktop uses different paths, tell Claude:
-```
-Note: On this machine the base paths are different:
-- Repos are at: D:\Strat_Trading_Bot\ (instead of C:\)
-- OpenMemory is at: D:\Dev\openmemory\
-- My username is <new-username> (instead of sheeh)
-Update all path references in the migration docs accordingly before executing.
-```
+If these differ, tell Claude which paths changed.
 
 ---
 
