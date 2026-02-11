@@ -31,7 +31,7 @@ Log this session to `docs/SESSION_LOG.md` so it can be easily resumed later:
    ```
    If that fails (empty $USERPROFILE), try:
    ```bash
-   ls -t /c/Users/sheeh/.claude/projects/C--Strat-Trading-Bot-vectorbt-workspace/*.jsonl | head -1 | sed 's/.*\///' | sed 's/\.jsonl//'
+   ls -t /c/Users/Chris/.claude/projects/C--Strat-Trading-Bot-vectorbt-workspace/*.jsonl | head -1 | sed 's/.*\///' | sed 's/\.jsonl//'
    ```
 2. Get the session name (EQUITY-{N}) from `.session_startup_prompt.md`
 3. Get the current date/time

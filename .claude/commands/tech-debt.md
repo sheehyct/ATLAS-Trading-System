@@ -11,7 +11,7 @@ Check the current state of technical debt and suggest next priorities.
 
 Read the technical debt plan file:
 ```
-C:\Users\sheeh\.claude\plans\sharded-foraging-puppy.md
+C:\Users\Chris\.claude\plans\sharded-foraging-puppy.md
 ```
 
 Parse for:

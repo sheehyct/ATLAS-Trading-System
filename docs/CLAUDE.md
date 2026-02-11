@@ -25,10 +25,10 @@ Ask user to confirm before continuing.
 
 | Skill | Location | Invoke When |
 |-------|----------|-------------|
-| `strat-methodology` | `C:/Users/sheeh/.claude/skills/strat-methodology/` | ANY STRAT pattern detection, bar classification, options entry/exit, timeframe analysis |
-| `thetadata-api` | `C:/Users/sheeh/.claude/skills/thetadata-api/` | ANY ThetaData API call, debugging 472/500 errors, Greeks endpoints, options data fetching |
-| `backtesting-validation` | `C:/Users/sheeh/.claude/skills/backtesting-validation/` | ANY VPS deployment, new strategy implementation, backtest evaluation, signal detection changes |
-| `dashboard-design` | `C:/Users/sheeh/.claude/skills/dashboard-design/` | ANY dashboard UI work, styling charts/tables/cards, color choices, layout decisions, component creation |
+| `strat-methodology` | `C:/Users/Chris/.claude/skills/strat-methodology/` | ANY STRAT pattern detection, bar classification, options entry/exit, timeframe analysis |
+| `thetadata-api` | `C:/Users/Chris/.claude/skills/thetadata-api/` | ANY ThetaData API call, debugging 472/500 errors, Greeks endpoints, options data fetching |
+| `backtesting-validation` | `C:/Users/Chris/.claude/skills/backtesting-validation/` | ANY VPS deployment, new strategy implementation, backtest evaluation, signal detection changes |
+| `dashboard-design` | `C:/Users/Chris/.claude/skills/dashboard-design/` | ANY dashboard UI work, styling charts/tables/cards, color choices, layout decisions, component creation |
 
 **Why mandatory:** Previous sessions repeatedly made the same mistakes (wrong endpoints, wrong formats, wrong error handling, timezone bugs, live bar detection errors) that these skills prevent. Skipping skill invocation = bugs that waste hours to debug.
 
@@ -126,7 +126,7 @@ uv run python -c "import vectorbtpro as vbt; print(vbt.__version__)"
 ## 11. Multi-Session Plans
 
 For implementations spanning 3+ sessions:
-- Create plan file: `C:\Users\sheeh\.claude\plans\<name>.md`
+- Create plan file: `C:\Users\Chris\.claude\plans\<name>.md`
 - Update `.session_startup_prompt.md` each session
 - Store facts in OpenMemory at session end
 - Reference: See `docs/CLAUDE_REFERENCE.md` Section 7
