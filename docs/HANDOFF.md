@@ -1,9 +1,67 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 9, 2026 (Session EQUITY-104)
+**Last Updated:** February 11, 2026 (Session EQUITY-105)
 **Current Branch:** `main`
-**Phase:** Infrastructure and Migration Planning
-**Status:** EQUITY-104 COMPLETE - Agent teams enabled, desktop migration docs created, all branches pushed
+**Phase:** Bug Fixes and System Hardening
+**Status:** EQUITY-105 COMPLETE - Desktop migration executed, 2 bugs fixed, comprehensive audit completed
+
+---
+
+## Session EQUITY-105: Desktop Migration + Bug Fixes (COMPLETE)
+
+**Date:** February 11, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** COMPLETE - Desktop migration 44/46 PASS, 2 bug fixes implemented, problems audit documented
+
+### What Was Accomplished
+
+1. **Desktop Migration Executed (44/46 PASS)**
+   - Migrated full workspace from laptop (user `sheeh`) to desktop (user `Chris`)
+   - 10-step execution: delete .venv, install Python 3.12.12 via uv, uv sync (257 packages), verify imports (VBT Pro 2025.12.31, TA-Lib 0.6.8), rebuild OpenMemory node_modules, move Claude skills/plans, merge settings.json, update sheeh->Chris paths in 4 source files, cleanup
+   - All MCP servers verified (VBT Pro, OpenMemory, Playwright)
+   - 2 skipped: ThetaData app (not running), MCP in-context test (manual)
+
+2. **VS Code Remote Tunnel**
+   - Configured `atlas-desktop` tunnel as Windows service for laptop access from anywhere
+   - GitHub auth, auto-starts on boot, survives reboots
+
+3. **Bug Fix: 3-? Bidirectional Pattern Dedup (EQUITY-105)**
+   - Root cause: `paper_signal_scanner` creates "3-?" bidirectional setups, but when entry triggers, pattern was never resolved to "3-2U"/"3-2D"
+   - Fix 1 (`daemon.py:_on_entry_triggered`): Resolve "3-?" to "3-2U"/"3-2D" based on actual break direction
+   - Fix 2 (`signal_store.py:is_duplicate`): Cross-pattern dedup with time-window - "3-2U" blocked when "3-?" already triggered for same symbol/timeframe within lookback
+   - Used proper `SignalStatus` enum values, not phantom `'EXECUTED'` string
+
+4. **Bug Fix: EOD Exit PDT Detection (EQUITY-105)**
+   - Root cause from VPS logs (Feb 9): Alpaca PDT protection (code 40310000) blocked ALL EOD exit attempts at 15:50-15:59, then market hours gate blocked after 16:00
+   - Fix (`daemon.py:_execute_eod_exit_with_retry`): Detect "pattern day trading" in error, immediately stop retrying (account-level, retries futile), send critical Discord alert
+   - PDT-blocked symbols tracked in `_pdt_blocked_symbols` set to prevent retry spam across subsequent cron jobs (15:53, 15:55, 15:57, 15:59)
+   - Set cleared at market open (9:31 AM stale check)
+   - Grace period extended 60s -> 180s for better diagnostics logging
+   - Resolution: User will reset paper account to $100K to eliminate PDT entirely
+
+5. **Comprehensive Problems/Bugs Audit**
+   - Cataloged 8 categories: test failures (22), incomplete implementations (3), crypto pipeline ports (4), dashboard verification, untested code, deprecated code, TODOs, infrastructure
+   - User identified 6 specific bugs from production: 3-? dedup, 1H EOD exits, dashboard patterns, TFC detection, silent exits, dashboard minor issues
+
+### Key Decisions
+
+- **PDT Resolution:** Reset paper account to $100K to eliminate PDT. Will implement virtual $3K balance for position sizing to keep results realistic for target cash account deployment.
+- **Dashboard Issues Deferred:** Too many likely related to data transfer pipeline. Will address holistically in future session.
+- **TFC Dashboard Issue:** May indicate TFC detection bug, not just display issue. Needs investigation.
+
+### Files Modified
+
+- `strat/signal_automation/daemon.py` - Pattern resolution in `_on_entry_triggered()`, PDT detection in `_execute_eod_exit_with_retry()`, new `_send_pdt_alert()` method, PDT symbol tracking
+- `strat/signal_automation/signal_store.py` - Cross-pattern dedup with time-window and proper enum statuses in `is_duplicate()`
+- `strat/signal_automation/position_monitor.py` - Extended EOD grace period 60s->180s, updated docstrings
+- `docs/CLAUDE.md` - Updated sheeh->Chris paths
+- `.claude/commands/tech-debt.md` - Updated sheeh->Chris path
+- `.claude/commands/session-start.md` - Updated sheeh->Chris path
+- `.session_startup_prompt.md` - Updated for EQUITY-106
+
+### Test Results
+
+- 1162 passed, 0 failures (1 pre-existing time-sensitive test deselected: `test_timeframe_specific_max_loss_1h` fails when run after 15:55 ET due to EOD priority)
 
 ---
 

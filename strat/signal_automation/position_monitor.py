@@ -1003,16 +1003,18 @@ class PositionMonitor:
     def _is_within_eod_grace_period(self, grace_seconds: int = 60) -> bool:
         """
         EQUITY-100: Check if we're within the EOD grace period after market close.
+        EQUITY-105: Default 60s, but EOD exits pass 180s for extended window.
 
-        Allows EOD exits for up to 60 seconds after 16:00 ET.
-        This handles cases where the EOD exit job fires at 15:59 but
-        execution takes a few seconds.
+        Allows exit attempts for up to grace_seconds after 16:00 ET.
+        Note: Alpaca rejects ALL option orders after 16:00 ET, so the grace
+        period primarily ensures our code attempts (and logs the Alpaca rejection)
+        rather than silently blocking.
 
         Args:
-            grace_seconds: Number of seconds after close to allow exits
+            grace_seconds: Number of seconds after close to allow exits (default 60)
 
         Returns:
-            True if within grace period (16:00:00 - 16:01:00 ET)
+            True if within grace period after market close
         """
         import pytz
         from datetime import timedelta
@@ -1047,15 +1049,19 @@ class PositionMonitor:
         """
         # Session 83K-77: Skip exits outside market hours
         # Session EQUITY-95: All exits respect market hours, including EOD.
-        # EQUITY-100: Added 1-minute grace period for EOD exits after market close.
-        # This handles cases where EOD exit job fires at 15:59 but execution takes time.
+        # EQUITY-100: Added grace period for EOD exits after market close.
+        # EQUITY-105: Extended grace period from 60s to 180s. VPS logs showed the
+        # 60s window was too tight - Alpaca PDT rejections + retries consumed it.
+        # With 180s, our code at least attempts the exit (Alpaca may still reject
+        # for options after hours) which gives us clear error logs instead of
+        # silent blocking.
         if not self._is_market_hours():
             # Check if this is an EOD exit within the grace period
             is_eod_exit = exit_signal.reason == ExitReason.EOD_EXIT
-            if is_eod_exit and self._is_within_eod_grace_period():
+            if is_eod_exit and self._is_within_eod_grace_period(grace_seconds=180):
                 logger.warning(
-                    f"EOD grace period: Allowing exit for {exit_signal.osi_symbol} "
-                    f"after market close ({exit_signal.reason.value})"
+                    f"EOD grace period (180s): Allowing exit attempt for "
+                    f"{exit_signal.osi_symbol} after market close ({exit_signal.reason.value})"
                 )
             else:
                 # EQUITY-100: Upgraded from debug to warning for visibility

@@ -129,6 +129,7 @@ class SignalDaemon:
         self._exit_count = 0
         self._entry_alerts_sent: set = set()  # EQUITY-101: Dedup entry alerts
         self._executed_signal_keys: set = set()  # EQUITY-101: Dedup execution
+        self._pdt_blocked_symbols: set = set()  # EQUITY-105: Skip PDT-blocked positions in EOD retries
 
         # Initialize components
         self._setup_alerters()
@@ -389,6 +390,19 @@ class SignalDaemon:
             logger.info(
                 f"DIRECTION CHANGED: {signal.symbol} {signal.pattern_type} "
                 f"{original_direction} -> {actual_direction} (opposite break detected)"
+            )
+
+        # EQUITY-105: Resolve bidirectional pattern type on entry trigger
+        # "3-?" + CALL = "3-2U", "3-?" + PUT = "3-2D"
+        # "3-1-?" + CALL = "3-1-2U", "3-1-?" + PUT = "3-1-2D"
+        # "2-1-?" + CALL = "2-1-2U", "2-1-?" + PUT = "2-1-2D"
+        if '?' in signal.pattern_type:
+            old_pattern = signal.pattern_type
+            direction_suffix = '2U' if actual_direction == 'CALL' else '2D'
+            signal.pattern_type = signal.pattern_type.replace('?', direction_suffix)
+            logger.info(
+                f"PATTERN RESOLVED: {signal.symbol} {old_pattern} -> "
+                f"{signal.pattern_type} ({actual_direction} break)"
             )
 
         # Session EQUITY-46: Check if setup is stale before executing
@@ -1228,6 +1242,14 @@ class SignalDaemon:
             )
 
             for pos in hourly_positions:
+                # EQUITY-105: Skip positions already blocked by PDT this session
+                if pos.osi_symbol in self._pdt_blocked_symbols:
+                    logger.warning(
+                        f"EOD EXIT SKIPPED: {pos.signal_key} ({pos.osi_symbol}) - "
+                        f"PDT blocked earlier today, will exit at 9:31 AM tomorrow"
+                    )
+                    continue
+
                 # Create exit signal for EOD
                 exit_signal = ExitSignal(
                     osi_symbol=pos.osi_symbol,
@@ -1264,6 +1286,7 @@ class SignalDaemon:
     ) -> Optional[Dict[str, Any]]:
         """
         EQUITY-100: Execute EOD exit with retry logic and exponential backoff.
+        EQUITY-105: Added PDT error detection with immediate Discord alerting.
 
         Args:
             exit_signal: ExitSignal to execute
@@ -1289,6 +1312,21 @@ class SignalDaemon:
                     time.sleep(wait_time)
 
             except Exception as e:
+                error_str = str(e).lower()
+
+                # EQUITY-105: PDT rejection from Alpaca (code 40310000)
+                # Account-level restriction - retrying won't help, alert and bail.
+                # Register symbol to skip on subsequent EOD cron jobs today.
+                if 'pattern day trading' in error_str:
+                    logger.critical(
+                        f"PDT PROTECTION BLOCKED EOD EXIT: {exit_signal.osi_symbol} - "
+                        f"Account flagged for pattern day trading. "
+                        f"Ensure account equity >= $25K or reset paper account."
+                    )
+                    self._pdt_blocked_symbols.add(exit_signal.osi_symbol)
+                    self._send_pdt_alert(exit_signal)
+                    return None
+
                 if attempt < max_retries - 1:
                     wait_time = retry_delay * (2 ** attempt)
                     logger.warning(
@@ -1304,6 +1342,35 @@ class SignalDaemon:
 
         return None
 
+    def _send_pdt_alert(self, exit_signal: ExitSignal) -> None:
+        """
+        EQUITY-105: Send critical Discord alert when PDT blocks an EOD exit.
+        """
+        error_msg = (
+            f"**EOD EXIT BLOCKED BY PDT**\n\n"
+            f"Position: `{exit_signal.osi_symbol}`\n"
+            f"Signal: `{exit_signal.signal_key}`\n"
+            f"P&L: ${exit_signal.unrealized_pnl:.2f}\n\n"
+            f"Pattern Day Trading protection rejected the exit order. "
+            f"This position will carry overnight and exit at 9:31 AM ET tomorrow.\n\n"
+            f"**Action Required:** Ensure paper account equity >= $25,000 "
+            f"or reset the account to avoid PDT restrictions."
+        )
+        alert_sent = False
+        for alerter in self.alerters:
+            if hasattr(alerter, 'send_error_alert'):
+                try:
+                    alerter.send_error_alert('PDT_BLOCKED', error_msg)
+                    alert_sent = True
+                except Exception as e:
+                    logger.error(f"Failed to send PDT alert via {alerter.name}: {e}")
+
+        if not alert_sent:
+            logger.critical(
+                f"PDT ALERT COULD NOT BE DELIVERED - no alerter supports send_error_alert. "
+                f"Position {exit_signal.osi_symbol} is stuck. Manual intervention required."
+            )
+
     def _run_market_open_stale_check(self) -> None:
         """
         EQUITY-100: Market open stale position check.
@@ -1312,6 +1379,14 @@ class SignalDaemon:
         and exits them immediately. This is a safety net for positions that
         escaped the EOD exit window.
         """
+        # EQUITY-105: Clear PDT blocked set for new trading day
+        if self._pdt_blocked_symbols:
+            logger.info(
+                f"Clearing {len(self._pdt_blocked_symbols)} PDT-blocked symbol(s) "
+                f"from previous day: {self._pdt_blocked_symbols}"
+            )
+            self._pdt_blocked_symbols.clear()
+
         if self.position_monitor is None:
             return
 

@@ -18,6 +18,7 @@ from enum import Enum
 from pathlib import Path
 import json
 import logging
+import re
 
 from strat.paper_signal_scanner import DetectedSignal, SignalContext
 
@@ -352,6 +353,41 @@ class SignalStore:
         key = StoredSignal.generate_key(signal)
 
         if key not in self._signals:
+            # EQUITY-105: Cross-pattern dedup for bidirectional patterns
+            # A resolved "3-2U" is a duplicate if "3-?" already triggered/alerted
+            # for the same symbol, timeframe, and bar window.
+            # Mappings: "3-2U"/"3-2D" -> "3-?", "3-1-2U"/"3-1-2D" -> "3-1-?"
+            wildcard_pattern = re.sub(r'2[UD]$', '?', signal.pattern_type)
+            if wildcard_pattern != signal.pattern_type:
+                # Use same time-window as regular dedup to avoid permanent blocking
+                if signal.timeframe == '1H':
+                    lookback_delta = timedelta(hours=lookback_bars)
+                elif signal.timeframe == '1D':
+                    lookback_delta = timedelta(days=lookback_bars)
+                elif signal.timeframe == '1W':
+                    lookback_delta = timedelta(weeks=lookback_bars)
+                elif signal.timeframe == '1M':
+                    lookback_delta = timedelta(days=lookback_bars * 30)
+                else:
+                    lookback_delta = timedelta(days=lookback_bars)
+                cutoff = datetime.now() - lookback_delta
+
+                for existing in self._signals.values():
+                    if (existing.symbol == signal.symbol and
+                            existing.timeframe == signal.timeframe and
+                            existing.pattern_type == wildcard_pattern and
+                            existing.status in (
+                                SignalStatus.TRIGGERED.value,
+                                SignalStatus.ALERTED.value,
+                                SignalStatus.CONVERTED.value,
+                            ) and
+                            existing.last_seen_at >= cutoff):
+                        logger.info(
+                            f"Cross-pattern duplicate: {signal.symbol} {signal.pattern_type} "
+                            f"blocked by existing {existing.pattern_type} "
+                            f"(status: {existing.status})"
+                        )
+                        return True
             return False
 
         existing = self._signals[key]
