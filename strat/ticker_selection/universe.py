@@ -76,8 +76,11 @@ class UniverseManager:
 
             # Must be on a major exchange
             exchange = getattr(asset, 'exchange', None)
-            if exchange and str(exchange).upper() not in _VALID_EXCHANGES:
-                continue
+            if exchange is not None:
+                # Alpaca returns AssetExchange enum; use .name for comparison
+                ex_name = getattr(exchange, 'name', str(exchange)).upper()
+                if ex_name not in _VALID_EXCHANGES:
+                    continue
 
             # Clean symbol format (no warrants, units, preferred shares)
             sym = asset.symbol

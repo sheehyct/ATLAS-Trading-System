@@ -91,10 +91,16 @@ class TickerSelectionPipeline:
         candidates_raw: List[Dict] = []
         error_count = 0
 
-        screened_symbols = [s.symbol for s in screened]
-        for i, symbol in enumerate(screened_symbols):
-            if (i + 1) % 50 == 0:
-                logger.info(f"  Scanning {i + 1}/{len(screened_symbols)}...")
+        # Cap symbols sent to the expensive STRAT scanner
+        # Screened list is already sorted by dollar volume desc
+        scan_symbols = [s.symbol for s in screened[:self.config.max_scan_symbols]]
+        logger.info(
+            f"  Scanning top {len(scan_symbols)} of {len(screened)} "
+            f"screened symbols (by dollar volume)"
+        )
+        for i, symbol in enumerate(scan_symbols):
+            if (i + 1) % 25 == 0:
+                logger.info(f"  Scanning {i + 1}/{len(scan_symbols)}...")
             try:
                 signals = scanner.scan_symbol_all_timeframes_resampled(symbol)
                 for sig in signals:

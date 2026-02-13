@@ -26,6 +26,7 @@ class TickerSelectionConfig:
 
     # Pipeline caps
     max_screened: int = 500  # Max symbols after snapshot screen
+    max_scan_symbols: int = 100  # Max symbols sent to STRAT scanner (~17s each)
     max_candidates: int = 12  # Max final candidates written to JSON
     max_dynamic_symbols: int = 12  # Cap on symbols daemon reads from candidates
 
@@ -66,6 +67,8 @@ class TickerSelectionConfig:
             cfg.min_dollar_volume = float(v)
         if v := os.environ.get('TICKER_SEL_MIN_ATR_PCT'):
             cfg.min_atr_percent = float(v)
+        if v := os.environ.get('TICKER_SEL_MAX_SCAN'):
+            cfg.max_scan_symbols = int(v)
         if v := os.environ.get('TICKER_SEL_MAX_CANDIDATES'):
             cfg.max_candidates = int(v)
         if v := os.environ.get('TICKER_SEL_ALPACA_ACCOUNT'):
