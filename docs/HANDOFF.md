@@ -1,9 +1,43 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 11, 2026 (Session EQUITY-105)
+**Last Updated:** February 12, 2026 (Session EQUITY-106)
 **Current Branch:** `main`
 **Phase:** Bug Fixes and System Hardening
-**Status:** EQUITY-105 COMPLETE - Desktop migration executed, 2 bugs fixed, comprehensive audit completed
+**Status:** EQUITY-106 IN PROGRESS - Paper account reset, VPS deployed, investigating silent exits
+
+---
+
+## Session EQUITY-106: Paper Account Reset + VPS Deploy + Bug Investigation (IN PROGRESS)
+
+**Date:** February 12, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** IN PROGRESS - Priority 1 complete, investigating silent exits bug
+
+### What Was Accomplished
+
+1. **Paper Account Reset to $100K**
+   - Exported all trade data before reset: 138 fills, 75 closed trades (40% WR, -$802 P&L), 3 open positions
+   - Export saved to `data/exports/pre_reset_2026-02-11/` (7 files)
+   - Reset SMALL account, new API keys configured locally + VPS
+   - PDT flag eliminated ($100K equity)
+
+2. **VPS Deployment (2 Bug Fixes)**
+   - Updated VPS `.env` with new Alpaca keys
+   - Git pulled: 2fcb68e -> 96bbd24 (fast-forward, 47 files)
+   - Daemon restarted, clean startup confirmed
+   - Both bug fixes now live: 3-? pattern dedup + EOD PDT detection
+
+3. **Railway Keys Updated** (by user)
+   - Railway GitHub repo connection broken (accidental repo removal)
+   - Dashboard deployment pending reconnection
+
+### In Progress
+
+- **Bug 5: Silent Exits Investigation** - HOOD trade vanished with no Discord alert
+
+### Note
+
+User is working on dynamic ticker selection implementation in parallel (separate from this session's bug fix work).
 
 ---
 

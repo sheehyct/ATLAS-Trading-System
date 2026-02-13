@@ -46,6 +46,8 @@ class ExitReason(str, Enum):
     TRAILING_STOP = "TRAIL"     # Trailing stop hit after profit
     # Session EQUITY-44: Type 3 pattern invalidation
     PATTERN_INVALIDATED = "PATTERN"  # Entry bar evolved to Type 3 (exit immediately)
+    # EQUITY-106: Position disappeared from Alpaca (expiry, manual close, broker action)
+    EXTERNAL_CLOSE = "EXTERNAL"      # Closed outside our system
 
 
 @dataclass
@@ -379,11 +381,49 @@ class PositionMonitor:
         alpaca_symbols = {p['symbol'] for p in alpaca_positions}
 
         # Remove positions no longer on Alpaca
+        # EQUITY-106: Fire exit callback so Discord alerts are sent
         for osi_symbol in list(self._positions.keys()):
             if osi_symbol not in alpaca_symbols:
                 pos = self._positions.pop(osi_symbol)
-                logger.info(f"Position closed externally: {osi_symbol}")
                 pos.is_active = False
+                pos.exit_reason = ExitReason.EXTERNAL_CLOSE.value
+                pos.exit_time = datetime.now()
+
+                logger.warning(
+                    f"Position closed externally: {osi_symbol} "
+                    f"(signal_key={pos.signal_key}, P&L=${pos.unrealized_pnl:.2f})"
+                )
+
+                # Fire exit callback for Discord alert
+                if self.on_exit_callback:
+                    try:
+                        exit_signal = ExitSignal(
+                            osi_symbol=osi_symbol,
+                            signal_key=pos.signal_key or "",
+                            reason=ExitReason.EXTERNAL_CLOSE,
+                            underlying_price=pos.underlying_price or 0.0,
+                            current_option_price=pos.current_price,
+                            unrealized_pnl=pos.unrealized_pnl,
+                            dte=pos.dte,
+                            details="Position no longer on Alpaca (expired, manually closed, or broker action)",
+                        )
+                        self.on_exit_callback(exit_signal, {'status': 'external_close'})
+                    except Exception as e:
+                        logger.error(f"External close callback error for {osi_symbol}: {e}")
+
+                # Finalize trade analytics
+                if self._analytics and pos.signal_key:
+                    try:
+                        self._analytics.on_position_close(
+                            position=pos,
+                            exit_price=pos.underlying_price or 0.0,
+                            exit_time=pos.exit_time,
+                            asset_class="equity_option",
+                        )
+                    except Exception as e:
+                        logger.warning(f"Trade analytics error for external close {pos.signal_key}: {e}")
+
+                self._exit_count += 1
 
         # Add new positions from Alpaca
         added = 0
@@ -1037,6 +1077,39 @@ class PositionMonitor:
         # Check if we're in the grace period (after close, before grace end)
         return market_close <= now_et <= grace_end
 
+    def _is_stale_exit_premarket(self, exit_signal: ExitSignal) -> bool:
+        """
+        EQUITY-106: Check if this is a stale 1H exit during pre-market on a trading day.
+
+        Stale 1H positions are overdue exits that got blocked overnight. Allow them
+        through pre-market so Alpaca queues the order for market open execution,
+        preventing the race condition where sync_positions removes the position
+        before the 9:31 AM stale check runs.
+
+        Returns:
+            True if stale 1H exit on a trading day before market open (after 4 AM ET)
+        """
+        import pytz
+        et = pytz.timezone('America/New_York')
+        now_et = datetime.now(et)
+
+        # Must be a trading day
+        if not self._market_hours_validator.is_trading_day(now_et.date()):
+            return False
+
+        # Must be pre-market (4:00 AM - 9:30 AM ET)
+        if now_et.hour < 4 or now_et.hour >= 10:
+            return False
+        if now_et.hour == 9 and now_et.minute >= 30:
+            return False  # Market is open, normal flow handles it
+
+        # Must be a stale position (entered on a prior trading day)
+        pos = self._positions.get(exit_signal.osi_symbol)
+        if not pos:
+            return False
+
+        return self._is_stale_1h_position(pos.entry_time)
+
     def execute_exit(self, exit_signal: ExitSignal) -> Optional[Dict[str, Any]]:
         """
         Execute an exit for a position.
@@ -1062,6 +1135,14 @@ class PositionMonitor:
                 logger.warning(
                     f"EOD grace period (180s): Allowing exit attempt for "
                     f"{exit_signal.osi_symbol} after market close ({exit_signal.reason.value})"
+                )
+            # EQUITY-106: Allow stale 1H exits pre-market on trading days.
+            # These are overdue exits that were blocked overnight. Alpaca queues
+            # the order for market open execution.
+            elif is_eod_exit and self._is_stale_exit_premarket(exit_signal):
+                logger.warning(
+                    f"Stale 1H pre-market exit: Allowing exit for "
+                    f"{exit_signal.osi_symbol} (will execute at market open)"
                 )
             else:
                 # EQUITY-100: Upgraded from debug to warning for visibility

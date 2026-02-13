@@ -73,7 +73,7 @@ class TestExitReason:
 
     def test_enum_count(self):
         """Test correct number of exit reasons."""
-        assert len(ExitReason) == 10
+        assert len(ExitReason) == 11
 
 
 # =============================================================================
