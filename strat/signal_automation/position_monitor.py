@@ -380,50 +380,11 @@ class PositionMonitor:
 
         alpaca_symbols = {p['symbol'] for p in alpaca_positions}
 
-        # Remove positions no longer on Alpaca
-        # EQUITY-106: Fire exit callback so Discord alerts are sent
+        # EQUITY-106: Remove positions no longer on Alpaca and fire exit callbacks
         for osi_symbol in list(self._positions.keys()):
             if osi_symbol not in alpaca_symbols:
                 pos = self._positions.pop(osi_symbol)
-                pos.is_active = False
-                pos.exit_reason = ExitReason.EXTERNAL_CLOSE.value
-                pos.exit_time = datetime.now()
-
-                logger.warning(
-                    f"Position closed externally: {osi_symbol} "
-                    f"(signal_key={pos.signal_key}, P&L=${pos.unrealized_pnl:.2f})"
-                )
-
-                # Fire exit callback for Discord alert
-                if self.on_exit_callback:
-                    try:
-                        exit_signal = ExitSignal(
-                            osi_symbol=osi_symbol,
-                            signal_key=pos.signal_key or "",
-                            reason=ExitReason.EXTERNAL_CLOSE,
-                            underlying_price=pos.underlying_price or 0.0,
-                            current_option_price=pos.current_price,
-                            unrealized_pnl=pos.unrealized_pnl,
-                            dte=pos.dte,
-                            details="Position no longer on Alpaca (expired, manually closed, or broker action)",
-                        )
-                        self.on_exit_callback(exit_signal, {'status': 'external_close'})
-                    except Exception as e:
-                        logger.error(f"External close callback error for {osi_symbol}: {e}")
-
-                # Finalize trade analytics
-                if self._analytics and pos.signal_key:
-                    try:
-                        self._analytics.on_position_close(
-                            position=pos,
-                            exit_price=pos.underlying_price or 0.0,
-                            exit_time=pos.exit_time,
-                            asset_class="equity_option",
-                        )
-                    except Exception as e:
-                        logger.warning(f"Trade analytics error for external close {pos.signal_key}: {e}")
-
-                self._exit_count += 1
+                self._handle_external_close(osi_symbol, pos)
 
         # Add new positions from Alpaca
         added = 0
@@ -442,6 +403,51 @@ class PositionMonitor:
                     logger.info(f"Tracking new position: {osi_symbol}")
 
         return added
+
+    def _handle_external_close(self, osi_symbol: str, pos: TrackedPosition) -> None:
+        """
+        Handle a position that disappeared from Alpaca (expiry, manual close, broker action).
+
+        EQUITY-106: Marks the position closed, fires the exit callback for Discord alerts,
+        and finalizes trade analytics.
+        """
+        pos.is_active = False
+        pos.exit_reason = ExitReason.EXTERNAL_CLOSE.value
+        pos.exit_time = datetime.now()
+
+        logger.warning(
+            f"Position closed externally: {osi_symbol} "
+            f"(signal_key={pos.signal_key}, P&L=${pos.unrealized_pnl:.2f})"
+        )
+
+        if self.on_exit_callback:
+            try:
+                exit_signal = ExitSignal(
+                    osi_symbol=osi_symbol,
+                    signal_key=pos.signal_key,
+                    reason=ExitReason.EXTERNAL_CLOSE,
+                    underlying_price=pos.underlying_price,
+                    current_option_price=pos.current_price,
+                    unrealized_pnl=pos.unrealized_pnl,
+                    dte=pos.dte,
+                    details="Position no longer on Alpaca (expired, manually closed, or broker action)",
+                )
+                self.on_exit_callback(exit_signal, {'status': 'external_close'})
+            except Exception as e:
+                logger.error(f"External close callback error for {osi_symbol}: {e}")
+
+        if self._analytics and pos.signal_key:
+            try:
+                self._analytics.on_position_close(
+                    position=pos,
+                    exit_price=pos.underlying_price,
+                    exit_time=pos.exit_time,
+                    asset_class="equity_option",
+                )
+            except Exception as e:
+                logger.warning(f"Trade analytics error for external close {pos.signal_key}: {e}")
+
+        self._exit_count += 1
 
     def _update_position_from_alpaca(
         self,
@@ -1057,7 +1063,6 @@ class PositionMonitor:
             True if within grace period after market close
         """
         import pytz
-        from datetime import timedelta
 
         et = pytz.timezone('America/New_York')
         now_et = datetime.now(et)
@@ -1090,20 +1095,19 @@ class PositionMonitor:
             True if stale 1H exit on a trading day before market open (after 4 AM ET)
         """
         import pytz
+        from datetime import time as dt_time
+
         et = pytz.timezone('America/New_York')
         now_et = datetime.now(et)
 
-        # Must be a trading day
         if not self._market_hours_validator.is_trading_day(now_et.date()):
             return False
 
-        # Must be pre-market (4:00 AM - 9:30 AM ET)
-        if now_et.hour < 4 or now_et.hour >= 10:
+        # Pre-market window: 4:00 AM to 9:29 AM ET (market opens 9:30)
+        current_time = now_et.time()
+        if not (dt_time(4, 0) <= current_time < dt_time(9, 30)):
             return False
-        if now_et.hour == 9 and now_et.minute >= 30:
-            return False  # Market is open, normal flow handles it
 
-        # Must be a stale position (entered on a prior trading day)
         pos = self._positions.get(exit_signal.osi_symbol)
         if not pos:
             return False

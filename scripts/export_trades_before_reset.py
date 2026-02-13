@@ -11,16 +11,18 @@ Output: data/exports/pre_reset_YYYY-MM-DD/
 """
 
 import json
+import shutil
 import sys
-import os
+import uuid
 from datetime import datetime
 from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent / '.env')
+load_dotenv(PROJECT_ROOT / '.env')
 
 from integrations.alpaca_trading_client import AlpacaTradingClient
 
@@ -29,15 +31,31 @@ def serialize(obj):
     """JSON serializer for datetime and UUID objects."""
     if isinstance(obj, datetime):
         return obj.isoformat()
-    import uuid
     if isinstance(obj, uuid.UUID):
         return str(obj)
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
+def save_json(data, filepath):
+    """Write data to a JSON file with custom serialization."""
+    with open(filepath, 'w') as f:
+        json.dump(data, f, indent=2, default=serialize)
+
+
+def strip_datetime_keys(records, keys):
+    """Remove non-serializable datetime keys from a list of dicts."""
+    result = []
+    for record in records:
+        copy = dict(record)
+        for key in keys:
+            copy.pop(key, None)
+        result.append(copy)
+    return result
+
+
 def main():
     timestamp = datetime.now().strftime('%Y-%m-%d')
-    export_dir = Path(__file__).parent.parent / 'data' / 'exports' / f'pre_reset_{timestamp}'
+    export_dir = PROJECT_ROOT / 'data' / 'exports' / f'pre_reset_{timestamp}'
     export_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Export directory: {export_dir}")
@@ -49,7 +67,7 @@ def main():
         print("ERROR: Failed to connect to Alpaca SMALL account")
         sys.exit(1)
 
-    print(f"Connected to Alpaca SMALL account")
+    print("Connected to Alpaca SMALL account")
     print()
 
     # 1. Account summary
@@ -61,9 +79,8 @@ def main():
         print(f"  Buying Power: ${account.get('buying_power', 'N/A')}")
         print(f"  PDT Flagged: {account.get('pattern_day_trader', 'N/A')}")
 
-        with open(export_dir / 'account_summary.json', 'w') as f:
-            json.dump(account, f, indent=2, default=serialize)
-        print(f"  Saved: account_summary.json")
+        save_json(account, export_dir / 'account_summary.json')
+        print("  Saved: account_summary.json")
     except Exception as e:
         print(f"  ERROR getting account info: {e}")
     print()
@@ -88,9 +105,8 @@ def main():
                   f" (unrealized P&L: ${p['unrealized_pl']})")
         print(f"  Found {len(positions)} open positions")
 
-        with open(export_dir / 'open_positions.json', 'w') as f:
-            json.dump(positions, f, indent=2, default=serialize)
-        print(f"  Saved: open_positions.json")
+        save_json(positions, export_dir / 'open_positions.json')
+        print("  Saved: open_positions.json")
     except Exception as e:
         print(f"  ERROR getting positions: {e}")
     print()
@@ -101,16 +117,9 @@ def main():
         fills = client.get_fill_activities()
         print(f"  Found {len(fills)} total fills")
 
-        # Remove datetime objects for JSON serialization (keep string 'time')
-        fills_serializable = []
-        for f in fills:
-            fill_copy = dict(f)
-            fill_copy.pop('time_dt', None)
-            fills_serializable.append(fill_copy)
-
-        with open(export_dir / 'all_fills.json', 'w') as f:
-            json.dump(fills_serializable, f, indent=2, default=serialize)
-        print(f"  Saved: all_fills.json")
+        fills_clean = strip_datetime_keys(fills, ['time_dt'])
+        save_json(fills_clean, export_dir / 'all_fills.json')
+        print("  Saved: all_fills.json")
     except Exception as e:
         print(f"  ERROR getting fills: {e}")
     print()
@@ -129,17 +138,9 @@ def main():
         print(f"  Total P&L: ${total_pnl:.2f}")
         print(f"  Win Rate: {win_rate:.1f}% ({len(winners)}W / {len(losers)}L)")
 
-        # Remove datetime objects for serialization
-        closed_serializable = []
-        for t in closed_options:
-            trade_copy = dict(t)
-            trade_copy.pop('buy_time_dt', None)
-            trade_copy.pop('sell_time_dt', None)
-            closed_serializable.append(trade_copy)
-
-        with open(export_dir / 'closed_trades_options.json', 'w') as f:
-            json.dump(closed_serializable, f, indent=2, default=serialize)
-        print(f"  Saved: closed_trades_options.json")
+        closed_clean = strip_datetime_keys(closed_options, ['buy_time_dt', 'sell_time_dt'])
+        save_json(closed_clean, export_dir / 'closed_trades_options.json')
+        print("  Saved: closed_trades_options.json")
     except Exception as e:
         print(f"  ERROR getting closed trades: {e}")
     print()
@@ -150,16 +151,9 @@ def main():
         closed_all = client.get_closed_trades(options_only=False)
         print(f"  Found {len(closed_all)} total closed trades")
 
-        closed_all_serializable = []
-        for t in closed_all:
-            trade_copy = dict(t)
-            trade_copy.pop('buy_time_dt', None)
-            trade_copy.pop('sell_time_dt', None)
-            closed_all_serializable.append(trade_copy)
-
-        with open(export_dir / 'closed_trades_all.json', 'w') as f:
-            json.dump(closed_all_serializable, f, indent=2, default=serialize)
-        print(f"  Saved: closed_trades_all.json")
+        closed_all_clean = strip_datetime_keys(closed_all, ['buy_time_dt', 'sell_time_dt'])
+        save_json(closed_all_clean, export_dir / 'closed_trades_all.json')
+        print("  Saved: closed_trades_all.json")
     except Exception as e:
         print(f"  ERROR getting all closed trades: {e}")
     print()
@@ -172,11 +166,9 @@ def main():
         ('data/executions/executions.json', 'local_executions.json'),
     ]
 
-    project_root = Path(__file__).parent.parent
     for src_rel, dst_name in local_files:
-        src = project_root / src_rel
+        src = PROJECT_ROOT / src_rel
         if src.exists():
-            import shutil
             shutil.copy2(src, export_dir / dst_name)
             print(f"  Copied: {src_rel} -> {dst_name}")
         else:

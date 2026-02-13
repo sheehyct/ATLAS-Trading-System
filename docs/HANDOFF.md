@@ -3,15 +3,15 @@
 **Last Updated:** February 12, 2026 (Session EQUITY-106)
 **Current Branch:** `main`
 **Phase:** Bug Fixes and System Hardening
-**Status:** EQUITY-106 IN PROGRESS - Paper account reset, VPS deployed, investigating silent exits
+**Status:** EQUITY-106 COMPLETE - Paper account reset to $100K, 3 bugs fixed and deployed, silent exits root cause found and fixed
 
 ---
 
-## Session EQUITY-106: Paper Account Reset + VPS Deploy + Bug Investigation (IN PROGRESS)
+## Session EQUITY-106: Paper Account Reset + Silent Exits Fix (COMPLETE)
 
 **Date:** February 12, 2026
 **Environment:** Claude Code Desktop (Opus 4.6)
-**Status:** IN PROGRESS - Priority 1 complete, investigating silent exits bug
+**Status:** COMPLETE - Paper account reset, 3 bug fixes deployed to VPS
 
 ### What Was Accomplished
 
@@ -21,23 +21,41 @@
    - Reset SMALL account, new API keys configured locally + VPS
    - PDT flag eliminated ($100K equity)
 
-2. **VPS Deployment (2 Bug Fixes)**
+2. **VPS Deployment (EQUITY-105 Bug Fixes)**
    - Updated VPS `.env` with new Alpaca keys
-   - Git pulled: 2fcb68e -> 96bbd24 (fast-forward, 47 files)
-   - Daemon restarted, clean startup confirmed
-   - Both bug fixes now live: 3-? pattern dedup + EOD PDT detection
+   - Deployed 3-? pattern dedup + EOD PDT detection fixes
+   - Daemon restarted, clean startup confirmed on new $100K account
 
-3. **Railway Keys Updated** (by user)
-   - Railway GitHub repo connection broken (accidental repo removal)
+3. **Bug Fix: Silent Exits / Missing Discord Alerts (EQUITY-106)**
+   - Root cause found via VPS logs: HOOD stale 1H exit was blocked pre-market (9:25-9:29 ET) by market hours gate. At 9:30:46, `sync_positions()` found HOOD gone from Alpaca and silently removed it (no callback, no alert). The 9:31 AM safety net was too late.
+   - Fix 1: `sync_positions()` now fires exit callback with `EXTERNAL_CLOSE` reason when position disappears, triggering Discord alert and trade analytics finalization
+   - Fix 2: New `_is_stale_exit_premarket()` allows stale 1H exits pre-market (4:00-9:29 ET) on trading days so Alpaca queues them for market open, preventing the sync_positions race condition
+
+4. **Railway Keys Updated** (by user)
+   - Railway GitHub repo connection broken (accidental repo removal from GitHub)
    - Dashboard deployment pending reconnection
 
-### In Progress
+### Key Decisions
 
-- **Bug 5: Silent Exits Investigation** - HOOD trade vanished with no Discord alert
+- **Keep "SMALL" account name** despite $100K balance -- just a key lookup, not used for sizing
+- **Virtual balance system deferred** to next session (Priority 3)
+- User working on dynamic ticker selection in parallel
 
-### Note
+### Files Modified
 
-User is working on dynamic ticker selection implementation in parallel (separate from this session's bug fix work).
+| File | Change |
+|------|--------|
+| `strat/signal_automation/position_monitor.py` | EXTERNAL_CLOSE enum, exit callback in sync_positions, _is_stale_exit_premarket, _handle_external_close extraction |
+| `tests/test_signal_automation/test_position_monitor.py` | Updated enum count 10->11 |
+| `scripts/export_trades_before_reset.py` | NEW - pre-reset trade data export |
+
+### Test Results
+
+- 1162 passed, 0 failures (1 pre-existing time-sensitive test deselected)
+
+### Commits
+
+- `0dae20a` - fix: add Discord alerts for externally closed positions and stale 1H pre-market exits
 
 ---
 
