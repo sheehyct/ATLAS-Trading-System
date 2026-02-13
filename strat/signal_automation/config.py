@@ -17,6 +17,8 @@ from typing import List, Optional
 from enum import Enum
 import os
 
+from strat.ticker_selection.config import TickerSelectionConfig
+
 
 class ScanInterval(str, Enum):
     """Scan interval presets matching trading timeframes."""
@@ -352,6 +354,7 @@ class SignalAutomationConfig:
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
+    ticker_selection: TickerSelectionConfig = field(default_factory=TickerSelectionConfig)
 
     # Signal store location
     store_path: str = 'data/signals'
@@ -455,6 +458,9 @@ class SignalAutomationConfig:
         if api_port := os.environ.get('SIGNAL_API_PORT'):
             api_config.port = int(api_port)
 
+        # Ticker selection configuration
+        ticker_selection_config = TickerSelectionConfig.from_env()
+
         return cls(
             scan=scan_config,
             schedule=schedule_config,
@@ -462,6 +468,7 @@ class SignalAutomationConfig:
             execution=execution_config,
             monitoring=monitoring_config,
             api=api_config,
+            ticker_selection=ticker_selection_config,
             store_path=store_path,
         )
 

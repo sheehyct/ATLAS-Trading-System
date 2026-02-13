@@ -1,0 +1,339 @@
+"""
+Ticker Selection Pipeline - main orchestrator.
+
+Executes the five-stage pipeline:
+  Stage 0: Universe discovery (Alpaca get_all_assets)
+  Stage 1: Snapshot screening (price, volume, ATR)
+  Stage 2: STRAT pattern scan (reuses PaperSignalScanner)
+  Stage 3: TFC filter (already in scanner pipeline)
+  Stage 4: Composite scoring + ranking
+
+Output: data/candidates/candidates.json
+"""
+
+import json
+import logging
+import os
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from strat.ticker_selection.config import TickerSelectionConfig
+from strat.ticker_selection.universe import UniverseManager
+from strat.ticker_selection.screener import SnapshotScreener, ScreenedStock
+from strat.ticker_selection.scorer import CandidateScorer, ScoredCandidate
+
+logger = logging.getLogger(__name__)
+
+
+class TickerSelectionPipeline:
+    """
+    Orchestrates the full ticker selection pipeline.
+
+    Reuses PaperSignalScanner for STRAT pattern detection and TFC
+    evaluation -- zero reimplementation of the 5,939 lines of
+    validated detection code.
+    """
+
+    def __init__(self, config: Optional[TickerSelectionConfig] = None):
+        self.config = config or TickerSelectionConfig()
+        self.universe_mgr = UniverseManager(self.config)
+        self.screener = SnapshotScreener(self.config)
+        self.scorer = CandidateScorer(self.config)
+        self._scanner = None
+
+    def _get_scanner(self):
+        """Lazy-init PaperSignalScanner (heavy imports)."""
+        if self._scanner is None:
+            from strat.paper_signal_scanner import PaperSignalScanner
+            self._scanner = PaperSignalScanner()
+        return self._scanner
+
+    def run(self, dry_run: bool = False) -> Dict:
+        """
+        Execute the full pipeline.
+
+        Args:
+            dry_run: If True, run all stages but don't write candidates.json.
+
+        Returns:
+            Pipeline results dict (same schema as candidates.json).
+        """
+        start = time.time()
+        stats = {
+            'universe_size': 0,
+            'screened_size': 0,
+            'patterns_found': 0,
+            'tfc_qualified': 0,
+            'final_candidates': 0,
+            'scan_duration_seconds': 0.0,
+        }
+
+        # Stage 0: Universe discovery
+        logger.info("Stage 0: Discovering universe...")
+        universe = self.universe_mgr.get_universe()
+        stats['universe_size'] = len(universe)
+        logger.info(f"  Universe: {len(universe)} symbols")
+
+        # Stage 1: Snapshot screening
+        logger.info("Stage 1: Snapshot screening...")
+        screened = self.screener.screen(universe)
+        stats['screened_size'] = len(screened)
+        logger.info(f"  Screened: {len(screened)} symbols passed")
+
+        # Build lookup for screened data
+        screened_map: Dict[str, ScreenedStock] = {s.symbol: s for s in screened}
+
+        # Stage 2+3: STRAT scan + TFC (via PaperSignalScanner)
+        logger.info("Stage 2: STRAT pattern scanning + TFC evaluation...")
+        scanner = self._get_scanner()
+        candidates_raw: List[Dict] = []
+        error_count = 0
+
+        screened_symbols = [s.symbol for s in screened]
+        for i, symbol in enumerate(screened_symbols):
+            if (i + 1) % 50 == 0:
+                logger.info(f"  Scanning {i + 1}/{len(screened_symbols)}...")
+            try:
+                signals = scanner.scan_symbol_all_timeframes_resampled(symbol)
+                for sig in signals:
+                    # Hard filter: Only SETUP signals (waiting for break)
+                    if sig.signal_type != 'SETUP':
+                        continue
+
+                    # Hard filter: TFC must pass flexible check
+                    if not sig.context.tfc_passes:
+                        continue
+
+                    # Hard filter: TFC direction must match pattern direction
+                    tfc_dir = 'bullish' if sig.direction == 'CALL' else 'bearish'
+                    if sig.context.tfc_score > 0:
+                        # TFC direction comes from the alignment label
+                        tfc_label = sig.context.tfc_alignment.upper()
+                        if tfc_dir.upper() not in tfc_label:
+                            continue
+
+                    stock_data = screened_map.get(symbol)
+                    candidates_raw.append({
+                        'signal': sig,
+                        'stock': stock_data,
+                    })
+            except Exception as e:
+                logger.debug(f"  Scan error for {symbol}: {e}")
+                error_count += 1
+
+        stats['patterns_found'] = len(candidates_raw)
+        # TFC qualified is the same as patterns_found since we hard-filter above
+        stats['tfc_qualified'] = len(candidates_raw)
+        logger.info(
+            f"  Patterns found (TFC qualified): {len(candidates_raw)} "
+            f"({error_count} errors)"
+        )
+
+        # Stage 4: Scoring + ranking
+        logger.info("Stage 4: Scoring and ranking...")
+        scored = self._score_candidates(candidates_raw, screened_map)
+
+        # Sort by composite score descending, cap at max_candidates
+        scored.sort(key=lambda c: c.composite_score, reverse=True)
+        final = scored[:self.config.max_candidates]
+
+        # Assign ranks
+        for i, c in enumerate(final):
+            c.rank = i + 1
+
+        stats['final_candidates'] = len(final)
+        duration = time.time() - start
+        stats['scan_duration_seconds'] = round(duration, 1)
+
+        logger.info(
+            f"Pipeline complete: {len(final)} candidates in {duration:.1f}s"
+        )
+
+        # Build output
+        result = self._build_output(final, stats)
+
+        # Write to disk
+        if not dry_run:
+            self._write_candidates(result)
+            self._send_discord_summary(final, stats)
+
+        return result
+
+    def _score_candidates(
+        self,
+        candidates_raw: List[Dict],
+        screened_map: Dict[str, ScreenedStock],
+    ) -> List[ScoredCandidate]:
+        """Score all candidates using CandidateScorer."""
+        scored = []
+        for entry in candidates_raw:
+            sig = entry['signal']
+            stock: Optional[ScreenedStock] = entry.get('stock')
+
+            current_price = stock.price if stock else sig.entry_trigger
+            atr_pct = stock.atr_percent if stock else sig.context.atr_percent
+            dv = stock.dollar_volume if stock else 0.0
+
+            candidate = self.scorer.score(
+                symbol=sig.symbol,
+                pattern_type=sig.pattern_type,
+                signal_type=sig.signal_type,
+                direction=sig.direction,
+                timeframe=sig.timeframe,
+                is_bidirectional=getattr(sig, 'is_bidirectional', True),
+                entry_trigger=sig.entry_trigger,
+                stop_price=sig.stop_price,
+                target_price=sig.target_price,
+                current_price=current_price,
+                tfc_score=sig.context.tfc_score,
+                tfc_alignment=sig.context.tfc_alignment,
+                tfc_direction='bullish' if sig.direction == 'CALL' else 'bearish',
+                tfc_passes_flexible=sig.context.tfc_passes,
+                tfc_risk_multiplier=sig.context.risk_multiplier,
+                tfc_priority_rank=sig.context.priority_rank,
+                atr_percent=atr_pct,
+                dollar_volume=dv,
+            )
+            scored.append(candidate)
+        return scored
+
+    def _build_output(self, candidates: List[ScoredCandidate], stats: Dict) -> Dict:
+        """Build the candidates.json output dict."""
+        now = datetime.now(timezone.utc).isoformat()
+
+        output = {
+            'version': '1.0',
+            'generated_at': now,
+            'pipeline_stats': stats,
+            'core_symbols': list(self.config.core_symbols),
+            'candidates': [],
+        }
+
+        for c in candidates:
+            output['candidates'].append({
+                'symbol': c.symbol,
+                'composite_score': c.composite_score,
+                'rank': c.rank,
+                'pattern': {
+                    'type': c.pattern_type,
+                    'base_type': c.base_pattern,
+                    'signal_type': c.signal_type,
+                    'direction': c.direction,
+                    'timeframe': c.timeframe,
+                    'is_bidirectional': c.is_bidirectional,
+                },
+                'levels': {
+                    'entry_trigger': c.entry_trigger,
+                    'stop_price': c.stop_price,
+                    'target_price': c.target_price,
+                    'current_price': c.current_price,
+                    'distance_to_trigger_pct': c.distance_to_trigger_pct,
+                },
+                'tfc': {
+                    'score': c.tfc_score,
+                    'alignment': c.tfc_alignment,
+                    'direction': c.tfc_direction,
+                    'passes_flexible': c.tfc_passes_flexible,
+                    'risk_multiplier': c.tfc_risk_multiplier,
+                    'priority_rank': c.tfc_priority_rank,
+                },
+                'metrics': {
+                    'atr_percent': c.atr_percent,
+                    'dollar_volume': c.dollar_volume,
+                    'risk_reward': c.risk_reward,
+                },
+                'scoring_breakdown': {
+                    'tfc_component': c.breakdown.tfc_component,
+                    'pattern_component': c.breakdown.pattern_component,
+                    'proximity_component': c.breakdown.proximity_component,
+                    'atr_component': c.breakdown.atr_component,
+                },
+            })
+
+        return output
+
+    def _write_candidates(self, data: Dict) -> None:
+        """Write candidates.json atomically (write .tmp then os.replace)."""
+        path = Path(self.config.candidates_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        tmp_path = path.with_suffix('.json.tmp')
+        try:
+            tmp_path.write_text(json.dumps(data, indent=2))
+            os.replace(str(tmp_path), str(path))
+            logger.info(f"Candidates written: {path}")
+        except Exception as e:
+            logger.error(f"Failed to write candidates: {e}")
+            # Clean up temp file
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    def _send_discord_summary(
+        self,
+        candidates: List[ScoredCandidate],
+        stats: Dict,
+    ) -> None:
+        """Send a summary of top candidates to Discord."""
+        try:
+            webhook_url = (
+                os.environ.get('DISCORD_EQUITY_WEBHOOK_URL')
+                or os.environ.get('DISCORD_WEBHOOK_URL')
+            )
+            if not webhook_url:
+                logger.debug("No Discord webhook configured for ticker selection")
+                return
+
+            # Build summary message
+            lines = [
+                f"**Ticker Selection Pipeline Complete**",
+                f"Universe: {stats['universe_size']:,} | "
+                f"Screened: {stats['screened_size']} | "
+                f"Patterns: {stats['patterns_found']} | "
+                f"Final: {stats['final_candidates']}",
+                f"Duration: {stats['scan_duration_seconds']}s",
+                "",
+            ]
+
+            if candidates:
+                lines.append("**Top Candidates:**")
+                for c in candidates[:8]:
+                    emoji = '\u2B06' if c.direction == 'CALL' else '\u2B07'
+                    lines.append(
+                        f"{emoji} **{c.symbol}** {c.pattern_type} {c.timeframe} "
+                        f"| Score: {c.composite_score} "
+                        f"| TFC: {c.tfc_alignment} "
+                        f"| ATR: {c.atr_percent}%"
+                    )
+            else:
+                lines.append("_No candidates qualified today._")
+
+            message = '\n'.join(lines)
+
+            import requests
+            resp = requests.post(
+                webhook_url,
+                json={'content': message},
+                timeout=10,
+            )
+            if resp.status_code in (200, 204):
+                logger.info("Discord ticker selection summary sent")
+            else:
+                logger.warning(f"Discord send failed: {resp.status_code}")
+
+        except Exception as e:
+            logger.warning(f"Failed to send Discord summary: {e}")
+
+
+def run_selection(dry_run: bool = False) -> Dict:
+    """
+    Convenience function for running the pipeline (e.g., from cron).
+
+    Loads config from environment and runs the full pipeline.
+    """
+    config = TickerSelectionConfig.from_env()
+    pipeline = TickerSelectionPipeline(config)
+    return pipeline.run(dry_run=dry_run)

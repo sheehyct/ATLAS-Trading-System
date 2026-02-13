@@ -537,8 +537,8 @@ class SignalDaemon:
         try:
             new_signals: List[StoredSignal] = []
 
-            # Scan each symbol
-            for symbol in self.config.scan.symbols:
+            # Scan each symbol (dynamic via ticker selection or static)
+            for symbol in self.active_symbols:
                 try:
                     detected = self._scan_symbol(symbol, timeframe)
                     new_signals.extend(detected)
@@ -648,8 +648,8 @@ class SignalDaemon:
         try:
             new_signals: List[StoredSignal] = []
 
-            # Scan each symbol using resampling
-            for symbol in self.config.scan.symbols:
+            # Scan each symbol using resampling (dynamic via ticker selection or static)
+            for symbol in self.active_symbols:
                 try:
                     detected = self._scan_symbol_resampled(symbol)
                     new_signals.extend(detected)
@@ -1677,6 +1677,83 @@ class SignalDaemon:
             Dictionary of alerter_name -> test_passed
         """
         return self._alert_manager.test_alerters()
+
+    @property
+    def active_symbols(self) -> List[str]:
+        """
+        Return the list of symbols to scan this cycle.
+
+        If ticker_selection is enabled, merges dynamic candidates with
+        core ETFs.  Falls back to the static config list on any failure.
+        """
+        if not self.config.ticker_selection.enabled:
+            return self.config.scan.symbols
+
+        candidates = self._load_candidates()
+        if candidates is None:
+            logger.warning(
+                "Ticker selection enabled but candidates unavailable - "
+                "falling back to static symbol list"
+            )
+            return self.config.scan.symbols
+
+        # Core ETFs + dynamic candidates (deduplicated, capped)
+        core = list(self.config.ticker_selection.core_symbols)
+        dynamic_syms = [
+            c['symbol'] for c in candidates
+            if c.get('symbol') not in core
+        ]
+        cap = self.config.ticker_selection.max_dynamic_symbols
+        symbols = core + dynamic_syms[:cap]
+
+        logger.info(
+            f"Active symbols: {len(core)} core + "
+            f"{min(len(dynamic_syms), cap)} dynamic = {len(symbols)} total"
+        )
+        return symbols
+
+    def _load_candidates(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Load candidates from candidates.json.
+
+        Returns None if file is missing, stale, or corrupt.
+        """
+        import json
+        from pathlib import Path
+        from datetime import datetime, timezone
+
+        path = Path(self.config.ticker_selection.candidates_path)
+        if not path.exists():
+            logger.debug(f"Candidates file not found: {path}")
+            return None
+
+        try:
+            data = json.loads(path.read_text())
+
+            # Check freshness
+            generated_at = data.get('generated_at', '')
+            if generated_at:
+                gen_time = datetime.fromisoformat(generated_at)
+                if gen_time.tzinfo is None:
+                    gen_time = gen_time.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - gen_time).total_seconds()
+                if age > self.config.ticker_selection.stale_threshold_seconds:
+                    logger.warning(
+                        f"Candidates stale: {age / 3600:.1f}h old "
+                        f"(threshold: {self.config.ticker_selection.stale_threshold_seconds / 3600:.0f}h)"
+                    )
+                    return None
+
+            candidates = data.get('candidates', [])
+            if not candidates:
+                logger.debug("Candidates file has no candidates")
+                return None
+
+            return candidates
+
+        except Exception as e:
+            logger.error(f"Failed to load candidates: {e}")
+            return None
 
     @property
     def is_running(self) -> bool:
