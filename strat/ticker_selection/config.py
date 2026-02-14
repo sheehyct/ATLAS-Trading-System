@@ -29,6 +29,7 @@ class TickerSelectionConfig:
     max_scan_symbols: int = 100  # Max symbols sent to STRAT scanner (~17s each)
     max_candidates: int = 12  # Max final candidates written to JSON
     max_dynamic_symbols: int = 12  # Cap on symbols daemon reads from candidates
+    max_workers: int = 6  # Parallel workers for STRAT scanning (I/O bound)
 
     # Scoring weights (must sum to 1.0)
     weight_tfc: float = 0.40
@@ -71,6 +72,8 @@ class TickerSelectionConfig:
             cfg.max_scan_symbols = int(v)
         if v := os.environ.get('TICKER_SEL_MAX_CANDIDATES'):
             cfg.max_candidates = int(v)
+        if v := os.environ.get('TICKER_SEL_MAX_WORKERS'):
+            cfg.max_workers = int(v)
         if v := os.environ.get('TICKER_SEL_ALPACA_ACCOUNT'):
             cfg.alpaca_account = v
 

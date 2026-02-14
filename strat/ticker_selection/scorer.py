@@ -114,9 +114,13 @@ class CandidateScorer:
         # Pattern component
         pattern_raw = _PATTERN_SCORES.get(base, 30)
 
+        # Continuations score very low (not typically traded)
+        if self._is_continuation(pattern_type):
+            pattern_raw = 15  # Minimal score, effectively filtered by ranking
+
         # Proximity component
         proximity_raw = self._score_proximity(
-            current_price, entry_trigger, atr_percent
+            current_price, entry_trigger, atr_percent, direction
         )
 
         # ATR component
@@ -183,8 +187,21 @@ class CandidateScorer:
         # "3-1-2U" -> "3-1-2", "2D-2U" -> "2-2", etc.
         import re
         # Remove trailing U/D from each segment
-        cleaned = re.sub(r'[UD]', '', pattern_type)
+        cleaned = re.sub(r'(\d)[UD]', r'\1', pattern_type)
         return cleaned
+
+    @staticmethod
+    def _is_continuation(pattern_type: str) -> bool:
+        """Check if pattern is a continuation (same direction, e.g., 2U-2U, 2D-2D).
+
+        Continuations are NOT typically traded in STRAT methodology.
+        Only reversals (direction change, e.g., 2D-2U, 2U-2D) create new entries.
+        """
+        parts = pattern_type.replace('-', ' ').split()
+        directions = [p[-1] for p in parts if p.endswith(('U', 'D')) and len(p) >= 2]
+        if len(directions) >= 2:
+            return len(set(directions)) == 1  # All same direction
+        return False
 
     @staticmethod
     def _score_tfc(tfc_score: int) -> float:
@@ -198,13 +215,17 @@ class CandidateScorer:
         return 0
 
     @staticmethod
-    def _score_proximity(current_price: float, trigger: float, atr_pct: float) -> float:
+    def _score_proximity(current_price: float, trigger: float, atr_pct: float, direction: str = 'CALL') -> float:
         """
         Score proximity to trigger.
 
         Sweet spot: 0.2-0.8 ATR from trigger = 100.
         Already triggered (price past trigger) = 0.
         Too far (> 1.5 ATR) = ramp down.
+
+        Args:
+            direction: 'CALL' or 'PUT' -- determines which side of trigger
+                       means "already triggered".
         """
         if not trigger or not current_price or not atr_pct:
             return 50  # Neutral if missing data
@@ -217,8 +238,9 @@ class CandidateScorer:
         distance_in_atrs = distance / atr_dollars
 
         # Already past the trigger
-        if current_price > trigger and atr_pct > 0:
-            # For calls, price above trigger means already triggered
+        if direction == 'CALL' and current_price > trigger:
+            return 0
+        elif direction == 'PUT' and current_price < trigger:
             return 0
 
         if 0.2 <= distance_in_atrs <= 0.8:

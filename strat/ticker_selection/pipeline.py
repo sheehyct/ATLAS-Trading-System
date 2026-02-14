@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -91,6 +92,13 @@ class TickerSelectionPipeline:
         candidates_raw: List[Dict] = []
         error_count = 0
 
+        # Pre-fetch VIX once so every scan reuses the cached value
+        try:
+            vix_value = scanner.prefetch_vix()
+            logger.info(f"  VIX pre-fetched: {vix_value:.1f}")
+        except Exception as e:
+            logger.warning(f"  VIX pre-fetch failed: {e}")
+
         # Cap symbols sent to the expensive STRAT scanner
         # Screened list is already sorted by dollar volume desc
         scan_symbols = [s.symbol for s in screened[:self.config.max_scan_symbols]]
@@ -98,11 +106,33 @@ class TickerSelectionPipeline:
             f"  Scanning top {len(scan_symbols)} of {len(screened)} "
             f"screened symbols (by dollar volume)"
         )
-        for i, symbol in enumerate(scan_symbols):
-            if (i + 1) % 25 == 0:
-                logger.info(f"  Scanning {i + 1}/{len(scan_symbols)}...")
+        def _scan_single(sym):
+            """Scan a single symbol, returning (symbol, signals, error)."""
             try:
-                signals = scanner.scan_symbol_all_timeframes_resampled(symbol)
+                sigs = scanner.scan_symbol_all_timeframes_resampled(sym)
+                return sym, sigs, None
+            except Exception as exc:
+                return sym, [], exc
+
+        max_workers = min(self.config.max_workers, len(scan_symbols)) if scan_symbols else 1
+        completed_count = 0
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_scan_single, sym): sym
+                for sym in scan_symbols
+            }
+            for future in as_completed(futures):
+                symbol, signals, scan_error = future.result()
+                completed_count += 1
+                if completed_count % 25 == 0:
+                    logger.info(f"  Scanning {completed_count}/{len(scan_symbols)}...")
+
+                if scan_error:
+                    error_count += 1
+                    logger.debug(f"  Scan error for {symbol}: {scan_error}")
+                    continue
+
                 for sig in signals:
                     # Hard filter: Only SETUP signals (waiting for break)
                     if sig.signal_type != 'SETUP':
@@ -125,9 +155,6 @@ class TickerSelectionPipeline:
                         'signal': sig,
                         'stock': stock_data,
                     })
-            except Exception as e:
-                logger.debug(f"  Scan error for {symbol}: {e}")
-                error_count += 1
 
         stats['patterns_found'] = len(candidates_raw)
         # TFC qualified is the same as patterns_found since we hard-filter above
@@ -307,9 +334,9 @@ class TickerSelectionPipeline:
             if candidates:
                 lines.append("**Top Candidates:**")
                 for c in candidates[:8]:
-                    emoji = '\u2B06' if c.direction == 'CALL' else '\u2B07'
+                    direction_label = '[CALL]' if c.direction == 'CALL' else '[PUT]'
                     lines.append(
-                        f"{emoji} **{c.symbol}** {c.pattern_type} {c.timeframe} "
+                        f"{direction_label} **{c.symbol}** {c.pattern_type} {c.timeframe} "
                         f"| Score: {c.composite_score} "
                         f"| TFC: {c.tfc_alignment} "
                         f"| ATR: {c.atr_percent}%"

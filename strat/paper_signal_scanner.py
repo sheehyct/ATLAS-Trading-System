@@ -150,6 +150,7 @@ class PaperSignalScanner:
         self._vbt = None
         self._thetadata = None
         self._tiingo = None
+        self._vix_cache: Optional[float] = None
         # TFC adapter needs timeframes in descending order for proper continuity checking
         # Session EQUITY-62: 4H removed until resampling support added
         self._tfc_adapter = TimeframeContinuityAdapter(timeframes=['1M', '1W', '1D', '1H'])
@@ -525,8 +526,24 @@ class PaperSignalScanner:
             warnings.warn(f"Failed to resample to {target_tf}: {e}")
             return None
 
+    def prefetch_vix(self) -> float:
+        """Pre-fetch and cache VIX value for reuse across multiple scans.
+
+        Call this once before scanning many symbols so each
+        scan_symbol_all_timeframes_resampled() call reuses the cached
+        value instead of hitting yfinance repeatedly.
+
+        Returns:
+            Cached VIX value.
+        """
+        self._vix_cache = None  # Force refresh
+        value = self._fetch_vix()
+        return value
+
     def _fetch_vix(self) -> float:
-        """Fetch current VIX level."""
+        """Fetch current VIX level (uses cache if available)."""
+        if self._vix_cache is not None:
+            return self._vix_cache
         try:
             import yfinance as yf
             vix = yf.download('^VIX', period='1d', progress=False)
@@ -542,13 +559,18 @@ class PaperSignalScanner:
                     if close_cols:
                         close_val = vix[close_cols[0]].iloc[-1]
                     else:
+                        self._vix_cache = 0.0
                         return 0.0
                 # Ensure we return a scalar float
                 if hasattr(close_val, 'item'):
-                    return float(close_val.item())
-                return float(close_val)
+                    result = float(close_val.item())
+                else:
+                    result = float(close_val)
+                self._vix_cache = result
+                return result
         except Exception as e:
             warnings.warn(f"Failed to fetch VIX: {e}")
+        self._vix_cache = 0.0
         return 0.0
 
     def _calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:
