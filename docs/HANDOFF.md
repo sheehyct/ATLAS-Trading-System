@@ -1,9 +1,74 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 14, 2026 (Session EQUITY-107)
+**Last Updated:** February 14, 2026 (Session EQUITY-108)
 **Current Branch:** `main`
-**Phase:** Dynamic Ticker Selection + Position Sizing
-**Status:** EQUITY-107 COMPLETE - Ticker selection reviewed and optimized, position sizing in progress (uncommitted)
+**Phase:** Position Sizing + Timeframe Limits
+**Status:** EQUITY-108 COMPLETE - Position sizing committed, hourly daily limit added, VPS deploy pending manual SSH
+
+---
+
+## Session EQUITY-108: Position Sizing Review + Hourly Entry Limits (COMPLETE)
+
+**Date:** February 14, 2026
+**Environment:** Claude Code (Opus 4.6)
+**Status:** COMPLETE - Position sizing reviewed/committed, hourly limit implemented, VPS deploy pending
+
+### What Was Accomplished
+
+1. **Reviewed Uncommitted EQUITY-107 Position Sizing Work**
+   - Reviewed capital_tracker.py (352 lines), executor/position_monitor/daemon/config changes
+   - Found and fixed critical NameError bug in executor.py:498 (`estimated_premium` undefined)
+   - All 35 capital tracker tests passing
+
+2. **Hourly Entry Daily Limit (EQUITY-108)**
+   - New `max_hourly_entries_per_day` config field (-1=unlimited, 0=disabled, 1+=daily cap)
+   - Added `_check_hourly_daily_limit()` to executor with signal_key timeframe parsing
+   - Counts successful executions from persisted history (survives daemon restarts)
+   - Account 1 (Alpaca paper): set to 1 in .env
+   - Account 2 (Schwab future): will set to 0
+   - 8 new tests covering all limit modes
+
+3. **Code Simplification**
+   - Extracted `_create_skipped_result()` helper (eliminates 4 repeated blocks)
+   - Class-level `_HOURLY_TIMEFRAMES` and `_ACTIVE_STATES` constants
+   - Extracted `unsettled_amount` property in capital_tracker
+   - `.date()` comparison instead of strftime
+
+4. **Railway Dashboard Reconnected** (by user, Priority 4 done)
+
+### Key Decisions
+
+- **Per-day limit (not concurrent)**: 1H limit counts entries per calendar day, not concurrent open positions. If the 1H trade exits, no more 1H trades that day. Better for diagnostics.
+- **Default unlimited (-1)**: Existing behavior unchanged until explicitly configured
+- **VPS deploy**: SSH hanging from Claude Code, user will deploy manually
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/capital_tracker.py` | NEW - VirtualBalanceTracker (352 lines) |
+| `strat/signal_automation/executor.py` | Capital tracker integration, hourly limit, NameError fix |
+| `strat/signal_automation/position_monitor.py` | Capital release on exit/partial/external close |
+| `strat/signal_automation/daemon.py` | Capital tracker setup and settlement wiring |
+| `strat/signal_automation/config.py` | CapitalConfig + max_hourly_entries_per_day |
+| `tests/test_signal_automation/test_capital_tracker.py` | NEW - 35 tests |
+| `tests/test_signal_automation/test_executor.py` | 8 new hourly limit tests |
+
+### Commits
+
+- `e0118c6` - feat: add virtual balance tracker and position sizing for cash account
+- `cb23105` - feat: add hourly entry daily limit for timeframe-based position control
+- `4ce5f5f` - refactor: simplify executor and capital tracker code
+
+### VPS Deploy (PENDING)
+
+User needs to run manually:
+```bash
+ssh chris@74.48.108.233
+cd /home/chris/ATLAS-Trading-System && git pull
+echo 'MAX_HOURLY_ENTRIES_PER_DAY=1' >> .env
+sudo systemctl restart atlas-daemon
+```
 
 ---
 
