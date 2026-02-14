@@ -16,7 +16,7 @@ Key features:
 import json
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -48,7 +48,6 @@ def _next_trading_day() -> str:
         pass
 
     # Fallback: next weekday
-    from datetime import timedelta
     today = datetime.now()
     offset = 1
     nxt = today + timedelta(days=offset)
@@ -103,18 +102,22 @@ class VirtualBalanceTracker:
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
-    # Computed property
+    # Computed properties
     # ------------------------------------------------------------------
+
+    @property
+    def unsettled_amount(self) -> float:
+        """Total proceeds not yet settled (T+1)."""
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        return sum(
+            s['amount'] for s in self._pending_settlements
+            if s['settlement_date'] > today_str
+        )
 
     @property
     def available_capital(self) -> float:
         """Capital available for new trades (excludes deployed + unsettled)."""
-        today_str = datetime.now().strftime('%Y-%m-%d')
-        unsettled = sum(
-            s['amount'] for s in self._pending_settlements
-            if s['settlement_date'] > today_str
-        )
-        return self._virtual_capital - self._deployed_capital - unsettled
+        return self._virtual_capital - self._deployed_capital - self.unsettled_amount
 
     # ------------------------------------------------------------------
     # Trade gating
@@ -286,18 +289,13 @@ class VirtualBalanceTracker:
 
     def get_summary(self) -> dict:
         """Return a snapshot of the tracker state."""
-        today_str = datetime.now().strftime('%Y-%m-%d')
-        unsettled = sum(
-            s['amount'] for s in self._pending_settlements
-            if s['settlement_date'] > today_str
-        )
         return {
             'virtual_capital': self._virtual_capital,
             'deployed_capital': self._deployed_capital,
             'available_capital': self.available_capital,
             'realized_pnl': self._realized_pnl,
             'position_count': len(self._positions),
-            'unsettled_amount': unsettled,
+            'unsettled_amount': self.unsettled_amount,
             'positions': dict(self._positions),
         }
 

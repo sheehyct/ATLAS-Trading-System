@@ -390,47 +390,29 @@ class SignalExecutor:
 
         # Session EQUITY-40: Respect flexible continuity filter from upstream adapter
         if hasattr(signal, 'passes_flexible') and not getattr(signal, 'passes_flexible', True):
-            result = ExecutionResult(
-                signal_key=signal_key,
-                state=ExecutionState.SKIPPED,
-                error="Signal failed flexible continuity check",
+            return self._create_skipped_result(
+                signal_key, "Signal failed flexible continuity check"
             )
-            self._executions[signal_key] = result
-            self._save()
-            return result
 
         # Apply quality filters
         if not self._passes_filters(signal):
-            result = ExecutionResult(
-                signal_key=signal_key,
-                state=ExecutionState.SKIPPED,
-                error="Signal did not pass quality filters"
+            return self._create_skipped_result(
+                signal_key, "Signal did not pass quality filters"
             )
-            self._executions[signal_key] = result
-            self._save()  # Persist to disk
-            return result
 
         # Check position limits
         if not self._can_open_position():
-            result = ExecutionResult(
-                signal_key=signal_key,
-                state=ExecutionState.SKIPPED,
-                error=f"Max positions ({self.config.max_concurrent_positions}) reached"
+            return self._create_skipped_result(
+                signal_key,
+                f"Max positions ({self.config.max_concurrent_positions}) reached",
             )
-            self._executions[signal_key] = result
-            self._save()  # Persist to disk
-            return result
 
         # EQUITY-108: Check hourly daily entry limit
         if not self._check_hourly_daily_limit(signal):
-            result = ExecutionResult(
-                signal_key=signal_key,
-                state=ExecutionState.SKIPPED,
-                error=f"1H daily limit reached ({self.config.max_hourly_entries_per_day}/day)"
+            return self._create_skipped_result(
+                signal_key,
+                f"1H daily limit reached ({self.config.max_hourly_entries_per_day}/day)",
             )
-            self._executions[signal_key] = result
-            self._save()
-            return result
 
         try:
             # Get underlying price if not provided
@@ -607,6 +589,13 @@ class SignalExecutor:
 
         return True
 
+    _HOURLY_TIMEFRAMES = ('1H', '60min', '60m')
+    _ACTIVE_STATES = (
+        ExecutionState.ORDER_SUBMITTED,
+        ExecutionState.ORDER_FILLED,
+        ExecutionState.MONITORING,
+    )
+
     def _check_hourly_daily_limit(self, signal: StoredSignal) -> bool:
         """Check if a 1H signal is allowed based on daily entry limit.
 
@@ -616,27 +605,23 @@ class SignalExecutor:
         if limit < 0:
             return True  # unlimited
 
-        if signal.timeframe not in ('1H', '60min', '60m'):
+        if signal.timeframe not in self._HOURLY_TIMEFRAMES:
             return True  # only applies to hourly
 
         if limit == 0:
             return False  # hourly disabled entirely
 
         # Count today's successful 1H entries from execution history
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = datetime.now().date()
         count = 0
         for result in self._executions.values():
-            if result.state not in (
-                ExecutionState.ORDER_SUBMITTED,
-                ExecutionState.ORDER_FILLED,
-                ExecutionState.MONITORING,
-            ):
+            if result.state not in self._ACTIVE_STATES:
                 continue
-            if result.timestamp.strftime('%Y-%m-%d') != today:
+            if result.timestamp.date() != today:
                 continue
             # Check timeframe from signal_key (format: symbol_timeframe_pattern_timestamp)
             parts = result.signal_key.split('_')
-            if len(parts) >= 2 and parts[1] in ('1H', '60min', '60m'):
+            if len(parts) >= 2 and parts[1] in self._HOURLY_TIMEFRAMES:
                 count += 1
 
         if count >= limit:
@@ -789,6 +774,21 @@ class SignalExecutor:
         # In production, would use Alpaca market data API
         # For paper trading, estimate based on underlying
         return None
+
+    def _create_skipped_result(
+        self,
+        signal_key: str,
+        error: str,
+    ) -> ExecutionResult:
+        """Create a skipped execution result and persist."""
+        result = ExecutionResult(
+            signal_key=signal_key,
+            state=ExecutionState.SKIPPED,
+            error=error,
+        )
+        self._executions[signal_key] = result
+        self._save()
+        return result
 
     def _create_failed_result(
         self,
