@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"C:/Strat_Trading_Bot/vectorbt-workspace/.claude/hooks/strat_code_guardian.py\"",
+            "command": "python3.12 \"C:/Strat_Trading_Bot/vectorbt-workspace/.claude/hooks/strat_code_guardian.py\"",
             "timeout": 10
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"C:/Strat_Trading_Bot/vectorbt-workspace/.claude/hooks/vbt_workflow_guardian.py\"",
+            "command": "python3.12 \"C:/Strat_Trading_Bot/vectorbt-workspace/.claude/hooks/vbt_workflow_guardian.py\"",
             "timeout": 10
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -c \"import sys,os,subprocess;f=os.environ.get('CLAUDE_FILE_PATH','');sys.exit(0) if not f.endswith('.py') else sys.exit(subprocess.run(['python','-m','mypy','--check-untyped-defs',f]).returncode)\"",
+            "command": "python3.12 -c \"import sys,os,subprocess;f=os.environ.get('CLAUDE_FILE_PATH','');sys.exit(0) if not f.endswith('.py') else sys.exit(subprocess.run(['python3.12','-m','mypy','--check-untyped-defs',f]).returncode)\"",
             "timeout": 30
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"C:/Strat_Trading_Bot/vectorbt-workspace/.claude/hooks/strat_prompt_validator.py\"",
+            "command": "python3.12 \"C:/Strat_Trading_Bot/vectorbt-workspace/.claude/hooks/strat_prompt_validator.py\"",
             "timeout": 10
           }
         ]
