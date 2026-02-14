@@ -298,6 +298,7 @@ class PositionMonitor:
         trading_client: Optional[AlpacaTradingClient] = None,
         signal_store: Optional[SignalStore] = None,
         on_exit_callback: Optional[Callable[[ExitSignal, Dict[str, Any]], None]] = None,
+        capital_tracker=None,
     ):
         """
         Initialize position monitor.
@@ -314,6 +315,7 @@ class PositionMonitor:
         self.trading_client = trading_client
         self.signal_store = signal_store
         self.on_exit_callback = on_exit_callback
+        self._capital_tracker = capital_tracker  # EQUITY-107: Virtual balance tracker
         self._market_hours_validator = MarketHoursValidator()  # EQUITY-86: Shared utility
 
         # EQUITY-90: Exit condition evaluator (Phase 4.1) with managers (Phase 4.2/4.3)
@@ -414,6 +416,14 @@ class PositionMonitor:
         pos.is_active = False
         pos.exit_reason = ExitReason.EXTERNAL_CLOSE.value
         pos.exit_time = datetime.now()
+
+        # EQUITY-107: Release capital for externally closed positions
+        if self._capital_tracker is not None:
+            try:
+                self._capital_tracker.release_capital(osi_symbol, 0.0)
+                logger.info(f"Capital released for external close: {osi_symbol}")
+            except Exception as e:
+                logger.error(f"Capital release failed for external close {osi_symbol}: {e}")
 
         logger.warning(
             f"Position closed externally: {osi_symbol} "
@@ -1187,6 +1197,24 @@ class PositionMonitor:
                     pos.partial_exit_done = True
                     pos.contracts_remaining = pos.contracts - qty_to_close
 
+                    # EQUITY-107: Release partial capital
+                    if self._capital_tracker is not None:
+                        try:
+                            fraction = qty_to_close / pos.contracts
+                            # Estimate proceeds from current price
+                            proceeds = pos.current_price * qty_to_close * 100
+                            self._capital_tracker.release_capital_partial(
+                                exit_signal.osi_symbol, fraction, proceeds
+                            )
+                            logger.info(
+                                f"Partial capital released for {exit_signal.osi_symbol}: "
+                                f"fraction={fraction:.2f}, proceeds=${proceeds:.2f}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Partial capital release failed for {exit_signal.osi_symbol}: {e}"
+                            )
+
                     logger.info(
                         f"Partial exit executed: {pos.signal_key} ({exit_signal.osi_symbol}) - "
                         f"Closed {qty_to_close}, remaining {pos.contracts_remaining}"
@@ -1211,6 +1239,25 @@ class PositionMonitor:
                             )
 
                     pos.realized_pnl = pos.unrealized_pnl
+
+                    # EQUITY-107: Release capital in virtual balance tracker
+                    if self._capital_tracker is not None:
+                        try:
+                            # Use actual fill price for proceeds, fallback to current_price
+                            exit_px = pos.exit_price or pos.current_price
+                            proceeds = exit_px * pos.contracts * 100
+                            self._capital_tracker.release_capital(
+                                exit_signal.osi_symbol, proceeds
+                            )
+                            logger.info(
+                                f"Capital released for {exit_signal.osi_symbol}: "
+                                f"proceeds=${proceeds:.2f}, "
+                                f"available=${self._capital_tracker.available_capital:.2f}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Capital release failed for {exit_signal.osi_symbol}: {e}"
+                            )
 
                     logger.info(
                         f"Position closed: {pos.signal_key} ({exit_signal.osi_symbol}) - "

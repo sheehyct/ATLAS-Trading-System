@@ -118,6 +118,7 @@ class SignalDaemon:
         self.alerters: List[BaseAlerter] = []
         self.executor: Optional[SignalExecutor] = executor
         self.position_monitor: Optional[PositionMonitor] = position_monitor
+        self.capital_tracker = None  # EQUITY-107: Virtual balance tracker
         self.entry_monitor: Optional[EntryMonitor] = None
 
         # Daemon state
@@ -137,6 +138,7 @@ class SignalDaemon:
         self._setup_filter_manager()  # EQUITY-87: Facade pattern
         self._setup_stale_validator()  # EQUITY-89: Facade pattern
         self._setup_executor()
+        self._setup_capital_tracker()  # EQUITY-107: After executor, before coordinator
         self._setup_execution_coordinator()  # EQUITY-88: Facade pattern
         self._setup_position_monitor()
         self._setup_entry_monitor()
@@ -278,6 +280,40 @@ class SignalDaemon:
             logger.error("Failed to connect executor to Alpaca - execution disabled")
             self.executor = None
 
+    def _setup_capital_tracker(self) -> None:
+        """Initialize virtual balance tracker if enabled (Session EQUITY-107)."""
+        if not hasattr(self.config, 'capital') or not self.config.capital.enabled:
+            logger.info("Capital tracking disabled")
+            return
+
+        try:
+            from strat.signal_automation.capital_tracker import VirtualBalanceTracker
+
+            self.capital_tracker = VirtualBalanceTracker(
+                virtual_capital=self.config.capital.virtual_capital,
+                sizing_mode=self.config.capital.sizing_mode,
+                fixed_dollar_amount=self.config.capital.fixed_dollar_amount,
+                pct_of_capital=self.config.capital.pct_of_capital,
+                max_portfolio_heat=self.config.capital.max_portfolio_heat,
+                settlement_days=self.config.capital.settlement_days,
+                state_file=self.config.capital.state_file,
+            )
+            self.capital_tracker.load()
+
+            # Wire into executor if available
+            if self.executor is not None:
+                self.executor._capital_tracker = self.capital_tracker
+
+            logger.info(
+                f"Capital tracker initialized: "
+                f"virtual=${self.capital_tracker._virtual_capital:.2f}, "
+                f"available=${self.capital_tracker.available_capital:.2f}, "
+                f"mode={self.config.capital.sizing_mode}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize capital tracker: {e}")
+            self.capital_tracker = None
+
     def _setup_position_monitor(self) -> None:
         """Initialize position monitor if execution is enabled (Session 83K-49)."""
         if not self.config.monitoring.enabled:
@@ -309,6 +345,7 @@ class SignalDaemon:
             trading_client=self.executor._trading_client,
             signal_store=self.signal_store,
             on_exit_callback=self._on_position_exit,
+            capital_tracker=self.capital_tracker,  # EQUITY-107
         )
 
         logger.info("Position monitor initialized")
@@ -1083,6 +1120,10 @@ class SignalDaemon:
             monitor_stats = self.position_monitor.get_stats()
             status['monitoring'] = monitor_stats
 
+        # Add capital tracking status (EQUITY-107)
+        if self.capital_tracker is not None:
+            status['capital'] = self.capital_tracker.get_summary()
+
         # Log health check
         for alerter in self.alerters:
             if isinstance(alerter, LoggingAlerter):
@@ -1178,6 +1219,10 @@ class SignalDaemon:
                     'unrealized_pct': pos.unrealized_pct,
                 }
                 audit_data['open_positions'].append(pos_summary)
+
+        # EQUITY-107: Add capital tracking summary to audit
+        if self.capital_tracker is not None:
+            audit_data['capital'] = self.capital_tracker.get_summary()
 
         # Check for anomalies
         # Anomaly 1: Trades with unexpected exit reasons
@@ -1379,6 +1424,14 @@ class SignalDaemon:
         and exits them immediately. This is a safety net for positions that
         escaped the EOD exit window.
         """
+        # EQUITY-107: Settle pending capital at market open
+        if self.capital_tracker is not None:
+            try:
+                self.capital_tracker.settle_pending()
+                logger.info("Capital settlements processed at market open")
+            except Exception as e:
+                logger.error(f"Capital settlement error: {e}")
+
         # EQUITY-105: Clear PDT blocked set for new trading day
         if self._pdt_blocked_symbols:
             logger.info(

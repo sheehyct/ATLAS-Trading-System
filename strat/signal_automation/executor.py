@@ -160,6 +160,10 @@ class ExecutorConfig:
     # Persistence (Session 83K-50)
     persistence_path: str = 'data/executions'  # Directory for execution data
 
+    # Session EQUITY-108: Timeframe entry limits
+    # -1 = unlimited, 0 = no 1H trades, 1+ = max 1H entries per trading day
+    max_hourly_entries_per_day: int = -1
+
 
 class SignalExecutor:
     """
@@ -181,6 +185,7 @@ class SignalExecutor:
         config: Optional[ExecutorConfig] = None,
         trading_client: Optional[AlpacaTradingClient] = None,
         options_executor: Optional[OptionsExecutor] = None,
+        capital_tracker=None,
     ):
         """
         Initialize signal executor.
@@ -193,6 +198,7 @@ class SignalExecutor:
         self.config = config or ExecutorConfig()
         self._trading_client = trading_client
         self._options_executor = options_executor
+        self._capital_tracker = capital_tracker  # Session EQUITY-107
 
         # Persistence setup (Session 83K-50)
         self._persistence_path = Path(self.config.persistence_path)
@@ -415,6 +421,17 @@ class SignalExecutor:
             self._save()  # Persist to disk
             return result
 
+        # EQUITY-108: Check hourly daily entry limit
+        if not self._check_hourly_daily_limit(signal):
+            result = ExecutionResult(
+                signal_key=signal_key,
+                state=ExecutionState.SKIPPED,
+                error=f"1H daily limit reached ({self.config.max_hourly_entries_per_day}/day)"
+            )
+            self._executions[signal_key] = result
+            self._save()
+            return result
+
         try:
             # Get underlying price if not provided
             if underlying_price is None:
@@ -491,6 +508,19 @@ class SignalExecutor:
             self._executions[signal_key] = result
             self._save()  # Persist to disk
 
+            # EQUITY-107: Reserve capital in virtual balance tracker
+            if self._capital_tracker is not None:
+                per_share = option_price or (underlying_price * 0.03)
+                actual_cost = per_share * contracts * 100
+                try:
+                    self._capital_tracker.reserve_capital(contract.osi_symbol, actual_cost)
+                    logger.info(
+                        f"Capital reserved: ${actual_cost:.2f} for {contract.osi_symbol} "
+                        f"(available: ${self._capital_tracker.available_capital:.2f})"
+                    )
+                except Exception as e:
+                    logger.error(f"Capital reservation failed for {contract.osi_symbol}: {e}")
+
             # Session DB-2: Save trade metadata for pattern persistence
             self._save_trade_metadata(contract.osi_symbol, signal, underlying_price)
 
@@ -559,10 +589,62 @@ class SignalExecutor:
         """Check if we can open another position."""
         try:
             positions = self._trading_client.list_option_positions()
-            return len(positions) < self.config.max_concurrent_positions
+            if len(positions) >= self.config.max_concurrent_positions:
+                return False
         except Exception as e:
             logger.warning(f"Error checking positions: {e}")
             return False
+
+        # EQUITY-107: Capital tracker gate
+        if self._capital_tracker is not None:
+            budget = self._capital_tracker.get_trade_budget()
+            if not self._capital_tracker.can_open_trade(budget):
+                logger.info(
+                    f"Capital tracker rejected trade: budget=${budget:.2f}, "
+                    f"available=${self._capital_tracker.available_capital:.2f}"
+                )
+                return False
+
+        return True
+
+    def _check_hourly_daily_limit(self, signal: StoredSignal) -> bool:
+        """Check if a 1H signal is allowed based on daily entry limit.
+
+        Returns True if allowed, False if blocked.
+        """
+        limit = self.config.max_hourly_entries_per_day
+        if limit < 0:
+            return True  # unlimited
+
+        if signal.timeframe not in ('1H', '60min', '60m'):
+            return True  # only applies to hourly
+
+        if limit == 0:
+            return False  # hourly disabled entirely
+
+        # Count today's successful 1H entries from execution history
+        today = datetime.now().strftime('%Y-%m-%d')
+        count = 0
+        for result in self._executions.values():
+            if result.state not in (
+                ExecutionState.ORDER_SUBMITTED,
+                ExecutionState.ORDER_FILLED,
+                ExecutionState.MONITORING,
+            ):
+                continue
+            if result.timestamp.strftime('%Y-%m-%d') != today:
+                continue
+            # Check timeframe from signal_key (format: symbol_timeframe_pattern_timestamp)
+            parts = result.signal_key.split('_')
+            if len(parts) >= 2 and parts[1] in ('1H', '60min', '60m'):
+                count += 1
+
+        if count >= limit:
+            logger.info(
+                "1H daily limit reached: %d/%d entries today", count, limit
+            )
+            return False
+        return True
 
     def _get_underlying_price(self, symbol: str) -> Optional[float]:
         """
@@ -676,9 +758,15 @@ class SignalExecutor:
         # Estimate premium (rough: 3-5% of underlying for ATM)
         estimated_premium = underlying_price * 0.03
 
+        # EQUITY-107: Use capital tracker budget if available
+        if self._capital_tracker is not None:
+            max_capital = self._capital_tracker.get_trade_budget(signal)
+        else:
+            max_capital = self.config.max_capital_per_trade
+
         # Calculate max contracts
         max_contracts = int(
-            self.config.max_capital_per_trade / (estimated_premium * 100)
+            max_capital / (estimated_premium * 100)
         )
 
         base_contracts = max(1, min(max_contracts, 5))  # 1-5 contracts

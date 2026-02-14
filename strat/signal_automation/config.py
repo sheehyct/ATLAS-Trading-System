@@ -270,6 +270,10 @@ class ExecutionConfig:
     use_limit_orders: bool = True       # Use limit vs market orders
     limit_price_buffer: float = 0.02    # Buffer above ask for limits
 
+    # Session EQUITY-108: Timeframe entry limits
+    # -1 = unlimited, 0 = no 1H trades, 1+ = max 1H entries per trading day
+    max_hourly_entries_per_day: int = -1
+
     # Session EQUITY-49: TFC Re-evaluation at Entry
     # TFC can change between pattern detection and entry trigger (hours/days later).
     # Re-evaluate TFC at entry time and optionally block if alignment degraded.
@@ -278,6 +282,19 @@ class ExecutionConfig:
     tfc_reeval_min_strength: int = 3          # Block entry if TFC strength drops below this
     tfc_reeval_block_on_flip: bool = True     # Block entry if TFC direction flipped
     tfc_reeval_log_always: bool = True        # Log TFC comparison even when not blocking
+
+
+@dataclass
+class CapitalConfig:
+    """Virtual balance and position sizing - Session EQUITY-107."""
+    enabled: bool = False                    # Off by default
+    virtual_capital: float = 3000.0          # Simulated cash account size
+    sizing_mode: str = 'fixed_dollar'        # 'fixed_dollar' or 'pct_capital'
+    fixed_dollar_amount: float = 300.0       # For fixed_dollar mode
+    pct_of_capital: float = 0.10             # For pct_capital mode (10%)
+    max_portfolio_heat: float = 0.08         # 8% max total risk
+    settlement_days: int = 1                 # T+1 for options in cash account
+    state_file: str = 'data/executions/capital_state.json'
 
 
 @dataclass
@@ -352,6 +369,7 @@ class SignalAutomationConfig:
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     alerts: AlertConfig = field(default_factory=AlertConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    capital: CapitalConfig = field(default_factory=CapitalConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
     ticker_selection: TickerSelectionConfig = field(default_factory=TickerSelectionConfig)
@@ -428,6 +446,22 @@ class SignalAutomationConfig:
             execution_config.max_capital_per_trade = float(max_capital)
         if max_positions := os.environ.get('SIGNAL_MAX_CONCURRENT_POSITIONS'):
             execution_config.max_concurrent_positions = int(max_positions)
+        if hourly_limit := os.environ.get('MAX_HOURLY_ENTRIES_PER_DAY'):
+            execution_config.max_hourly_entries_per_day = int(hourly_limit)
+
+        # Capital tracking configuration (Session EQUITY-107)
+        capital_config = CapitalConfig()
+        capital_config.enabled = os.environ.get(
+            'CAPITAL_TRACKING_ENABLED', 'false'
+        ).lower() == 'true'
+        if virtual_cap := os.environ.get('VIRTUAL_CAPITAL'):
+            capital_config.virtual_capital = float(virtual_cap)
+        if sizing_mode := os.environ.get('SIZING_MODE'):
+            capital_config.sizing_mode = sizing_mode
+        if fixed_dollar := os.environ.get('FIXED_DOLLAR_AMOUNT'):
+            capital_config.fixed_dollar_amount = float(fixed_dollar)
+        if max_heat := os.environ.get('MAX_PORTFOLIO_HEAT'):
+            capital_config.max_portfolio_heat = float(max_heat)
 
         # Monitoring configuration (Session 83K-49)
         monitoring_config = MonitoringConfig()
@@ -466,6 +500,7 @@ class SignalAutomationConfig:
             schedule=schedule_config,
             alerts=alert_config,
             execution=execution_config,
+            capital=capital_config,
             monitoring=monitoring_config,
             api=api_config,
             ticker_selection=ticker_selection_config,
@@ -524,5 +559,16 @@ class SignalAutomationConfig:
                 issues.append('Monitoring max_loss_pct must be between 0 and 1')
             if not (0 < self.monitoring.max_profit_pct <= 10.0):
                 issues.append('Monitoring max_profit_pct must be between 0 and 10')
+
+        # Check capital configuration (Session EQUITY-107)
+        if self.capital.enabled:
+            if self.capital.virtual_capital <= 0:
+                issues.append('Capital virtual_capital must be positive')
+            if self.capital.sizing_mode not in ('fixed_dollar', 'pct_capital'):
+                issues.append(f'Invalid sizing_mode: {self.capital.sizing_mode}')
+            if self.capital.fixed_dollar_amount <= 0:
+                issues.append('Capital fixed_dollar_amount must be positive')
+            if not (0 < self.capital.pct_of_capital <= 1.0):
+                issues.append('Capital pct_of_capital must be between 0 and 1')
 
         return issues
