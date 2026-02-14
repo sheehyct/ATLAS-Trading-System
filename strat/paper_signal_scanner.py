@@ -544,34 +544,39 @@ class PaperSignalScanner:
         """Fetch current VIX level (uses cache if available)."""
         if self._vix_cache is not None:
             return self._vix_cache
+
+        result = 0.0
         try:
             import yfinance as yf
             vix = yf.download('^VIX', period='1d', progress=False)
             if not vix.empty:
-                # Handle both flat columns and MultiIndex columns from yfinance
-                if 'Close' in vix.columns:
-                    close_val = vix['Close'].iloc[-1]
-                elif ('Close', '^VIX') in vix.columns:
-                    close_val = vix[('Close', '^VIX')].iloc[-1]
-                else:
-                    # Fallback: get first column that contains 'Close'
-                    close_cols = [c for c in vix.columns if 'Close' in str(c)]
-                    if close_cols:
-                        close_val = vix[close_cols[0]].iloc[-1]
-                    else:
-                        self._vix_cache = 0.0
-                        return 0.0
-                # Ensure we return a scalar float
-                if hasattr(close_val, 'item'):
-                    result = float(close_val.item())
-                else:
-                    result = float(close_val)
-                self._vix_cache = result
-                return result
+                result = self._extract_vix_close(vix)
         except Exception as e:
             warnings.warn(f"Failed to fetch VIX: {e}")
-        self._vix_cache = 0.0
-        return 0.0
+
+        self._vix_cache = result
+        return result
+
+    @staticmethod
+    def _extract_vix_close(vix_df: pd.DataFrame) -> float:
+        """Extract Close value from yfinance VIX DataFrame.
+
+        Handles both flat columns and MultiIndex columns that yfinance
+        may return depending on version.
+        """
+        if 'Close' in vix_df.columns:
+            close_val = vix_df['Close'].iloc[-1]
+        elif ('Close', '^VIX') in vix_df.columns:
+            close_val = vix_df[('Close', '^VIX')].iloc[-1]
+        else:
+            close_cols = [c for c in vix_df.columns if 'Close' in str(c)]
+            if not close_cols:
+                return 0.0
+            close_val = vix_df[close_cols[0]].iloc[-1]
+
+        if hasattr(close_val, 'item'):
+            return float(close_val.item())
+        return float(close_val)
 
     def _calculate_atr(self, df: pd.DataFrame, period: int = 14) -> float:
         """Calculate ATR from OHLC data."""

@@ -7,6 +7,7 @@ Scores 0-100 with configurable weights across four dimensions:
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
@@ -183,12 +184,11 @@ class CandidateScorer:
 
     @staticmethod
     def _base_pattern(pattern_type: str) -> str:
-        """Strip direction suffix to get base pattern name."""
-        # "3-1-2U" -> "3-1-2", "2D-2U" -> "2-2", etc.
-        import re
-        # Remove trailing U/D from each segment
-        cleaned = re.sub(r'(\d)[UD]', r'\1', pattern_type)
-        return cleaned
+        """Strip direction suffix to get base pattern name.
+
+        Examples: "3-1-2U" -> "3-1-2", "2D-2U" -> "2-2"
+        """
+        return re.sub(r'(\d)[UD]', r'\1', pattern_type)
 
     @staticmethod
     def _is_continuation(pattern_type: str) -> bool:
@@ -197,10 +197,10 @@ class CandidateScorer:
         Continuations are NOT typically traded in STRAT methodology.
         Only reversals (direction change, e.g., 2D-2U, 2U-2D) create new entries.
         """
-        parts = pattern_type.replace('-', ' ').split()
-        directions = [p[-1] for p in parts if p.endswith(('U', 'D')) and len(p) >= 2]
+        segments = pattern_type.split('-')
+        directions = [s[-1] for s in segments if s.endswith(('U', 'D')) and len(s) >= 2]
         if len(directions) >= 2:
-            return len(set(directions)) == 1  # All same direction
+            return len(set(directions)) == 1
         return False
 
     @staticmethod
