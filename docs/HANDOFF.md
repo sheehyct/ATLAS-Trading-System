@@ -1,9 +1,67 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 12, 2026 (Session EQUITY-106)
+**Last Updated:** February 14, 2026 (Session EQUITY-107)
 **Current Branch:** `main`
-**Phase:** Bug Fixes and System Hardening
-**Status:** EQUITY-106 COMPLETE - Paper account reset to $100K, 3 bugs fixed and deployed, silent exits root cause found and fixed
+**Phase:** Dynamic Ticker Selection + Position Sizing
+**Status:** EQUITY-107 COMPLETE - Ticker selection reviewed and optimized, position sizing in progress (uncommitted)
+
+---
+
+## Session EQUITY-107: Ticker Selection Review + Optimization (COMPLETE)
+
+**Date:** February 14, 2026
+**Environment:** Claude Code (Opus 4.6) - two parallel terminals
+**Status:** COMPLETE - 5 ticker selection fixes committed, position sizing work in progress (parallel terminal, uncommitted)
+
+### What Was Accomplished
+
+1. **Claude Desktop Spec Review (1,276 lines)**
+   - Reviewed `ATLAS_TICKER_SELECTION_AGENT_TEAM.md` written by Claude Desktop
+   - Identified 14 issues: broken MCP scanner dependency, pattern naming violations ("2-2" instead of "2D-2U"), no TFC-pattern direction alignment, fabricated confidence field, Unicode violations
+   - Wrote revised architecture plan (`curious-beaming-dawn.md`) recommending integrated module over separate repo
+
+2. **Ticker Selection Pipeline: 5 Bug Fixes**
+   - Fix 1 (CRITICAL): VIX caching + ThreadPoolExecutor parallel scanning (~6x speedup, 28min -> ~5min)
+   - Fix 2: Unicode arrows replaced with ASCII `[CALL]`/`[PUT]` (CLAUDE.md compliance)
+   - Fix 3: Direction-aware proximity scoring (PUTs now handled correctly)
+   - Fix 4: Continuation pattern detection (2U-2U/2D-2D score 15 instead of 70)
+   - Fix 5: Targeted regex `(\d)[UD]` instead of `[UD]` for base pattern extraction
+
+3. **Code Simplification**
+   - VIX caching: 4 cache-write sites consolidated to 1, extracted `_extract_vix_close()` helper
+   - Scorer: `import re` moved to module level, `_is_continuation` simplified, docstrings consolidated
+
+4. **Position Sizing (Parallel Terminal, UNCOMMITTED)**
+   - `capital_tracker.py` created, executor/position_monitor/daemon/config modified
+   - Changes in working tree awaiting review in EQUITY-108
+
+### Key Decisions
+
+- **Integrated module over separate repo**: Reuses 5,939 lines of validated pattern detection code instead of depending on broken MCP scanner
+- **Algo Trader Plus**: 10K req/min removes rate limiting concerns entirely
+- **candidates.json bridge**: Daemon reads file every scan cycle, no restart needed
+- **Continuation patterns**: Scored at 15 (effectively filtered by ranking) since STRAT methodology does not trade continuations
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/paper_signal_scanner.py` | VIX caching (`prefetch_vix()`, `_vix_cache`, `_extract_vix_close()`) |
+| `strat/ticker_selection/config.py` | Added `max_workers` field |
+| `strat/ticker_selection/pipeline.py` | ThreadPoolExecutor parallel scan, VIX prefetch, ASCII Discord |
+| `strat/ticker_selection/scorer.py` | Direction-aware proximity, continuation detection, targeted regex |
+
+### Commits
+
+- `84620f2` - fix: optimize ticker selection pipeline and fix scoring bugs
+- `89f753a` - refactor: simplify VIX caching and scorer code
+
+### MCP Scanner Status
+
+- Railway-deployed STRAT Stock Scanner MCP returning empty/error for all endpoints
+- Alpaca API keys were rotated (EQUITY-106 paper account reset), Railway env vars updated by user mid-session
+- Scanner still non-functional after key update -- likely needs redeploy or has deeper code issues
+- Not blocking: ticker selection pipeline uses Alpaca directly, not the MCP scanner
 
 ---
 
