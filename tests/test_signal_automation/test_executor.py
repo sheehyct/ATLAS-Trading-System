@@ -1355,3 +1355,153 @@ class TestErrorHandling:
         can_open = executor._can_open_position()
 
         assert can_open is False
+
+
+# =============================================================================
+# TEST HOURLY DAILY LIMIT (Session EQUITY-108)
+# =============================================================================
+
+
+class TestHourlyDailyLimit:
+    """Tests for SignalExecutor._check_hourly_daily_limit()."""
+
+    def _make_1h_signal(self, key_suffix='20241206_1000'):
+        """Helper to create a 1H signal."""
+        return StoredSignal(
+            signal_key=f'SPY_1H_2-1-2U_{key_suffix}',
+            pattern_type='2-1-2U',
+            direction='CALL',
+            symbol='SPY',
+            timeframe='1H',
+            detected_time=datetime.now(),
+            entry_trigger=600.0,
+            stop_price=595.0,
+            target_price=610.0,
+            magnitude_pct=1.5,
+            risk_reward=1.7,
+            status=SignalStatus.DETECTED.value,
+            signal_type=SignalType.COMPLETED.value,
+        )
+
+    def _make_1d_signal(self, key_suffix='20241206'):
+        """Helper to create a 1D signal."""
+        return StoredSignal(
+            signal_key=f'SPY_1D_2-1-2U_{key_suffix}',
+            pattern_type='2-1-2U',
+            direction='CALL',
+            symbol='SPY',
+            timeframe='1D',
+            detected_time=datetime.now(),
+            entry_trigger=600.0,
+            stop_price=595.0,
+            target_price=610.0,
+            magnitude_pct=1.5,
+            risk_reward=1.7,
+            status=SignalStatus.DETECTED.value,
+            signal_type=SignalType.COMPLETED.value,
+        )
+
+    def test_unlimited_allows_all(self, temp_data_dir, mock_trading_client):
+        """limit=-1 allows unlimited 1H entries."""
+        config = ExecutorConfig(
+            persistence_path=temp_data_dir,
+            max_hourly_entries_per_day=-1,
+        )
+        executor = SignalExecutor(config=config, trading_client=mock_trading_client)
+        assert executor._check_hourly_daily_limit(self._make_1h_signal()) is True
+
+    def test_zero_blocks_all_hourly(self, temp_data_dir, mock_trading_client):
+        """limit=0 blocks all 1H signals."""
+        config = ExecutorConfig(
+            persistence_path=temp_data_dir,
+            max_hourly_entries_per_day=0,
+        )
+        executor = SignalExecutor(config=config, trading_client=mock_trading_client)
+        assert executor._check_hourly_daily_limit(self._make_1h_signal()) is False
+
+    def test_zero_allows_non_hourly(self, temp_data_dir, mock_trading_client):
+        """limit=0 still allows 1D signals."""
+        config = ExecutorConfig(
+            persistence_path=temp_data_dir,
+            max_hourly_entries_per_day=0,
+        )
+        executor = SignalExecutor(config=config, trading_client=mock_trading_client)
+        assert executor._check_hourly_daily_limit(self._make_1d_signal()) is True
+
+    def test_limit_1_allows_first(self, temp_data_dir, mock_trading_client):
+        """limit=1 allows the first 1H entry of the day."""
+        config = ExecutorConfig(
+            persistence_path=temp_data_dir,
+            max_hourly_entries_per_day=1,
+        )
+        executor = SignalExecutor(config=config, trading_client=mock_trading_client)
+        assert executor._check_hourly_daily_limit(self._make_1h_signal()) is True
+
+    def test_limit_1_blocks_second(self, temp_data_dir, mock_trading_client):
+        """limit=1 blocks the second 1H entry of the day."""
+        config = ExecutorConfig(
+            persistence_path=temp_data_dir,
+            max_hourly_entries_per_day=1,
+        )
+        executor = SignalExecutor(config=config, trading_client=mock_trading_client)
+
+        # Simulate one 1H entry already executed today
+        executor._executions['SPY_1H_2-1-2U_earlier'] = ExecutionResult(
+            signal_key='SPY_1H_2-1-2U_earlier',
+            state=ExecutionState.ORDER_SUBMITTED,
+            timestamp=datetime.now(),
+        )
+
+        assert executor._check_hourly_daily_limit(self._make_1h_signal()) is False
+
+    def test_non_hourly_always_allowed(self, temp_data_dir, mock_trading_client):
+        """1D signals are never blocked by hourly limit."""
+        config = ExecutorConfig(
+            persistence_path=temp_data_dir,
+            max_hourly_entries_per_day=1,
+        )
+        executor = SignalExecutor(config=config, trading_client=mock_trading_client)
+
+        # Even with a 1H entry already today
+        executor._executions['SPY_1H_2-1-2U_earlier'] = ExecutionResult(
+            signal_key='SPY_1H_2-1-2U_earlier',
+            state=ExecutionState.ORDER_SUBMITTED,
+            timestamp=datetime.now(),
+        )
+
+        assert executor._check_hourly_daily_limit(self._make_1d_signal()) is True
+
+    def test_failed_executions_dont_count(self, temp_data_dir, mock_trading_client):
+        """Failed/skipped executions don't count toward limit."""
+        config = ExecutorConfig(
+            persistence_path=temp_data_dir,
+            max_hourly_entries_per_day=1,
+        )
+        executor = SignalExecutor(config=config, trading_client=mock_trading_client)
+
+        # Add a failed 1H execution today
+        executor._executions['SPY_1H_2-1-2U_failed'] = ExecutionResult(
+            signal_key='SPY_1H_2-1-2U_failed',
+            state=ExecutionState.FAILED,
+            timestamp=datetime.now(),
+        )
+
+        # Should still allow because failure doesn't count
+        assert executor._check_hourly_daily_limit(self._make_1h_signal()) is True
+
+    def test_yesterdays_entries_dont_count(self, temp_data_dir, mock_trading_client):
+        """Yesterday's entries don't count toward today's limit."""
+        config = ExecutorConfig(
+            persistence_path=temp_data_dir,
+            max_hourly_entries_per_day=1,
+        )
+        executor = SignalExecutor(config=config, trading_client=mock_trading_client)
+
+        # Add a 1H execution from yesterday
+        executor._executions['SPY_1H_2-1-2U_yesterday'] = ExecutionResult(
+            signal_key='SPY_1H_2-1-2U_yesterday',
+            state=ExecutionState.ORDER_SUBMITTED,
+            timestamp=datetime(2020, 1, 1, 10, 0),  # far in the past
+        )
+
+        assert executor._check_hourly_daily_limit(self._make_1h_signal()) is True
