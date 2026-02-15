@@ -1,9 +1,59 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 14, 2026 (Session EQUITY-108)
+**Last Updated:** February 15, 2026 (Session EQUITY-109)
 **Current Branch:** `main`
-**Phase:** Position Sizing + Timeframe Limits
-**Status:** EQUITY-108 COMPLETE - Position sizing committed, hourly daily limit added, VPS deploy pending manual SSH
+**Phase:** Finviz Enrichment + Synthetic Testing
+**Status:** EQUITY-109 COMPLETE - Finviz enrichment integrated, synthetic candidate generator with daemon safety guard
+
+---
+
+## Session EQUITY-109: Finviz Enrichment + Synthetic Candidate Generator (COMPLETE)
+
+**Date:** February 15, 2026
+**Environment:** Claude Code (Opus 4.6)
+**Status:** COMPLETE - Finviz enrichment in pipeline, synthetic test generator, daemon safety guard
+
+### What Was Accomplished
+
+1. **Finviz Enrichment Module** (`strat/ticker_selection/enrichment.py`)
+   - `FinvizEnricher` class scrapes sector, industry, earnings date, analyst recommendation, target price, news headlines
+   - File-based JSON cache with 6-hour TTL in `data/finviz_cache/`
+   - Parallel fetching via ThreadPoolExecutor (configurable workers)
+   - 3-layer error handling: module-level, batch-level, per-symbol (pipeline never blocks)
+   - 27 new tests covering dataclass, recommendation mapping, earnings parsing, caching, integration
+
+2. **Pipeline Integration** (`strat/ticker_selection/pipeline.py`)
+   - Enrichment runs AFTER scoring, BEFORE output (informational only, no scoring impact)
+   - `candidates.json` now includes `finviz` key per candidate
+   - Discord summary shows compact enrichment line: `_(Technology | Earn: Apr 22 AMC | Tgt: $475 | Rec: Buy)_`
+   - Config fields: `finviz_enrichment_enabled`, `finviz_cache_ttl_hours`, `finviz_max_workers`
+
+3. **Synthetic Candidate Generator** (`scripts/generate_synthetic_candidates.py`)
+   - 20-stock pool across 7 sectors with realistic patterns, TFC, price levels, Finviz data
+   - CLI flags: `--tickers`, `--count`, `--preview`, `--live-enrich`, `--write-live`
+   - Default output: `data/candidates/synthetic_candidates.json` (separate from live path)
+   - All synthetic files marked `"synthetic": true` in pipeline_stats
+
+4. **Daemon Safety Guard** (`strat/signal_automation/daemon.py`)
+   - `_load_candidates()` rejects any file with `synthetic: true` flag
+   - Prevents synthetic data from ever driving live trading, even if written to live path
+
+5. **Code Simplification** (via code-simplifier agent)
+   - Import ordering (PEP 8), Optional[Dict] type hints, descriptive variable names in generator
+   - Method reordering for definition-before-use clarity
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `pyproject.toml` | Added `finvizfinance>=0.14.0` dependency |
+| `strat/ticker_selection/enrichment.py` | NEW - FinvizEnricher + FinvizEnrichment (~190 lines) |
+| `strat/ticker_selection/pipeline.py` | Added enrichment step, enrichment_map plumbing |
+| `strat/ticker_selection/config.py` | Added 3 finviz config fields + env overrides |
+| `strat/ticker_selection/__init__.py` | Added FinvizEnricher export |
+| `strat/signal_automation/daemon.py` | Added synthetic data rejection guard |
+| `scripts/generate_synthetic_candidates.py` | NEW - Synthetic candidate generator (~230 lines) |
+| `tests/test_ticker_selection/test_enrichment.py` | NEW - 27 tests |
 
 ---
 

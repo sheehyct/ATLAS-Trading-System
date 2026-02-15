@@ -5,10 +5,10 @@ Thresholds, scoring weights, and paths. All values can be overridden
 via environment variables prefixed with ``TICKER_SEL_``.
 """
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
-import os
 
 
 @dataclass

@@ -181,6 +181,16 @@ class FinvizEnricher:
             logger.debug(f"Cache write error for {enrichment.symbol}: {e}")
 
     @staticmethod
+    def _safe_float(value) -> Optional[float]:
+        """Safe float parse, returns None on failure."""
+        if value is None:
+            return None
+        try:
+            return float(str(value).replace(',', ''))
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
     def _map_recommendation(raw) -> str:
         """Convert Finviz numeric recommendation (1.0-5.0) to text."""
         value = FinvizEnricher._safe_float(raw)
@@ -202,13 +212,3 @@ class FinvizEnricher:
         if not raw or str(raw).strip() in ('-', ''):
             return ''
         return str(raw).strip()
-
-    @staticmethod
-    def _safe_float(value) -> Optional[float]:
-        """Safe float parse, returns None on failure."""
-        if value is None:
-            return None
-        try:
-            return float(str(value).replace(',', ''))
-        except (ValueError, TypeError):
-            return None

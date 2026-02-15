@@ -244,7 +244,7 @@ class TickerSelectionPipeline:
         try:
             from strat.ticker_selection.enrichment import FinvizEnricher
         except ImportError:
-            logger.warning("finvizfinance not installed, skipping enrichment")
+            logger.warning("Enrichment module unavailable, skipping")
             return {}
 
         try:
@@ -260,7 +260,7 @@ class TickerSelectionPipeline:
             logger.warning(f"Finviz enrichment failed: {e}")
             return {}
 
-    def _build_output(self, candidates: List[ScoredCandidate], stats: Dict, enrichment_map: Dict = None) -> Dict:
+    def _build_output(self, candidates: List[ScoredCandidate], stats: Dict, enrichment_map: Optional[Dict] = None) -> Dict:
         """Build the candidates.json output dict."""
         now = datetime.now(timezone.utc).isoformat()
 
@@ -340,7 +340,7 @@ class TickerSelectionPipeline:
         self,
         candidates: List[ScoredCandidate],
         stats: Dict,
-        enrichment_map: Dict = None,
+        enrichment_map: Optional[Dict] = None,
     ) -> None:
         """Send a summary of top candidates to Discord."""
         try:

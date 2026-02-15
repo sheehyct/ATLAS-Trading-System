@@ -94,63 +94,63 @@ CANDIDATE_POOL = [
 
 def _build_candidate_entry(row, rank):
     """Build a single candidate dict matching pipeline._build_output schema."""
-    (sym, pat, dirn, tf, entry, stop, target, current,
-     tfc_sc, tfc_align, sector, industry, earn, tgt_px, recom, headlines) = row
+    (symbol, pattern, direction, timeframe, entry, stop, target, current,
+     tfc_score, tfc_alignment, sector, industry,
+     earnings, target_price, recommendation, headlines) = row
 
-    base_pat = pat.rstrip('UD').rstrip('-') if pat[-1] in 'UD' else pat
-    tfc_dir = 'bullish' if dirn == 'CALL' else 'bearish'
-    dist_pct = round(abs(entry - current) / current * 100, 2) if current else 0
-    rr = round(abs(target - entry) / abs(entry - stop), 2) if abs(entry - stop) > 0 else 0
+    base_pattern = pattern.rstrip('UD').rstrip('-') if pattern[-1] in 'UD' else pattern
+    tfc_direction = 'bullish' if direction == 'CALL' else 'bearish'
+    distance_pct = round(abs(entry - current) / current * 100, 2) if current else 0
+    risk_reward = round(abs(target - entry) / abs(entry - stop), 2) if abs(entry - stop) > 0 else 0
     atr_pct = round(abs(entry - stop) / current * 100, 2) if current else 2.5
 
-    candidate = {
-        'symbol': sym,
+    return {
+        'symbol': symbol,
         'composite_score': round(75 - (rank - 1) * 2.5, 1),
         'rank': rank,
         'pattern': {
-            'type': pat,
-            'base_type': base_pat,
+            'type': pattern,
+            'base_type': base_pattern,
             'signal_type': 'SETUP',
-            'direction': dirn,
-            'timeframe': tf,
-            'is_bidirectional': '?' in pat,
+            'direction': direction,
+            'timeframe': timeframe,
+            'is_bidirectional': '?' in pattern,
         },
         'levels': {
             'entry_trigger': entry,
             'stop_price': stop,
             'target_price': target,
             'current_price': current,
-            'distance_to_trigger_pct': dist_pct,
+            'distance_to_trigger_pct': distance_pct,
         },
         'tfc': {
-            'score': tfc_sc,
-            'alignment': tfc_align,
-            'direction': tfc_dir,
+            'score': tfc_score,
+            'alignment': tfc_alignment,
+            'direction': tfc_direction,
             'passes_flexible': True,
-            'risk_multiplier': 1.0 if tfc_sc >= 4 else 0.5,
-            'priority_rank': 1 if tfc_sc >= 4 else 2,
+            'risk_multiplier': 1.0 if tfc_score >= 4 else 0.5,
+            'priority_rank': 1 if tfc_score >= 4 else 2,
         },
         'metrics': {
             'atr_percent': atr_pct,
             'dollar_volume': 50_000_000.0,
-            'risk_reward': rr,
+            'risk_reward': risk_reward,
         },
         'scoring_breakdown': {
-            'tfc_component': min(40.0, tfc_sc * 10.0),
-            'pattern_component': 15.0 if '3-1-2' in pat else 7.5,
-            'proximity_component': max(0, 20.0 - dist_pct * 4),
+            'tfc_component': min(40.0, tfc_score * 10.0),
+            'pattern_component': 15.0 if '3-1-2' in pattern else 7.5,
+            'proximity_component': max(0, 20.0 - distance_pct * 4),
             'atr_component': 15.0 if 2.0 <= atr_pct <= 5.0 else 7.5,
         },
         'finviz': {
             'sector': sector,
             'industry': industry,
-            'earnings_date': earn,
-            'analyst_recommendation': recom,
-            'target_price': tgt_px,
+            'earnings_date': earnings,
+            'analyst_recommendation': recommendation,
+            'target_price': target_price,
             'news_headlines': headlines[:3],
         },
     }
-    return candidate
 
 
 def _live_enrich(candidates):
@@ -179,26 +179,26 @@ def _format_discord_preview(candidates):
         "",
         "**Top Candidates:**",
     ]
-    for c in candidates[:8]:
-        d = c['pattern']['direction']
-        label = '[CALL]' if d == 'CALL' else '[PUT]'
+    for candidate in candidates[:8]:
+        pat = candidate['pattern']
+        direction_label = '[CALL]' if pat['direction'] == 'CALL' else '[PUT]'
         lines.append(
-            f"{label} **{c['symbol']}** {c['pattern']['type']} "
-            f"{c['pattern']['timeframe']} "
-            f"| Score: {c['composite_score']} "
-            f"| TFC: {c['tfc']['alignment']} "
-            f"| ATR: {c['metrics']['atr_percent']}%"
+            f"{direction_label} **{candidate['symbol']}** {pat['type']} "
+            f"{pat['timeframe']} "
+            f"| Score: {candidate['composite_score']} "
+            f"| TFC: {candidate['tfc']['alignment']} "
+            f"| ATR: {candidate['metrics']['atr_percent']}%"
         )
-        fv = c.get('finviz', {})
+        finviz = candidate.get('finviz', {})
         parts = []
-        if fv.get('sector'):
-            parts.append(fv['sector'])
-        if fv.get('earnings_date'):
-            parts.append(f"Earn: {fv['earnings_date']}")
-        if fv.get('target_price') is not None:
-            parts.append(f"Tgt: ${fv['target_price']:.0f}")
-        if fv.get('analyst_recommendation'):
-            parts.append(f"Rec: {fv['analyst_recommendation']}")
+        if finviz.get('sector'):
+            parts.append(finviz['sector'])
+        if finviz.get('earnings_date'):
+            parts.append(f"Earn: {finviz['earnings_date']}")
+        if finviz.get('target_price') is not None:
+            parts.append(f"Tgt: ${finviz['target_price']:.0f}")
+        if finviz.get('analyst_recommendation'):
+            parts.append(f"Rec: {finviz['analyst_recommendation']}")
         if parts:
             lines.append(f"  _({' | '.join(parts)})_")
 
@@ -233,14 +233,14 @@ def main():
 
     # Select candidates from pool
     if args.tickers:
-        pool_map = {r[0]: r for r in CANDIDATE_POOL}
+        pool_map = {row[0]: row for row in CANDIDATE_POOL}
         selected = []
-        for t in args.tickers:
-            t = t.upper()
-            if t in pool_map:
-                selected.append(pool_map[t])
+        for ticker in args.tickers:
+            ticker = ticker.upper()
+            if ticker in pool_map:
+                selected.append(pool_map[ticker])
             else:
-                print(f"Warning: {t} not in pool, skipping "
+                print(f"Warning: {ticker} not in pool, skipping "
                       f"(available: {', '.join(pool_map.keys())})")
         if not selected:
             print("No valid tickers. Exiting.")
