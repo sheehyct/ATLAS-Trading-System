@@ -49,6 +49,11 @@ class TickerSelectionConfig:
     # Staleness: daemon ignores candidates older than this (seconds)
     stale_threshold_seconds: int = 93600  # 26 hours
 
+    # Finviz enrichment (informational only, no scoring impact)
+    finviz_enrichment_enabled: bool = True
+    finviz_cache_ttl_hours: int = 6
+    finviz_max_workers: int = 4
+
     # Alpaca account for data calls
     alpaca_account: str = 'SMALL'
 
@@ -76,5 +81,9 @@ class TickerSelectionConfig:
             cfg.max_workers = int(v)
         if v := os.environ.get('TICKER_SEL_ALPACA_ACCOUNT'):
             cfg.alpaca_account = v
+        if v := os.environ.get('TICKER_SEL_FINVIZ_ENABLED'):
+            cfg.finviz_enrichment_enabled = v.lower() in ('true', '1')
+        if v := os.environ.get('TICKER_SEL_FINVIZ_CACHE_TTL'):
+            cfg.finviz_cache_ttl_hours = int(v)
 
         return cfg

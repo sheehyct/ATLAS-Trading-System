@@ -9,9 +9,11 @@ Replaces the static 17-symbol list with dynamic universe discovery:
 
 from strat.ticker_selection.config import TickerSelectionConfig
 from strat.ticker_selection.pipeline import TickerSelectionPipeline, run_selection
+from strat.ticker_selection.enrichment import FinvizEnricher
 
 __all__ = [
     'TickerSelectionConfig',
     'TickerSelectionPipeline',
     'run_selection',
+    'FinvizEnricher',
 ]

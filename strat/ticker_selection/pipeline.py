@@ -184,13 +184,18 @@ class TickerSelectionPipeline:
             f"Pipeline complete: {len(final)} candidates in {duration:.1f}s"
         )
 
+        # Finviz enrichment (informational only)
+        enrichment_map = {}
+        if self.config.finviz_enrichment_enabled:
+            enrichment_map = self._enrich_candidates(final)
+
         # Build output
-        result = self._build_output(final, stats)
+        result = self._build_output(final, stats, enrichment_map)
 
         # Write to disk
         if not dry_run:
             self._write_candidates(result)
-            self._send_discord_summary(final, stats)
+            self._send_discord_summary(final, stats, enrichment_map)
 
         return result
 
@@ -232,7 +237,30 @@ class TickerSelectionPipeline:
             scored.append(candidate)
         return scored
 
-    def _build_output(self, candidates: List[ScoredCandidate], stats: Dict) -> Dict:
+    def _enrich_candidates(
+        self, candidates: List[ScoredCandidate]
+    ) -> Dict:
+        """Enrich candidates with Finviz data. Returns {} on any error."""
+        try:
+            from strat.ticker_selection.enrichment import FinvizEnricher
+        except ImportError:
+            logger.warning("finvizfinance not installed, skipping enrichment")
+            return {}
+
+        try:
+            symbols = list(dict.fromkeys(c.symbol for c in candidates))
+            enricher = FinvizEnricher(
+                cache_ttl=self.config.finviz_cache_ttl_hours * 3600,
+                max_workers=self.config.finviz_max_workers,
+            )
+            result = enricher.enrich_candidates(symbols)
+            logger.info(f"Finviz enrichment: {len(result)} symbols enriched")
+            return result
+        except Exception as e:
+            logger.warning(f"Finviz enrichment failed: {e}")
+            return {}
+
+    def _build_output(self, candidates: List[ScoredCandidate], stats: Dict, enrichment_map: Dict = None) -> Dict:
         """Build the candidates.json output dict."""
         now = datetime.now(timezone.utc).isoformat()
 
@@ -245,7 +273,7 @@ class TickerSelectionPipeline:
         }
 
         for c in candidates:
-            output['candidates'].append({
+            entry = {
                 'symbol': c.symbol,
                 'composite_score': c.composite_score,
                 'rank': c.rank,
@@ -283,7 +311,10 @@ class TickerSelectionPipeline:
                     'proximity_component': c.breakdown.proximity_component,
                     'atr_component': c.breakdown.atr_component,
                 },
-            })
+            }
+            if enrichment_map and c.symbol in enrichment_map:
+                entry['finviz'] = enrichment_map[c.symbol].to_dict()
+            output['candidates'].append(entry)
 
         return output
 
@@ -309,6 +340,7 @@ class TickerSelectionPipeline:
         self,
         candidates: List[ScoredCandidate],
         stats: Dict,
+        enrichment_map: Dict = None,
     ) -> None:
         """Send a summary of top candidates to Discord."""
         try:
@@ -341,6 +373,20 @@ class TickerSelectionPipeline:
                         f"| TFC: {c.tfc_alignment} "
                         f"| ATR: {c.atr_percent}%"
                     )
+                    # Append compact Finviz context if available
+                    if enrichment_map and c.symbol in enrichment_map:
+                        e = enrichment_map[c.symbol]
+                        parts = []
+                        if e.sector:
+                            parts.append(e.sector)
+                        if e.earnings_date:
+                            parts.append(f"Earn: {e.earnings_date}")
+                        if e.target_price is not None:
+                            parts.append(f"Tgt: ${e.target_price:.0f}")
+                        if e.analyst_recommendation:
+                            parts.append(f"Rec: {e.analyst_recommendation}")
+                        if parts:
+                            lines.append(f"  _({' | '.join(parts)})_")
             else:
                 lines.append("_No candidates qualified today._")
 

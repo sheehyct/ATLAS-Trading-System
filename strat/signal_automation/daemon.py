@@ -1783,6 +1783,13 @@ class SignalDaemon:
         try:
             data = json.loads(path.read_text())
 
+            # Reject synthetic data (test-only, never trade on it)
+            if data.get('pipeline_stats', {}).get('synthetic'):
+                logger.warning(
+                    "Candidates file contains synthetic data -- ignoring"
+                )
+                return None
+
             # Check freshness
             generated_at = data.get('generated_at', '')
             if generated_at:
