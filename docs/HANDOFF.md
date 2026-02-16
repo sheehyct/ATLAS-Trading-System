@@ -1,9 +1,54 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 15, 2026 (Session EQUITY-109)
+**Last Updated:** February 16, 2026 (Session EQUITY-110)
 **Current Branch:** `main`
-**Phase:** Finviz Enrichment + Synthetic Testing
-**Status:** EQUITY-109 COMPLETE - Finviz enrichment integrated, synthetic candidate generator with daemon safety guard
+**Phase:** Backtesting Pipeline Architecture
+**Status:** EQUITY-110 COMPLETE - Full backtesting module built (25 files, 3,634 lines), all 9 exit conditions ported
+
+---
+
+## Session EQUITY-110: Backtesting Pipeline Architecture (COMPLETE)
+
+**Date:** February 16, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** COMPLETE - Built strat/backtesting/ module replicating live daemon's exact behavior
+
+### What Was Accomplished
+
+- Built complete `strat/backtesting/` module (25 files, 3,634 lines) across all 6 planned phases
+- Ported all 9 exit conditions from live daemon with correct priority ordering: TARGET > STOP > DTE > MAX_LOSS > EOD > PATTERN_INVALIDATED > TRAILING_STOP > PARTIAL_EXIT > TIME_EXIT
+- Two trailing stop strategies: ATR-based (3-2 patterns) + percentage-based (all others)
+- Partial exit logic for multi-contract positions at 1.0x R:R
+- Capital simulation: virtual balance, portfolio heat, T+1 settlement (no threading/file I/O)
+- Pattern invalidation (Type 3 evolution detection)
+- EntrySimulator with gap-through detection, time gates (10:30/11:30), hourly daily limits
+- BacktestSignalGenerator wrapping detect_all_patterns() + FilterManager
+- ThetaData and Black-Scholes price providers via Protocol pattern
+- CLI entry point: `python -m strat.backtesting --symbol SPY --timeframes 1D 1W`
+- BacktestConfig.from_live_config() factory for parameter parity with live system
+- Fixed ThetaData MCP endpoint in .mcp.json (/mcp/sse -> /v3/mcp/sse)
+
+### Files Created (25 new files)
+
+- `strat/backtesting/__init__.py`, `__main__.py` - Package root
+- `strat/backtesting/config.py` - BacktestConfig dataclass (209 lines)
+- `strat/backtesting/engine.py` - BacktestEngine orchestrator (206 lines)
+- `strat/backtesting/simulation/bar_simulator.py` - Core event loop (503 lines)
+- `strat/backtesting/simulation/position_tracker.py` - SimulatedPosition + ExitReason
+- `strat/backtesting/simulation/capital_simulator.py` - Virtual capital tracker
+- `strat/backtesting/signals/signal_generator.py` - Pattern detection wrapper
+- `strat/backtesting/signals/entry_simulator.py` - Entry gate evaluation
+- `strat/backtesting/exits/exit_evaluator.py` - All 9 exit conditions (271 lines)
+- `strat/backtesting/exits/trailing_stop.py` - ATR + percentage trailing
+- `strat/backtesting/exits/partial_exit.py` - Multi-contract partial exits
+- `strat/backtesting/analytics/excursion_tracker.py` - MFE/MAE tracking
+- `strat/backtesting/analytics/trade_recorder.py` - EnrichedTradeRecord production
+- `strat/backtesting/analytics/results_formatter.py` - Summary stats + equity curve
+- `strat/backtesting/data_providers/base.py` - OptionsPriceProvider protocol
+- `strat/backtesting/data_providers/thetadata_provider.py` - ThetaData wrapper
+- `strat/backtesting/data_providers/blackscholes_provider.py` - Offline fallback
+- `strat/backtesting/runners/cli.py` - CLI entry point
+- `.mcp.json` - Fixed ThetaData v3 endpoint
 
 ---
 

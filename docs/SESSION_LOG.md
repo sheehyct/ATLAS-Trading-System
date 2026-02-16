@@ -10,6 +10,11 @@ Quick-reference for resuming sessions. Each entry includes the session name, dat
 
 <!-- New sessions are prepended below this line -->
 
+## EQUITY-110 - 2026-02-16 10:01
+- **Resume:** `claude --resume 89494982-3b40-4619-86c9-d9df33fb7665`
+- **Search:** `claude --resume "EQUITY-110"`
+- **Branch:** main
+
 ## EQUITY-109 - 2026-02-15 12:00
 - **Resume:** `claude --resume 0c1865bd-6b33-4806-9133-80f1723467c0`
 - **Search:** `claude --resume "EQUITY-109"`
