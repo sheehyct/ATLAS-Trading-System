@@ -56,6 +56,9 @@ class DiscordAlerter(BaseAlerter):
     RATE_LIMIT_WINDOW = 60
     RATE_LIMIT_MAX = 25  # Stay under limit
 
+    # Max setups to display in morning report embed
+    _MORNING_MAX_SETUPS = 8
+
     def __init__(
         self,
         webhook_url: str,
@@ -877,12 +880,12 @@ class DiscordAlerter(BaseAlerter):
         # Field 1: Top STRAT Setups
         if setups:
             lines = []
-            for c in setups[:self._morning_max_setups]:
+            for c in setups[:self._MORNING_MAX_SETUPS]:
                 pat = c.get('pattern', {})
                 lvl = c.get('levels', {})
                 tfc = c.get('tfc', {})
                 direction = pat.get('direction', '?')
-                tag = f"[{direction}]" if direction else "[?]"
+                tag = f"[{direction}]"
                 pat_type = pat.get('type', '?')
                 tf = pat.get('timeframe', '?')
                 tfc_str = tfc.get('alignment', '?')
@@ -894,8 +897,8 @@ class DiscordAlerter(BaseAlerter):
                     f"| TFC: {tfc_str} "
                     f"| E: ${entry:.2f} S: ${stop:.2f} T: ${target:.2f}"
                 )
-            if len(setups) > self._morning_max_setups:
-                lines.append(f"... +{len(setups) - self._morning_max_setups} more")
+            if len(setups) > self._MORNING_MAX_SETUPS:
+                lines.append(f"... +{len(setups) - self._MORNING_MAX_SETUPS} more")
             fields.append({
                 'name': f'STRAT Setups ({n_setups})',
                 'value': '\n'.join(lines) or 'None',
@@ -984,9 +987,6 @@ class DiscordAlerter(BaseAlerter):
             )
 
         return success
-
-    # Max setups to display in morning report embed
-    _morning_max_setups = 8
 
     def test_connection(self) -> bool:
         """

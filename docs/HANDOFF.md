@@ -1,9 +1,54 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 17, 2026 (Session EQUITY-111)
+**Last Updated:** February 17, 2026 (Session EQUITY-112)
 **Current Branch:** `main`
-**Phase:** Scanner Upgrade + TFC Enhancements
-**Status:** EQUITY-111 COMPLETE - Strat Stock Scanner upgraded to SIP feed, TFC enhancements ported
+**Phase:** Morning Report + Trade Analytics Integration
+**Status:** EQUITY-112 COMPLETE - Pre-market morning report and MFE/MAE daily audit integration
+
+---
+
+## Session EQUITY-112: Morning Report + MFE/MAE Daily Audit (COMPLETE)
+
+**Date:** February 17, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** COMPLETE - Both features implemented, tested, committed, pushed
+
+### What Was Accomplished
+
+1. **Pre-Market Morning Report (6 AM ET)**: New MorningReportGenerator coordinator runs full ticker selection pipeline at 6 AM, performs Alpaca pre-market gap analysis, shows open positions, yesterday's trade recap, and capital status. Sends as Discord embed via webhook.
+2. **MFE/MAE in Daily Audit**: Added excursion stats (avg MFE, avg MAE, exit efficiency %, losers-went-green count) to the 4:30 PM daily trade audit Discord embed. Data sourced from TradeStore via new `get_trade_store()` accessor on PositionMonitor.
+3. **Capital Status Rendering**: The daily audit was computing capital data since EQUITY-107 but never rendering it in Discord. Now displays available/deployed/heat.
+4. **MorningReportConfig**: New config dataclass with env var overrides (MORNING_REPORT_ENABLED, MORNING_REPORT_HOUR, MORNING_REPORT_MINUTE).
+5. **35 new tests**: 22 morning report tests + 13 audit excursion tests, all passing.
+
+### Key Design Decisions
+
+- Morning report runs full pipeline (not cached candidates) for freshest data
+- Gap analysis creates its own Alpaca StockHistoricalDataClient (data client, separate from daemon's TradingClient)
+- MorningReportGenerator follows coordinator pattern (like HealthMonitor) to avoid bloating daemon.py
+- Added `get_trade_store()` public method on PositionMonitor rather than reaching through private `_analytics`
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/coordinators/morning_report.py` | NEW - MorningReportGenerator coordinator (~260 lines) |
+| `strat/signal_automation/alerters/discord_alerter.py` | Added send_morning_report() + MFE/MAE and capital fields in send_daily_audit() |
+| `strat/signal_automation/daemon.py` | Morning report setup/scheduling + excursion stats method |
+| `strat/signal_automation/config.py` | MorningReportConfig dataclass + env loading |
+| `strat/signal_automation/coordinators/__init__.py` | Export MorningReportGenerator |
+| `strat/signal_automation/position_monitor.py` | get_trade_store() public accessor |
+| `tests/test_signal_automation/test_morning_report.py` | NEW - 22 tests |
+| `tests/test_signal_automation/test_audit_excursion.py` | NEW - 13 tests |
+
+### VPS Deploy Needed
+
+```bash
+ssh chris@74.48.108.233
+cd /home/chris/ATLAS-Trading-System && git pull
+echo 'MORNING_REPORT_ENABLED=true' >> .env
+sudo systemctl restart atlas-daemon
+```
 
 ---
 

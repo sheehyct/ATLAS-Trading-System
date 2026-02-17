@@ -505,10 +505,9 @@ class SignalAutomationConfig:
             api_config.port = int(api_port)
 
         # Morning report configuration (Session EQUITY-112)
-        morning_report_config = MorningReportConfig()
-        morning_report_config.enabled = os.environ.get(
-            'MORNING_REPORT_ENABLED', 'true'
-        ).lower() == 'true'
+        morning_report_config = MorningReportConfig(
+            enabled=os.environ.get('MORNING_REPORT_ENABLED', 'true').lower() == 'true',
+        )
         if mr_hour := os.environ.get('MORNING_REPORT_HOUR'):
             morning_report_config.hour = int(mr_hour)
         if mr_minute := os.environ.get('MORNING_REPORT_MINUTE'):

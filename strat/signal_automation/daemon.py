@@ -23,7 +23,7 @@ import sys
 import time
 import logging
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from threading import Event
 
@@ -1285,9 +1285,7 @@ class SignalDaemon:
             return None
 
         try:
-            from datetime import datetime as dt_cls, timedelta
-
-            start_of_today = dt_cls.combine(today, dt_cls.min.time())
+            start_of_today = datetime.combine(today, datetime.min.time())
             end_of_today = start_of_today + timedelta(days=1)
 
             trades = store.get_trades(after=start_of_today, before=end_of_today)

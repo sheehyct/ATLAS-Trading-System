@@ -237,12 +237,10 @@ class MorningReportGenerator:
 
         try:
             today = date.today()
+            yesterday = today - timedelta(days=1)
             yesterday_start = datetime.combine(
-                today - timedelta(days=1),
+                yesterday,
                 datetime.min.time(),
-            ).replace(tzinfo=timezone.utc)
-            today_start = datetime.combine(
-                today, datetime.min.time()
             ).replace(tzinfo=timezone.utc)
 
             closed = self._trading_client.get_closed_trades(
@@ -258,16 +256,16 @@ class MorningReportGenerator:
 
             for trade in closed:
                 sell_time = trade.get('sell_time_dt')
-                if sell_time and sell_time.date() >= (today - timedelta(days=1)):
-                    if sell_time.date() < today:
-                        pnl = trade.get('realized_pnl', 0)
-                        total_pnl += pnl
-                        if pnl > 0:
-                            wins += 1
-                            gross_profit += pnl
-                        elif pnl < 0:
-                            losses += 1
-                            gross_loss += abs(pnl)
+                if not sell_time or sell_time.date() != yesterday:
+                    continue
+                pnl = trade.get('realized_pnl', 0)
+                total_pnl += pnl
+                if pnl > 0:
+                    wins += 1
+                    gross_profit += pnl
+                elif pnl < 0:
+                    losses += 1
+                    gross_loss += abs(pnl)
 
             total_trades = wins + losses
             win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
