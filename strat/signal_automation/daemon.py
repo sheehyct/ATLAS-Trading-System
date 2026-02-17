@@ -120,6 +120,7 @@ class SignalDaemon:
         self.position_monitor: Optional[PositionMonitor] = position_monitor
         self.capital_tracker = None  # EQUITY-107: Virtual balance tracker
         self.entry_monitor: Optional[EntryMonitor] = None
+        self._morning_report = None  # EQUITY-112: Pre-market morning report
 
         # Daemon state
         self._start_time: Optional[datetime] = None
@@ -142,6 +143,7 @@ class SignalDaemon:
         self._setup_execution_coordinator()  # EQUITY-88: Facade pattern
         self._setup_position_monitor()
         self._setup_entry_monitor()
+        self._setup_morning_report()  # EQUITY-112: After position_monitor
 
     def _setup_alerters(self) -> None:
         """Initialize configured alerters."""
@@ -406,6 +408,35 @@ class SignalDaemon:
         )
 
         logger.info("Entry monitor initialized (1-minute polling during market hours)")
+
+    def _setup_morning_report(self) -> None:
+        """Initialize morning report generator (EQUITY-112)."""
+        if not self.config.morning_report.enabled:
+            logger.info("Morning report disabled")
+            return
+
+        try:
+            from strat.signal_automation.coordinators.morning_report import (
+                MorningReportGenerator,
+            )
+
+            # Get trading client from executor if available
+            trading_client = None
+            if self.executor and hasattr(self.executor, '_trading_client'):
+                trading_client = self.executor._trading_client
+
+            self._morning_report = MorningReportGenerator(
+                alerters=self.alerters,
+                position_monitor=self.position_monitor,
+                capital_tracker=self.capital_tracker,
+                trading_client=trading_client,
+                config=self.config.morning_report,
+            )
+
+            logger.info("Morning report generator initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize morning report: {e}")
+            self._morning_report = None
 
     def _on_entry_triggered(self, event: TriggerEvent) -> None:
         """
@@ -1224,10 +1255,10 @@ class SignalDaemon:
         if self.capital_tracker is not None:
             audit_data['capital'] = self.capital_tracker.get_summary()
 
-        # Check for anomalies
-        # Anomaly 1: Trades with unexpected exit reasons
-        # Anomaly 2: Large losses (> $100)
-        # These can be expanded in future sessions
+        # EQUITY-112: Add MFE/MAE excursion stats from TradeStore
+        excursion_stats = self._get_today_excursion_stats(today)
+        if excursion_stats:
+            audit_data['excursion'] = excursion_stats
 
         logger.info(
             f"Daily audit generated: {audit_data['trades_today']} trades, "
@@ -1236,6 +1267,71 @@ class SignalDaemon:
         )
 
         return audit_data
+
+    def _get_today_excursion_stats(self, today) -> Optional[Dict[str, Any]]:
+        """
+        EQUITY-112: Query TradeStore for today's closed trades and compute
+        aggregate MFE/MAE excursion statistics.
+
+        Returns:
+            Dict with avg_mfe, avg_mae, avg_exit_efficiency, losers_went_green
+            or None if no data available.
+        """
+        if self.position_monitor is None:
+            return None
+
+        store = self.position_monitor.get_trade_store()
+        if store is None:
+            return None
+
+        try:
+            from datetime import datetime as dt_cls, timedelta
+
+            start_of_today = dt_cls.combine(today, dt_cls.min.time())
+            end_of_today = start_of_today + timedelta(days=1)
+
+            trades = store.get_trades(after=start_of_today, before=end_of_today)
+            if not trades:
+                return None
+
+            # Filter to trades with excursion data
+            with_excursion = [
+                t for t in trades
+                if t.excursion and t.excursion.mfe_pnl is not None
+            ]
+            if not with_excursion:
+                return None
+
+            total_mfe = sum(t.excursion.mfe_pnl for t in with_excursion)
+            total_mae = sum(t.excursion.mae_pnl for t in with_excursion)
+            n = len(with_excursion)
+
+            # Exit efficiency only for winners (mfe > 0)
+            efficiencies = [
+                t.excursion.exit_efficiency
+                for t in with_excursion
+                if t.excursion.mfe_pnl > 0 and t.excursion.exit_efficiency is not None
+            ]
+            avg_efficiency = (
+                sum(efficiencies) / len(efficiencies) if efficiencies else 0.0
+            )
+
+            losers = [t for t in with_excursion if t.pnl < 0]
+            losers_went_green = sum(
+                1 for t in losers if t.excursion.went_green_before_loss
+            )
+
+            return {
+                'trades_with_excursion': n,
+                'avg_mfe': total_mfe / n,
+                'avg_mae': total_mae / n,
+                'avg_exit_efficiency': avg_efficiency,
+                'losers_went_green': losers_went_green,
+                'total_losers': len(losers),
+            }
+        except Exception as e:
+            logger.warning(f"Failed to compute excursion stats: {e}")
+            return None
 
     def _run_daily_audit(self) -> None:
         """
@@ -1258,6 +1354,21 @@ class SignalDaemon:
             logger.info("Daily audit completed and sent")
         except Exception as e:
             logger.error(f"Failed to run daily audit: {e}")
+            self._error_count += 1
+
+    def _run_morning_report(self) -> None:
+        """
+        EQUITY-112: Run pre-market morning report and send to Discord.
+
+        Called by scheduler at configured time (default 6:00 AM ET).
+        """
+        if self._morning_report is None:
+            return
+
+        try:
+            self._morning_report.run()
+        except Exception as e:
+            logger.error(f"Morning report failed: {e}")
             self._error_count += 1
 
     def _run_eod_exit_job(self) -> None:
@@ -1593,6 +1704,32 @@ class SignalDaemon:
             logger.info("Daily trade audit scheduled for 4:30 PM ET")
         except Exception as e:
             logger.warning(f"Failed to schedule daily audit: {e}")
+
+        # EQUITY-112: Pre-market morning report
+        if self._morning_report is not None:
+            try:
+                from apscheduler.triggers.cron import CronTrigger
+
+                mr_config = self.config.morning_report
+                morning_trigger = CronTrigger(
+                    hour=mr_config.hour,
+                    minute=mr_config.minute,
+                    day_of_week='mon-fri',
+                    timezone='America/New_York',
+                )
+                self.scheduler._scheduler.add_job(
+                    func=self._run_morning_report,
+                    trigger=morning_trigger,
+                    id='morning_report',
+                    name='Pre-Market Morning Report',
+                    replace_existing=True,
+                )
+                logger.info(
+                    f"Morning report scheduled for "
+                    f"{mr_config.hour}:{mr_config.minute:02d} AM ET"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to schedule morning report: {e}")
 
         # EQUITY-100: Dedicated EOD exit jobs for 1H positions
         # Multiple scheduled times ensure exits happen before market close

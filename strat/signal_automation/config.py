@@ -298,6 +298,17 @@ class CapitalConfig:
 
 
 @dataclass
+class MorningReportConfig:
+    """Pre-market morning report configuration - Session EQUITY-112."""
+    enabled: bool = True                 # Master switch
+    hour: int = 6                        # Hour in ET (24h)
+    minute: int = 0                      # Minute
+    max_candidates: int = 8              # Max setups shown in report
+    min_gap_pct: float = 0.5             # Only show gaps above this threshold
+    run_pipeline: bool = True            # Run full ticker selection pipeline
+
+
+@dataclass
 class MonitoringConfig:
     """
     Position monitoring configuration - Session 83K-49.
@@ -370,6 +381,7 @@ class SignalAutomationConfig:
     alerts: AlertConfig = field(default_factory=AlertConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     capital: CapitalConfig = field(default_factory=CapitalConfig)
+    morning_report: MorningReportConfig = field(default_factory=MorningReportConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
     ticker_selection: TickerSelectionConfig = field(default_factory=TickerSelectionConfig)
@@ -492,6 +504,16 @@ class SignalAutomationConfig:
         if api_port := os.environ.get('SIGNAL_API_PORT'):
             api_config.port = int(api_port)
 
+        # Morning report configuration (Session EQUITY-112)
+        morning_report_config = MorningReportConfig()
+        morning_report_config.enabled = os.environ.get(
+            'MORNING_REPORT_ENABLED', 'true'
+        ).lower() == 'true'
+        if mr_hour := os.environ.get('MORNING_REPORT_HOUR'):
+            morning_report_config.hour = int(mr_hour)
+        if mr_minute := os.environ.get('MORNING_REPORT_MINUTE'):
+            morning_report_config.minute = int(mr_minute)
+
         # Ticker selection configuration
         ticker_selection_config = TickerSelectionConfig.from_env()
 
@@ -501,6 +523,7 @@ class SignalAutomationConfig:
             alerts=alert_config,
             execution=execution_config,
             capital=capital_config,
+            morning_report=morning_report_config,
             monitoring=monitoring_config,
             api=api_config,
             ticker_selection=ticker_selection_config,

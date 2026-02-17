@@ -359,6 +359,12 @@ class PositionMonitor:
             store_price_history=True,
         )
 
+    def get_trade_store(self):
+        """Return the TradeStore for querying enriched trade records, or None."""
+        if self._analytics:
+            return self._analytics.store
+        return None
+
     def sync_positions(self) -> int:
         """
         Sync tracked positions with Alpaca.

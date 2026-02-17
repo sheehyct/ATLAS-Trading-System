@@ -35,6 +35,7 @@ from strat.signal_automation.coordinators.trailing_stop_manager import (
 from strat.signal_automation.coordinators.partial_exit_manager import (
     PartialExitManager,
 )
+from strat.signal_automation.coordinators.morning_report import MorningReportGenerator
 
 __all__ = [
     'AlertManager',
@@ -50,4 +51,5 @@ __all__ = [
     'PartialExitChecker',
     'TrailingStopManager',
     'PartialExitManager',
+    'MorningReportGenerator',
 ]

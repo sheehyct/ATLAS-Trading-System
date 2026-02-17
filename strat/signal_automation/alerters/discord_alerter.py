@@ -764,6 +764,44 @@ class DiscordAlerter(BaseAlerter):
                 'inline': False
             })
 
+        # EQUITY-112: MFE/MAE Excursion Analysis field
+        excursion = audit_data.get('excursion')
+        if excursion and excursion.get('trades_with_excursion', 0) > 0:
+            avg_eff = excursion.get('avg_exit_efficiency', 0)
+            avg_mfe = excursion.get('avg_mfe', 0)
+            avg_mae = excursion.get('avg_mae', 0)
+            lwg = excursion.get('losers_went_green', 0)
+            total_losers = excursion.get('total_losers', 0)
+            n_exc = excursion.get('trades_with_excursion', 0)
+
+            excursion_text = (
+                f"Avg MFE: ${avg_mfe:+.2f} | Avg MAE: ${avg_mae:+.2f}\n"
+                f"Exit Efficiency: {avg_eff:.0%}"
+            )
+            if total_losers > 0:
+                excursion_text += f"\nLosers went green: {lwg}/{total_losers}"
+            fields.append({
+                'name': f'MFE/MAE Analysis ({n_exc} trades)',
+                'value': excursion_text,
+                'inline': False
+            })
+
+        # EQUITY-112: Capital Status field (data from daemon since EQUITY-107)
+        capital = audit_data.get('capital')
+        if capital:
+            avail = capital.get('available_capital', 0)
+            deployed = capital.get('deployed_capital', 0)
+            heat = capital.get('portfolio_heat_pct', 0)
+            cap_text = (
+                f"Available: ${avail:,.0f} | Deployed: ${deployed:,.0f}\n"
+                f"Heat: {heat:.1f}%"
+            )
+            fields.append({
+                'name': 'Capital Status',
+                'value': cap_text,
+                'inline': False
+            })
+
         # Anomalies field
         anomaly_count = len(anomalies)
         if anomalies:
@@ -802,6 +840,153 @@ class DiscordAlerter(BaseAlerter):
             logger.info(f"Discord daily audit sent for {date}: {trades_today} trades, P/L: {pnl_str}")
 
         return success
+
+    def send_morning_report(self, report_data: Dict[str, Any]) -> bool:
+        """
+        EQUITY-112: Send pre-market morning report via webhook.
+
+        Args:
+            report_data: Dict with keys: date, setups, gaps, open_positions,
+                yesterday, capital, pipeline_stats, duration_seconds.
+
+        Returns:
+            True if sent successfully.
+        """
+        report_date = report_data.get('date', 'Unknown')
+        setups = report_data.get('setups', [])
+        gaps = report_data.get('gaps', [])
+        positions = report_data.get('open_positions', [])
+        yesterday = report_data.get('yesterday', {})
+        capital = report_data.get('capital', {})
+        pipeline_stats = report_data.get('pipeline_stats', {})
+        duration = report_data.get('duration_seconds', 0)
+
+        # Summary line
+        n_setups = len(setups)
+        n_positions = len(positions)
+        yday_pnl = yesterday.get('total_pnl', 0)
+        yday_str = f"+${yday_pnl:.0f}" if yday_pnl >= 0 else f"-${abs(yday_pnl):.0f}"
+        description = (
+            f"Pipeline: {pipeline_stats.get('final_candidates', n_setups)} candidates "
+            f"| {n_positions} positions open "
+            f"| Yesterday: {yday_str}"
+        )
+
+        fields = []
+
+        # Field 1: Top STRAT Setups
+        if setups:
+            lines = []
+            for c in setups[:self._morning_max_setups]:
+                pat = c.get('pattern', {})
+                lvl = c.get('levels', {})
+                tfc = c.get('tfc', {})
+                direction = pat.get('direction', '?')
+                tag = f"[{direction}]" if direction else "[?]"
+                pat_type = pat.get('type', '?')
+                tf = pat.get('timeframe', '?')
+                tfc_str = tfc.get('alignment', '?')
+                entry = lvl.get('entry_trigger', 0)
+                stop = lvl.get('stop_price', 0)
+                target = lvl.get('target_price', 0)
+                lines.append(
+                    f"{tag} {c.get('symbol', '?')} {pat_type} {tf} "
+                    f"| TFC: {tfc_str} "
+                    f"| E: ${entry:.2f} S: ${stop:.2f} T: ${target:.2f}"
+                )
+            if len(setups) > self._morning_max_setups:
+                lines.append(f"... +{len(setups) - self._morning_max_setups} more")
+            fields.append({
+                'name': f'STRAT Setups ({n_setups})',
+                'value': '\n'.join(lines) or 'None',
+                'inline': False,
+            })
+
+        # Field 2: Pre-Market Gaps
+        if gaps:
+            gap_lines = []
+            for g in gaps[:8]:
+                sign = '+' if g['gap_pct'] >= 0 else ''
+                gap_lines.append(
+                    f"{g['symbol']}: {sign}{g['gap_pct']:.1f}% "
+                    f"(${g['prev_close']:.2f} -> ${g['premarket_price']:.2f})"
+                )
+            fields.append({
+                'name': f'Pre-Market Gaps ({len(gaps)})',
+                'value': '\n'.join(gap_lines),
+                'inline': False,
+            })
+
+        # Field 3: Open Positions
+        if positions:
+            pos_lines = []
+            for pos in positions[:5]:
+                symbol = pos.get('symbol', 'N/A')
+                pattern = pos.get('pattern_type', 'N/A')
+                tf = pos.get('timeframe', 'N/A')
+                pnl = pos.get('unrealized_pnl', 0)
+                pnl_pct = pos.get('unrealized_pct', 0) * 100
+                sign = '+' if pnl >= 0 else ''
+                pos_lines.append(
+                    f"- {symbol} {pattern} {tf}: {sign}${pnl:.0f} ({sign}{pnl_pct:.0f}%)"
+                )
+            if len(positions) > 5:
+                pos_lines.append(f"... +{len(positions) - 5} more")
+            fields.append({
+                'name': f'Open Positions ({n_positions})',
+                'value': '\n'.join(pos_lines),
+                'inline': False,
+            })
+
+        # Field 4: Yesterday's Performance (inline)
+        if yesterday and yesterday.get('trades', 0) > 0:
+            wr = yesterday.get('win_rate', 0)
+            pf = yesterday.get('profit_factor', 0)
+            fields.append({
+                'name': 'Yesterday',
+                'value': (
+                    f"Trades: {yesterday['trades']} | WR: {wr:.0f}%\n"
+                    f"P/L: {yday_str} | PF: {pf:.2f}"
+                ),
+                'inline': True,
+            })
+
+        # Field 5: Capital Status (inline)
+        if capital:
+            avail = capital.get('available_capital', 0)
+            heat = capital.get('portfolio_heat_pct', 0)
+            fields.append({
+                'name': 'Capital',
+                'value': f"Available: ${avail:,.0f}\nHeat: {heat:.1f}%",
+                'inline': True,
+            })
+
+        embed = {
+            'title': f'PRE-MARKET MORNING REPORT - {report_date}',
+            'description': description,
+            'color': COLORS['INFO'],
+            'fields': fields,
+            'timestamp': datetime.utcnow().isoformat(),
+            'footer': {'text': f'ATLAS Pre-Market | Pipeline: {duration:.0f}s'},
+        }
+
+        payload = {
+            'username': self.username,
+            'embeds': [embed],
+        }
+
+        success = self._send_webhook(payload)
+
+        if success:
+            logger.info(
+                f"Discord morning report sent for {report_date}: "
+                f"{n_setups} setups, {len(gaps)} gaps"
+            )
+
+        return success
+
+    # Max setups to display in morning report embed
+    _morning_max_setups = 8
 
     def test_connection(self) -> bool:
         """
