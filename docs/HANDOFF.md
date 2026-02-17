@@ -1,9 +1,46 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 16, 2026 (Session EQUITY-110)
+**Last Updated:** February 17, 2026 (Session EQUITY-111)
 **Current Branch:** `main`
-**Phase:** Backtesting Pipeline Architecture
-**Status:** EQUITY-110 COMPLETE - Full backtesting module built (25 files, 3,634 lines), all 9 exit conditions ported
+**Phase:** Scanner Upgrade + TFC Enhancements
+**Status:** EQUITY-111 COMPLETE - Strat Stock Scanner upgraded to SIP feed, TFC enhancements ported
+
+---
+
+## Session EQUITY-111: Strat Stock Scanner - Alpaca SIP Upgrade + TFC Enhancements (COMPLETE)
+
+**Date:** February 17, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** COMPLETE - Scanner upgraded, pushed to GitHub, Railway auto-deploying
+
+### What Was Accomplished
+
+1. **Cloned strat-stock-scanner** to desktop (`C:\Strat_Trading_Bot\strat-stock-scanner\`), configured `.env` with Small Account Alpaca keys
+2. **Fixed pre/post-market quote failure** - Root cause: `get_quote()` and `get_multiple_quotes()` hardcoded `feed="iex"` (2.5% market coverage, no extended hours). Switched to config-driven SIP default (Algo Trader Plus subscription)
+3. **Config-driven feed selection** - Added `ALPACA_DATA_FEED` and `ALPACA_QUOTE_FEED` settings, updated rate limits from 180 to 9000 req/min, concurrent requests from 3 to 10
+4. **Added `get_snapshot()` method** - Single call for latest trade + quote + bar, more reliable during extended hours
+5. **Session metadata** - Quote responses now show feed source (SIP/IEX) and session type (pre-market/regular/post-market)
+6. **TFC Enhancement: Bar-type-only directional classification** - New `classify_bar_direction()` separates TFC scoring from pattern detection (Type 1=neutral, 2U=bullish, 2D=bearish, Type 3=candle color)
+7. **TFC Enhancement: Bidirectional counts** - `TFCScore` now shows "3 Bull / 1 Bear / 1 Neutral" instead of just "3/5"
+8. **TFC Enhancement: Contextual scoring** - `get_contextual_tfc()` with timeframe-appropriate rules (daily patterns only check M/W/D, not 15min)
+9. **VPS verified** - Daemon healthy (4+ days uptime), no errors. Today is Presidents' Day (market closed). Confirmed NO morning report job exists.
+10. **Code simplification** - Removed dead `get_timeframe_bias()` method, dead code bug in `scan_for_tfc_alignment`, stale docstrings
+
+### Files Modified (strat-stock-scanner repo)
+
+| File | Changes |
+|------|---------|
+| `config.py` | +`ALPACA_DATA_FEED`, `ALPACA_QUOTE_FEED`; rate limits 9000/10 |
+| `alpaca_client.py` | Config-driven feeds, `get_snapshot()`, pre-market time extension |
+| `rate_limiter.py` | Config-driven instantiation, updated docstrings |
+| `mcp_tools.py` | Removed hardcoded feeds, session metadata, contextual TFC output |
+| `strat_detector.py` | `classify_bar_direction()`, refactored `calculate_tfc_score()`, `get_contextual_tfc()`, bidirectional `TFCScore` |
+
+### Key Decisions
+
+- **No morning report exists** in daemon - this is a new feature for EQUITY-112
+- **MFE/MAE integration** with Daily Trade Audit planned for EQUITY-112
+- Agent team pattern (3 parallel agents) worked well for independent tasks
 
 ---
 
