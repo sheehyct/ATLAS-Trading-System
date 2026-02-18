@@ -1,9 +1,9 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 17, 2026 (Session EQUITY-112)
+**Last Updated:** February 18, 2026 (Session EQUITY-112)
 **Current Branch:** `main`
 **Phase:** Morning Report + Trade Analytics Integration
-**Status:** EQUITY-112 COMPLETE - Pre-market morning report and MFE/MAE daily audit integration
+**Status:** EQUITY-112 COMPLETE - Deployed to fresh VPS (CCX13 8GB, 178.156.223.251)
 
 ---
 
@@ -41,14 +41,16 @@
 | `tests/test_signal_automation/test_morning_report.py` | NEW - 22 tests |
 | `tests/test_signal_automation/test_audit_excursion.py` | NEW - 13 tests |
 
-### VPS Deploy Needed
+### VPS Redeployment (COMPLETE)
 
-```bash
-ssh chris@74.48.108.233
-cd /home/chris/ATLAS-Trading-System && git pull
-echo 'MORNING_REPORT_ENABLED=true' >> .env
-sudo systemctl restart atlas-daemon
-```
+Old VPS (74.48.108.233, CPX21 4GB) had SSH key auth issues after laptop-to-PC migration. Destroyed and recreated as CCX13 (8GB RAM, 2 vCPU) at **178.156.223.251**. Full fresh deploy: atlas user, uv, repo clone, clean .env, systemd service. All EQUITY-108 through EQUITY-112 changes now live. Memory usage: 11% (was 70% on old 4GB).
+
+**Access:** `ssh root@178.156.223.251` (key auth working from Claude Code)
+**Path:** `/home/atlas/vectorbt-workspace`
+
+### Known Issue: Morning Report Pipeline Universe
+
+The morning report pipeline currently uses `SIGNAL_SYMBOLS` (10 hardcoded tickers) rather than the full Finviz-enriched universe from `strat/ticker_selection/pipeline.py`. Needs investigation in EQUITY-113.
 
 ---
 
@@ -241,8 +243,8 @@ sudo systemctl restart atlas-daemon
 
 User needs to run manually:
 ```bash
-ssh chris@74.48.108.233
-cd /home/chris/ATLAS-Trading-System && git pull
+ssh root@178.156.223.251
+cd /home/atlas/vectorbt-workspace && git pull
 echo 'MAX_HOURLY_ENTRIES_PER_DAY=1' >> .env
 sudo systemctl restart atlas-daemon
 ```
