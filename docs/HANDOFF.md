@@ -48,9 +48,23 @@ Old VPS (74.48.108.233, CPX21 4GB) had SSH key auth issues after laptop-to-PC mi
 **Access:** `ssh root@178.156.223.251` (key auth working from Claude Code)
 **Path:** `/home/atlas/vectorbt-workspace`
 
-### Known Issue: Morning Report Pipeline Universe
+### RESOLVED: Morning Report Pipeline Universe
 
-The morning report pipeline currently uses `SIGNAL_SYMBOLS` (10 hardcoded tickers) rather than the full Finviz-enriched universe from `strat/ticker_selection/pipeline.py`. Needs investigation in EQUITY-113.
+Pipeline IS using the full Finviz-enriched universe (11,470 symbols -> 500 screened -> 12 candidates). First run successful Feb 18.
+
+### Upcoming: Continuation Patterns + 1H Timing Rules
+
+**Problem:** All 12 morning report candidates were 1H timeframe, but 2-bar patterns can't trade until 10:30 AM and 3-bar until 11:30 AM (need confirming bars to close). Setups detected at 6 AM from yesterday's closed bars may be stale by tradeable time.
+
+**Continuation Pattern Architecture (agreed approach):**
+- **Layer 1:** Detect continuation sequences (2D-2D-2D etc), add to morning report as CONTEXT not candidates
+- **Layer 2:** Build pivot finder for swing highs/lows across M/W/D timeframes as "levels of interest"
+- **Layer 3:** Proximity alerting when continuation approaches a pivot level (within ~1%)
+- **Layer 4:** Trade decision remains human judgment (continuations lack mechanical targets unlike reversals)
+
+**Key principle:** Reversal patterns (2-1-2, 3-1-2) = daemon's mechanical edge (clean targets). Continuations = human trader's edge (require judgment about pivot targets, conflict resolution, higher-TF context). Build tools that feed judgment, don't replace it.
+
+See OpenMemory ID `81ed16b0` for full discussion context.
 
 ---
 
