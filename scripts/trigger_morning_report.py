@@ -28,7 +28,7 @@ if not webhook_url:
     sys.exit(1)
 
 config = MorningReportConfig()
-alerter = DiscordAlerter(webhook_url=webhook_url, name='discord')
+alerter = DiscordAlerter(webhook_url=webhook_url)
 
 gen = MorningReportGenerator(alerters=[alerter], config=config)
 print("Starting morning report generation...")
