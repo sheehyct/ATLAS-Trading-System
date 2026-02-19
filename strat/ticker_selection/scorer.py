@@ -109,14 +109,14 @@ class CandidateScorer:
         # Extract base pattern (strip direction suffix like U/D)
         base = self._base_pattern(pattern_type)
 
-        # TFC component: 4/4=100, 3/4=75, 2/4=50, <2=0
-        tfc_raw = self._score_tfc(tfc_score)
+        # TFC component: normalized by timeframe required count
+        tfc_raw = self._score_tfc(tfc_score, timeframe)
 
         # Pattern component
         pattern_raw = _PATTERN_SCORES.get(base, 30)
 
-        # Continuations score very low (not typically traded)
-        if self._is_continuation(pattern_type):
+        # True continuations (same bar + same entry direction) score low
+        if self._is_continuation(pattern_type, direction):
             pattern_raw = 15  # Minimal score, effectively filtered by ranking
 
         # Proximity component
@@ -184,33 +184,63 @@ class CandidateScorer:
 
     @staticmethod
     def _base_pattern(pattern_type: str) -> str:
-        """Strip direction suffix to get base pattern name.
+        """Strip direction suffix and pending marker to get base pattern name.
 
-        Examples: "3-1-2U" -> "3-1-2", "2D-2U" -> "2-2"
+        Examples: "3-1-2U" -> "3-1-2", "2D-2U" -> "2-2", "2D-2D-?" -> "2-2"
         """
-        return re.sub(r'(\d)[UD]', r'\1', pattern_type)
+        # Strip pending completion marker
+        clean = pattern_type.replace('-?', '')
+        return re.sub(r'(\d)[UD]', r'\1', clean)
 
     @staticmethod
-    def _is_continuation(pattern_type: str) -> bool:
-        """Check if pattern is a continuation (same direction, e.g., 2U-2U, 2D-2D).
+    def _is_continuation(pattern_type: str, direction: str = '') -> bool:
+        """Check if pattern is a true continuation (bars AND entry same direction).
 
-        Continuations are NOT typically traded in STRAT methodology.
-        Only reversals (direction change, e.g., 2D-2U, 2U-2D) create new entries.
+        A "2D-2D-?" CALL setup has bearish bars but bullish entry -- that is
+        a REVERSAL (waiting for 2U break), not a continuation.  Only penalize
+        when both the bar sequence AND the entry direction agree (e.g.,
+        2D-2D PUT = bearish bars + bearish entry = true continuation).
         """
-        segments = pattern_type.split('-')
+        # Strip pending marker for analysis
+        clean = pattern_type.replace('-?', '')
+        segments = clean.split('-')
         directions = [s[-1] for s in segments if s.endswith(('U', 'D')) and len(s) >= 2]
-        if len(directions) >= 2:
-            return len(set(directions)) == 1
-        return False
+        if len(directions) < 2:
+            return False
+        # All bar directions must be the same
+        if len(set(directions)) != 1:
+            return False
+        # If entry direction provided, check alignment
+        if direction:
+            bar_is_bullish = (directions[0] == 'U')
+            entry_is_bullish = direction.upper() in ('CALL', 'BULLISH')
+            if bar_is_bullish != entry_is_bullish:
+                return False  # Opposing direction = reversal, not continuation
+        return True
 
     @staticmethod
-    def _score_tfc(tfc_score: int) -> float:
-        """Score TFC alignment: 4/4=100, 3/4=75, 2/4=50, <2=0."""
-        if tfc_score >= 4:
+    def _score_tfc(tfc_score: int, timeframe: str = '1H') -> float:
+        """Score TFC alignment normalized by timeframe requirements.
+
+        Each timeframe checks a different number of higher timeframes:
+          1H: 4 required (1M, 1W, 1D, 1H)
+          1D: 3 required (1M, 1W, 1D)
+          1W: 2 required (1M, 1W)
+          1M: 1 required (1M)
+
+        Scoring uses aligned/required ratio so that weekly 1/2 (50%)
+        scores comparably to hourly 2/4 (50%), not zero.
+        """
+        _REQUIRED = {'1H': 4, '4H': 4, '1D': 3, '1W': 2, '1M': 1}
+        required = _REQUIRED.get(timeframe, 4)
+        if required == 0:
+            return 0
+        ratio = tfc_score / required
+        if ratio >= 1.0:
             return 100
-        elif tfc_score == 3:
+        elif ratio >= 0.75:
             return 75
-        elif tfc_score == 2:
+        elif ratio >= 0.5:
             return 50
         return 0
 
