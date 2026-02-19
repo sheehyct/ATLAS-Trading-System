@@ -177,14 +177,26 @@ class TradeAnalyticsIntegration:
         """
         # Get trade ID
         trade_id = getattr(position, 'signal_key', None) or getattr(position, 'trade_id', '')
-        
+
         # Finalize excursion tracking
         excursion_data = self.excursion_tracker.finalize(
             trade_id=trade_id,
             exit_price=exit_price,
             exit_time=exit_time,
         )
-        
+
+        # EQUITY-113: Guard against double finalization.
+        # When a position exits (e.g. EOD), finalize() runs and pops tracking state.
+        # Then sync_positions() may detect the position gone and fire EXTERNAL_CLOSE,
+        # calling finalize() again. The second call returns None (state already popped).
+        # Skip storing to avoid zeroed MFE/MAE records overwriting real data.
+        if excursion_data is None:
+            logger.info(
+                f"Skipping duplicate close for {trade_id} - "
+                f"excursion already finalized"
+            )
+            return None
+
         # Convert position to enriched record
         if asset_class == "crypto_perp":
             record = TradeConverter.from_crypto_simulated_trade(position)
@@ -193,23 +205,23 @@ class TradeAnalyticsIntegration:
                 position,
                 excursion_data=excursion_data,
             )
-        
+
         # Override excursion if we have tracker data
         if excursion_data:
             record.excursion = excursion_data
-        
+
         # Finalize derived metrics
         record.finalize_excursion()
-        
+
         # Store the enriched record
         self.store.add_trade(record)
-        
+
         logger.info(
             f"Stored enriched trade {trade_id}: "
             f"P&L=${record.pnl:.2f}, MFE=${record.excursion.mfe_pnl:.2f}, "
             f"Efficiency={record.excursion.exit_efficiency:.1%}"
         )
-        
+
         return record
     
     def get_stats(self) -> Dict[str, Any]:

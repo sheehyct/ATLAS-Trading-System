@@ -612,12 +612,19 @@ class SignalExecutor:
             return False  # hourly disabled entirely
 
         # Count today's successful 1H entries from execution history
-        today = datetime.now().date()
+        # Use Eastern Time so the day boundary matches the trading day,
+        # not the UTC day (VPS runs in UTC).
+        import pytz
+        eastern = pytz.timezone('America/New_York')
+        today = datetime.now(eastern).date()
         count = 0
         for result in self._executions.values():
             if result.state not in self._ACTIVE_STATES:
                 continue
-            if result.timestamp.date() != today:
+            ts = result.timestamp
+            if ts.tzinfo is None:
+                ts = eastern.localize(ts)
+            if ts.astimezone(eastern).date() != today:
                 continue
             # Check timeframe from signal_key (format: symbol_timeframe_pattern_timestamp)
             parts = result.signal_key.split('_')

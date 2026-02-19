@@ -267,6 +267,7 @@ class SignalDaemon:
             target_dte=self.config.execution.target_dte,
             use_limit_orders=self.config.execution.use_limit_orders,
             limit_price_buffer=self.config.execution.limit_price_buffer,
+            max_hourly_entries_per_day=self.config.execution.max_hourly_entries_per_day,
             paper_mode=True,  # Always paper for safety
         )
 
@@ -447,6 +448,9 @@ class SignalDaemon:
         """
         signal = event.signal
 
+        # EQUITY-113: Save old key before any direction/pattern mutations
+        old_signal_key = signal.signal_key
+
         # Session CRYPTO-11: Use actual direction from entry monitor (bidirectional monitoring)
         # This handles cases where SETUP (X-1-?) broke in opposite direction
         actual_direction = getattr(event, '_actual_direction', signal.direction)
@@ -472,6 +476,32 @@ class SignalDaemon:
                 f"PATTERN RESOLVED: {signal.symbol} {old_pattern} -> "
                 f"{signal.pattern_type} ({actual_direction} break)"
             )
+
+        # EQUITY-113: Regenerate signal_key after direction/pattern mutations.
+        # The key encodes pattern_type and direction, so it must be rebuilt
+        # when either changes. Uses the same timestamp truncation as generate_key().
+        dt = signal.detected_time
+        if signal.timeframe == '1H':
+            truncated = dt.replace(minute=0, second=0, microsecond=0)
+        elif signal.timeframe == '1D':
+            truncated = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif signal.timeframe == '1W':
+            truncated = dt - timedelta(days=dt.weekday())
+            truncated = truncated.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif signal.timeframe == '1M':
+            truncated = dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            truncated = dt
+        timestamp_str = truncated.strftime('%Y%m%d%H%M')
+        new_signal_key = (
+            f"{signal.symbol}_{signal.timeframe}_{signal.pattern_type}_"
+            f"{signal.direction}_{timestamp_str}"
+        )
+
+        if new_signal_key != old_signal_key:
+            self.signal_store.rekey_signal(old_signal_key, new_signal_key)
+            signal.signal_key = new_signal_key
+            logger.info(f"SIGNAL REKEYED: {old_signal_key} -> {new_signal_key}")
 
         # Session EQUITY-46: Check if setup is stale before executing
         # A setup becomes stale when a new bar closes, potentially changing the pattern structure

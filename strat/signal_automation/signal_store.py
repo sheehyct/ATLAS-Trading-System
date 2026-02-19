@@ -438,6 +438,37 @@ class SignalStore:
         """Get signal by key."""
         return self._signals.get(signal_key)
 
+    def rekey_signal(self, old_key: str, new_key: str) -> bool:
+        """
+        Re-key a signal after pattern/direction resolution changes its identity.
+
+        Moves the signal from old_key to new_key in the internal store and
+        updates the OSI symbol reverse index if applicable.
+
+        Args:
+            old_key: The current signal key
+            new_key: The new signal key after pattern/direction resolution
+
+        Returns:
+            True if rekeyed successfully, False if old_key not found
+        """
+        if old_key not in self._signals:
+            logger.warning(f"Cannot rekey signal - old key not found: {old_key}")
+            return False
+
+        signal = self._signals.pop(old_key)
+        signal.signal_key = new_key
+        self._signals[new_key] = signal
+
+        # Update OSI symbol reverse index if this signal had an executed option
+        for osi_symbol, mapped_key in list(self._osi_symbol_index.items()):
+            if mapped_key == old_key:
+                self._osi_symbol_index[osi_symbol] = new_key
+
+        self._save()
+        logger.info(f"Rekeyed signal: {old_key} -> {new_key}")
+        return True
+
     def mark_alerted(self, signal_key: str) -> bool:
         """
         Mark signal as alerted.

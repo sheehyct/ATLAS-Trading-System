@@ -284,3 +284,38 @@ class LoggingAlerter(BaseAlerter):
         record.extra = exit_data
 
         self.logger.handle(record)
+
+    def log_execution(self, result) -> None:
+        """
+        Log an execution result (Session EQUITY-113).
+
+        Args:
+            result: ExecutionResult with execution details
+        """
+        state_str = result.state.value if hasattr(result.state, 'value') else str(result.state)
+
+        exec_data = {
+            'signal_key': result.signal_key,
+            'state': state_str,
+            'order_id': result.order_id,
+            'osi_symbol': result.osi_symbol,
+            'strike': result.strike,
+            'expiration': result.expiration,
+            'contracts': result.contracts,
+            'premium': result.premium,
+            'side': result.side,
+        }
+
+        record = self.logger.makeRecord(
+            self.logger.name,
+            logging.INFO,
+            __file__,
+            0,
+            f"EXECUTION [{state_str.upper()}]: {result.signal_key} - "
+            f"{result.side} {result.contracts}x {result.osi_symbol or 'N/A'}",
+            (),
+            None
+        )
+        record.extra = exec_data
+
+        self.logger.handle(record)
