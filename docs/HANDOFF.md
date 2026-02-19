@@ -1,9 +1,63 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 18, 2026 (Session EQUITY-112)
+**Last Updated:** February 19, 2026 (Session EQUITY-113)
 **Current Branch:** `main`
-**Phase:** Morning Report + Trade Analytics Integration
-**Status:** EQUITY-112 COMPLETE - Deployed to fresh VPS (CCX13 8GB, 178.156.223.251)
+**Phase:** Daemon Bug Fixes + Morning Report Quality
+**Status:** EQUITY-113 IN PROGRESS - 6 daemon bugs fixed, deployed to VPS
+
+---
+
+## Session EQUITY-113: VPS Log Analysis + 6 Daemon Bug Fixes (IN PROGRESS)
+
+**Date:** February 19, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** 6 bugs fixed and deployed, morning report verified
+
+### What Was Accomplished
+
+1. **Fixed SSH key permissions** - `Everyone` group had full access to id_ed25519, SSH was rejecting key auth. Fixed with icacls.
+2. **VPS log analysis** - Pulled full day's logs, identified 6 bugs from live trading
+3. **Agent team research** (2 Explore agents) - Deep investigation found 2 additional contributing factors
+4. **Agent team implementation** (2 general-purpose agents) - All 6 fixes implemented in parallel
+5. **Morning report trigger script** - `scripts/trigger_morning_report.py` for manual runs
+6. **Morning report verified** - 12 candidates, 8 setups, 10 gaps delivered to Discord
+
+### Bugs Fixed (commit 5340b22)
+
+| # | Bug | Severity | File |
+|---|-----|----------|------|
+| 1 | max_hourly_entries_per_day not forwarded to executor | CRITICAL | daemon.py |
+| 2 | Hourly limit uses UTC not ET for "today" check | HIGH | executor.py |
+| 3 | signal_key retains "3-?" after pattern resolution | CRITICAL | daemon.py, signal_store.py |
+| 4 | signal_key retains old direction after opposite break | HIGH | daemon.py |
+| 5 | LoggingAlerter.log_execution() missing | MEDIUM | logging_alerter.py |
+| 6 | Double-close overwrites real MFE/MAE with zeroed data | MEDIUM | integration.py |
+
+### Key Design: signal_key Re-keying
+Added `SignalStore.rekey_signal(old_key, new_key)` method. After pattern/direction resolution in `_on_entry_triggered()`, the signal_key is regenerated and atomically re-keyed in the store, including OSI symbol index updates.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/signal_automation/daemon.py` | Forward hourly limit + signal_key regeneration |
+| `strat/signal_automation/executor.py` | Eastern timezone in hourly limit check |
+| `strat/signal_automation/signal_store.py` | rekey_signal() method |
+| `strat/signal_automation/alerters/logging_alerter.py` | log_execution() method |
+| `core/trade_analytics/integration.py` | Double-close guard |
+| `scripts/trigger_morning_report.py` | NEW - manual morning report trigger |
+
+### Remaining EQUITY-113 Priorities
+
+1. **URGENT: Investigate why only 1H candidates** - All 12 morning report candidates are 1H. No daily/weekly. Need to check filtering/scoring.
+2. **Morning report dedup** - GOOGL x3, GOOG x3, TMUS x3 in first run
+3. **1H timing rules + continuation patterns** - Design discussion needed
+4. **Backtest regression test** - Carried from EQUITY-111
+
+### Commits
+
+- `5340b22` - fix: resolve 6 daemon bugs from VPS log analysis (EQUITY-113)
+- `65c6524` - feat: add manual morning report trigger script
 
 ---
 
