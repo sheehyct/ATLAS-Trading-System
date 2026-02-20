@@ -877,26 +877,38 @@ class DiscordAlerter(BaseAlerter):
 
         fields = []
 
-        # Field 1: Top STRAT Setups
-        if setups:
+        # Tiered setup display (v2.0) or legacy flat display
+        tier1_setups = report_data.get('tier1_setups', [])
+        tier2_setups = report_data.get('tier2_setups', [])
+        tier3_context = report_data.get('tier3_context', [])
+        has_tiers = bool(tier1_setups or tier3_context)
+
+        if has_tiers:
+            # Tier 1: Convergence setups (detailed)
+            if tier1_setups:
+                fields.append(self._format_tier1_field(tier1_setups))
+
+            # Tier 2: Standard setups (existing format)
+            if tier2_setups:
+                lines = []
+                for c in tier2_setups[:self._MORNING_MAX_SETUPS]:
+                    lines.append(self._format_setup_line(c))
+                if len(tier2_setups) > self._MORNING_MAX_SETUPS:
+                    lines.append(f"... +{len(tier2_setups) - self._MORNING_MAX_SETUPS} more")
+                fields.append({
+                    'name': f'TIER 2: STANDARD ({len(tier2_setups)})',
+                    'value': '\n'.join(lines) or 'None',
+                    'inline': False,
+                })
+
+            # Tier 3: Directional context (compact)
+            if tier3_context:
+                fields.append(self._format_tier3_field(tier3_context))
+        elif setups:
+            # Legacy flat display (v1.0 candidates without tier data)
             lines = []
             for c in setups[:self._MORNING_MAX_SETUPS]:
-                pat = c.get('pattern', {})
-                lvl = c.get('levels', {})
-                tfc = c.get('tfc', {})
-                direction = pat.get('direction', '?')
-                tag = f"[{direction}]"
-                pat_type = pat.get('type', '?')
-                tf = pat.get('timeframe', '?')
-                tfc_str = tfc.get('alignment', '?')
-                entry = lvl.get('entry_trigger', 0)
-                stop = lvl.get('stop_price', 0)
-                target = lvl.get('target_price', 0)
-                lines.append(
-                    f"{tag} {c.get('symbol', '?')} {pat_type} {tf} "
-                    f"| TFC: {tfc_str} "
-                    f"| E: ${entry:.2f} S: ${stop:.2f} T: ${target:.2f}"
-                )
+                lines.append(self._format_setup_line(c))
             if len(setups) > self._MORNING_MAX_SETUPS:
                 lines.append(f"... +{len(setups) - self._MORNING_MAX_SETUPS} more")
             fields.append({
@@ -987,6 +999,116 @@ class DiscordAlerter(BaseAlerter):
             )
 
         return success
+
+    # ------------------------------------------------------------------
+    # Morning report helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _format_setup_line(c: Dict[str, Any]) -> str:
+        """Format a single setup candidate as a one-line string."""
+        pat = c.get('pattern', {})
+        lvl = c.get('levels', {})
+        tfc = c.get('tfc', {})
+        direction = pat.get('direction', '?')
+        tag = f"[{direction}]"
+        pat_type = pat.get('type', '?')
+        tf = pat.get('timeframe', '?')
+        tfc_str = tfc.get('alignment', '?')
+        entry = lvl.get('entry_trigger', 0)
+        stop = lvl.get('stop_price', 0)
+        target = lvl.get('target_price', 0)
+        return (
+            f"{tag} {c.get('symbol', '?')} {pat_type} {tf} "
+            f"| TFC: {tfc_str} "
+            f"| E: ${entry:.2f} S: ${stop:.2f} T: ${target:.2f}"
+        )
+
+    @staticmethod
+    def _format_tier1_field(tier1_setups: List[Dict[str, Any]]) -> Dict:
+        """
+        Format Tier 1 convergence setups with trigger level detail.
+
+        Example output:
+            [PUT] CRWD  3-inside (1M/1W/1D)
+              Break $371.50 -> cascades 3 TFs bearish
+              Prior: 2D(1M) 2D(1W) 2U(1D) | Spread: 1.8%
+              Score: 87 | ATR: 3.2%
+        """
+        lines = []
+        for c in tier1_setups:
+            conv = c.get('convergence', {})
+            pat = c.get('pattern', {})
+            metrics = c.get('metrics', {})
+            direction = pat.get('direction', '?')
+            tag = f"[{direction}]"
+            symbol = c.get('symbol', '?')
+
+            inside_count = conv.get('inside_bar_count', 0)
+            inside_tfs = conv.get('inside_bar_timeframes', [])
+            tfs_str = '/'.join(inside_tfs) if inside_tfs else '?'
+
+            lines.append(f"{tag} **{symbol}**  {inside_count}-inside ({tfs_str})")
+
+            # Trigger level line
+            alignment = conv.get('prior_direction_alignment', 'mixed')
+            if direction == 'PUT':
+                trigger = conv.get('bearish_trigger')
+                cascade_dir = 'bearish'
+            else:
+                trigger = conv.get('bullish_trigger')
+                cascade_dir = 'bullish'
+            if trigger is not None:
+                lines.append(
+                    f"  Break ${trigger:.2f} -> cascades {inside_count} TFs {cascade_dir}"
+                )
+
+            # Spread and score
+            spread = conv.get('trigger_spread_pct', 0)
+            score = conv.get('convergence_score', 0)
+            atr = metrics.get('atr_percent', 0)
+            lines.append(f"  Spread: {spread:.1f}% | Score: {score:.0f} | ATR: {atr:.1f}%")
+
+        return {
+            'name': f'TIER 1: CONVERGENCE ({len(tier1_setups)})',
+            'value': '\n'.join(lines) or 'None',
+            'inline': False,
+        }
+
+    @staticmethod
+    def _format_tier3_field(tier3_context: List[Dict[str, Any]]) -> Dict:
+        """
+        Format Tier 3 continuation context as compact directional summary.
+
+        Example output:
+            Bearish: AAPL(1W 2D-2D), NFLX(1D 2D-2D)
+            Bullish: META(1W 2U-2U)
+        """
+        bearish = []
+        bullish = []
+        for c in tier3_context:
+            pat = c.get('pattern', {})
+            symbol = c.get('symbol', '?')
+            tf = pat.get('timeframe', '?')
+            pat_type = pat.get('type', '?')
+            direction = pat.get('direction', '?')
+            label = f"{symbol}({tf} {pat_type})"
+            if direction == 'PUT':
+                bearish.append(label)
+            else:
+                bullish.append(label)
+
+        lines = []
+        if bearish:
+            lines.append(f"Bearish: {', '.join(bearish)}")
+        if bullish:
+            lines.append(f"Bullish: {', '.join(bullish)}")
+
+        return {
+            'name': 'DIRECTIONAL CONTEXT',
+            'value': '\n'.join(lines) or 'None',
+            'inline': False,
+        }
 
     def test_connection(self) -> bool:
         """

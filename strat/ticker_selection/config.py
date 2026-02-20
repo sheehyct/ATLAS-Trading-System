@@ -54,6 +54,12 @@ class TickerSelectionConfig:
     finviz_cache_ttl_hours: int = 6
     finviz_max_workers: int = 4
 
+    # Convergence analysis (multi-TF inside bar detection)
+    convergence_min_inside_tfs: int = 2   # Min inside TFs for Tier 1
+    max_tier1_candidates: int = 4         # Tier 1 cap (convergence setups)
+    max_tier2_candidates: int = 8         # Tier 2 cap (standard setups)
+    max_tier3_context: int = 4            # Tier 3 cap (continuation context)
+
     # Alpaca account for data calls
     alpaca_account: str = 'SMALL'
 

@@ -98,8 +98,18 @@ class MorningReportGenerator:
 
         # Section 1: Run ticker selection pipeline for fresh setups
         candidates, pipeline_stats = self._run_pipeline()
-        report['setups'] = candidates[:self._config.max_candidates]
         report['pipeline_stats'] = pipeline_stats
+
+        # Group by tier (v2.0 candidates have 'tier' key)
+        tier1 = [c for c in candidates if c.get('tier') == 1]
+        tier3 = [c for c in candidates if c.get('tier') == 3]
+        tier2 = [c for c in candidates if c.get('tier', 2) == 2]
+
+        report['tier1_setups'] = tier1
+        report['tier2_setups'] = tier2[:self._config.max_candidates]
+        report['tier3_context'] = tier3
+        # Backward compat: setups = T1 + T2 (trade candidates, not context)
+        report['setups'] = tier1 + tier2[:self._config.max_candidates]
 
         # Section 2: Gap analysis using Alpaca pre-market snapshots
         if candidates:

@@ -76,7 +76,8 @@ class TestPipelineOutput:
              patch.object(pipeline.screener, 'screen', return_value=[
                  ScreenedStock('AAPL', 180.0, 50e6, 2.5, 182.0, 177.0, 179.0, 180.0, 178.0, 300000),
              ]), \
-             patch.object(pipeline, '_get_scanner') as mock_scanner:
+             patch.object(pipeline, '_get_scanner') as mock_scanner, \
+             patch.object(pipeline, '_analyze_convergence', return_value={}):
 
             scanner = MagicMock()
             scanner.scan_symbol_all_timeframes_resampled.return_value = [
@@ -87,7 +88,7 @@ class TestPipelineOutput:
             result = pipeline.run(dry_run=False)
 
         # Verify schema
-        assert result['version'] == '1.0'
+        assert result['version'] == '2.0'
         assert 'generated_at' in result
         assert 'pipeline_stats' in result
         assert 'core_symbols' in result
@@ -103,7 +104,7 @@ class TestPipelineOutput:
         path = tmp_path / 'candidates.json'
         assert path.exists()
         written = json.loads(path.read_text())
-        assert written['version'] == '1.0'
+        assert written['version'] == '2.0'
 
     def test_candidate_entry_schema(self, tmp_path):
         """Verify each candidate has all required fields."""
@@ -117,7 +118,8 @@ class TestPipelineOutput:
              patch.object(pipeline.screener, 'screen', return_value=[
                  ScreenedStock('CRWD', 385.0, 45e6, 2.3, 388.0, 380.0, 383.0, 385.0, 382.0, 120000),
              ]), \
-             patch.object(pipeline, '_get_scanner') as mock_scanner:
+             patch.object(pipeline, '_get_scanner') as mock_scanner, \
+             patch.object(pipeline, '_analyze_convergence', return_value={}):
 
             scanner = MagicMock()
             scanner.scan_symbol_all_timeframes_resampled.return_value = [
@@ -132,6 +134,7 @@ class TestPipelineOutput:
             assert 'symbol' in c
             assert 'composite_score' in c
             assert 'rank' in c
+            assert 'tier' in c
             assert 'pattern' in c
             assert 'levels' in c
             assert 'tfc' in c
@@ -367,3 +370,279 @@ class TestDaemonCandidateLoading:
             assert 'CRWD' in symbols
             assert 'AAPL' in symbols
             assert symbols.count('SPY') == 1  # No duplicate
+
+
+# ---------------------------------------------------------------------------
+# Tier Classification (Phase 2 - Convergence Architecture)
+# ---------------------------------------------------------------------------
+
+def _make_scored_candidate(symbol='TEST', composite_score=70.0,
+                           pattern_type='3-1-2U', direction='CALL',
+                           timeframe='1D', current_price=100.0, **kwargs):
+    """Build a ScoredCandidate for tier testing."""
+    from strat.ticker_selection.scorer import ScoredCandidate
+    return ScoredCandidate(
+        symbol=symbol,
+        composite_score=composite_score,
+        pattern_type=pattern_type,
+        direction=direction,
+        timeframe=timeframe,
+        current_price=current_price,
+        **kwargs,
+    )
+
+
+def _make_convergence_meta(inside_count=0, is_convergence=False,
+                           convergence_score=0.0, inside_tfs=None):
+    """Build a ConvergenceMetadata for tier testing."""
+    from strat.ticker_selection.convergence import ConvergenceMetadata
+    return ConvergenceMetadata(
+        inside_bar_count=inside_count,
+        inside_bar_timeframes=inside_tfs or [],
+        trigger_levels={},
+        convergence_score=convergence_score,
+        bullish_trigger=None,
+        bearish_trigger=None,
+        trigger_spread_pct=0.0,
+        prior_direction_alignment='mixed',
+        is_convergence=is_convergence,
+    )
+
+
+class TestTierClassification:
+    """Test _classify_tiers assigns correct tiers."""
+
+    def setup_method(self):
+        self.config = TickerSelectionConfig()
+        self.pipeline = TickerSelectionPipeline(self.config)
+
+    def test_convergence_is_tier1(self):
+        """Symbol with 2+ inside TFs gets Tier 1."""
+        candidates = [_make_scored_candidate('CRWD')]
+        convergence_map = {
+            'CRWD': _make_convergence_meta(
+                inside_count=2, is_convergence=True, convergence_score=79.0,
+                inside_tfs=['1M', '1W'],
+            ),
+        }
+        self.pipeline._classify_tiers(candidates, convergence_map)
+
+        assert candidates[0].tier == 1
+        assert candidates[0].convergence is not None
+        assert candidates[0].convergence.is_convergence is True
+
+    def test_continuation_is_tier3(self):
+        """True continuation pattern gets Tier 3."""
+        candidates = [_make_scored_candidate(
+            'AAPL', pattern_type='2D-2D', direction='PUT',
+        )]
+        self.pipeline._classify_tiers(candidates, {})
+
+        assert candidates[0].tier == 3
+
+    def test_standard_is_tier2(self):
+        """Normal setup without convergence or continuation is Tier 2."""
+        candidates = [_make_scored_candidate('MSFT')]
+        self.pipeline._classify_tiers(candidates, {})
+
+        assert candidates[0].tier == 2
+
+    def test_convergence_overrides_continuation(self):
+        """If a symbol has both convergence AND continuation pattern, convergence wins (Tier 1)."""
+        candidates = [_make_scored_candidate(
+            'NFLX', pattern_type='2D-2D', direction='PUT',
+        )]
+        convergence_map = {
+            'NFLX': _make_convergence_meta(
+                inside_count=3, is_convergence=True, convergence_score=95.0,
+                inside_tfs=['1M', '1W', '1D'],
+            ),
+        }
+        self.pipeline._classify_tiers(candidates, convergence_map)
+
+        assert candidates[0].tier == 1  # Convergence wins
+
+    def test_single_inside_not_tier1(self):
+        """Single inside TF (below threshold) stays Tier 2."""
+        candidates = [_make_scored_candidate('GOOGL')]
+        convergence_map = {
+            'GOOGL': _make_convergence_meta(
+                inside_count=1, is_convergence=False, convergence_score=20.0,
+                inside_tfs=['1D'],
+            ),
+        }
+        self.pipeline._classify_tiers(candidates, convergence_map)
+
+        assert candidates[0].tier == 2
+        assert candidates[0].convergence is not None  # Still attached
+
+
+class TestTieredSortAndCap:
+    """Test _sort_and_cap_tiered ordering and capping."""
+
+    def setup_method(self):
+        self.config = TickerSelectionConfig(
+            max_tier1_candidates=2,
+            max_tier2_candidates=3,
+            max_tier3_context=2,
+        )
+        self.pipeline = TickerSelectionPipeline(self.config)
+
+    def test_tier_ordering(self):
+        """Output should be T1 first, then T2, then T3."""
+        candidates = [
+            _make_scored_candidate('T2A', composite_score=80, tier=2),
+            _make_scored_candidate('T1A', composite_score=60, tier=1),
+            _make_scored_candidate('T3A', composite_score=50, tier=3),
+            _make_scored_candidate('T2B', composite_score=75, tier=2),
+            _make_scored_candidate('T1B', composite_score=55, tier=1),
+        ]
+        convergence_map = {
+            'T1A': _make_convergence_meta(inside_count=3, is_convergence=True, convergence_score=90),
+            'T1B': _make_convergence_meta(inside_count=2, is_convergence=True, convergence_score=70),
+        }
+        result = self.pipeline._sort_and_cap_tiered(candidates, convergence_map)
+
+        tiers = [c.tier for c in result]
+        # T1 first, then T2, then T3
+        assert tiers == [1, 1, 2, 2, 3]
+        # T1 sorted by convergence_score desc
+        assert result[0].symbol == 'T1A'
+        assert result[1].symbol == 'T1B'
+        # T2 sorted by composite_score desc
+        assert result[2].symbol == 'T2A'
+        assert result[3].symbol == 'T2B'
+
+    def test_per_tier_caps(self):
+        """Each tier is capped independently."""
+        candidates = [
+            _make_scored_candidate(f'T1_{i}', composite_score=80-i, tier=1)
+            for i in range(5)
+        ] + [
+            _make_scored_candidate(f'T2_{i}', composite_score=70-i, tier=2)
+            for i in range(6)
+        ] + [
+            _make_scored_candidate(f'T3_{i}', composite_score=40-i, tier=3)
+            for i in range(4)
+        ]
+        convergence_map = {
+            f'T1_{i}': _make_convergence_meta(
+                inside_count=2, is_convergence=True, convergence_score=90-i*10,
+            )
+            for i in range(5)
+        }
+        result = self.pipeline._sort_and_cap_tiered(candidates, convergence_map)
+
+        tier_counts = {}
+        for c in result:
+            tier_counts[c.tier] = tier_counts.get(c.tier, 0) + 1
+        assert tier_counts[1] == 2  # max_tier1_candidates
+        assert tier_counts[2] == 3  # max_tier2_candidates
+        assert tier_counts[3] == 2  # max_tier3_context
+
+    def test_empty_tiers_graceful(self):
+        """Pipeline handles no T1 or T3 candidates gracefully."""
+        candidates = [
+            _make_scored_candidate('ONLY_T2', composite_score=80, tier=2),
+        ]
+        result = self.pipeline._sort_and_cap_tiered(candidates, {})
+        assert len(result) == 1
+        assert result[0].tier == 2
+
+
+class TestPipelineWithConvergence:
+    """Integration tests: pipeline.run() with convergence mocked."""
+
+    def test_tier_counts_in_stats(self, tmp_path):
+        """Pipeline stats include tier1_count, tier2_count, tier3_count."""
+        config = TickerSelectionConfig(
+            candidates_path=str(tmp_path / 'candidates.json'),
+            universe_cache_path=str(tmp_path / 'universe.json'),
+        )
+        pipeline = TickerSelectionPipeline(config)
+
+        with patch.object(pipeline.universe_mgr, 'get_universe', return_value=['AAPL']), \
+             patch.object(pipeline.screener, 'screen', return_value=[
+                 ScreenedStock('AAPL', 180.0, 50e6, 2.5, 182.0, 177.0, 179.0, 180.0, 178.0, 300000),
+             ]), \
+             patch.object(pipeline, '_get_scanner') as mock_scanner, \
+             patch.object(pipeline, '_analyze_convergence', return_value={}):
+
+            scanner = MagicMock()
+            scanner.scan_symbol_all_timeframes_resampled.return_value = [
+                _make_mock_signal(symbol='AAPL'),
+            ]
+            mock_scanner.return_value = scanner
+
+            result = pipeline.run(dry_run=True)
+
+        stats = result['pipeline_stats']
+        assert stats['tier1_count'] == 0   # No convergence mocked
+        assert stats['tier2_count'] == 1   # AAPL is standard
+        assert stats['tier3_count'] == 0
+
+    def test_convergence_metadata_in_json(self, tmp_path):
+        """When convergence detected, metadata appears in candidate JSON."""
+        from strat.ticker_selection.convergence import ConvergenceMetadata
+        config = TickerSelectionConfig(
+            candidates_path=str(tmp_path / 'candidates.json'),
+            universe_cache_path=str(tmp_path / 'universe.json'),
+        )
+        pipeline = TickerSelectionPipeline(config)
+
+        convergence_result = {
+            'CRWD': _make_convergence_meta(
+                inside_count=2, is_convergence=True,
+                convergence_score=79.0, inside_tfs=['1M', '1W'],
+            ),
+        }
+
+        with patch.object(pipeline.universe_mgr, 'get_universe', return_value=['CRWD']), \
+             patch.object(pipeline.screener, 'screen', return_value=[
+                 ScreenedStock('CRWD', 385.0, 45e6, 2.3, 388.0, 380.0, 383.0, 385.0, 382.0, 120000),
+             ]), \
+             patch.object(pipeline, '_get_scanner') as mock_scanner, \
+             patch.object(pipeline, '_analyze_convergence', return_value=convergence_result):
+
+            scanner = MagicMock()
+            scanner.scan_symbol_all_timeframes_resampled.return_value = [
+                _make_mock_signal(symbol='CRWD'),
+            ]
+            mock_scanner.return_value = scanner
+
+            result = pipeline.run(dry_run=True)
+
+        assert len(result['candidates']) == 1
+        c = result['candidates'][0]
+        assert c['tier'] == 1
+        assert 'convergence' in c
+        assert c['convergence']['inside_bar_count'] == 2
+        assert c['convergence']['is_convergence'] is True
+
+    def test_backward_compat_no_convergence(self, tmp_path):
+        """When no convergence, candidates still have tier field but no convergence key."""
+        config = TickerSelectionConfig(
+            candidates_path=str(tmp_path / 'candidates.json'),
+            universe_cache_path=str(tmp_path / 'universe.json'),
+        )
+        pipeline = TickerSelectionPipeline(config)
+
+        with patch.object(pipeline.universe_mgr, 'get_universe', return_value=['MSFT']), \
+             patch.object(pipeline.screener, 'screen', return_value=[
+                 ScreenedStock('MSFT', 400.0, 60e6, 2.0, 405.0, 395.0, 398.0, 400.0, 397.0, 150000),
+             ]), \
+             patch.object(pipeline, '_get_scanner') as mock_scanner, \
+             patch.object(pipeline, '_analyze_convergence', return_value={}):
+
+            scanner = MagicMock()
+            scanner.scan_symbol_all_timeframes_resampled.return_value = [
+                _make_mock_signal(symbol='MSFT'),
+            ]
+            mock_scanner.return_value = scanner
+
+            result = pipeline.run(dry_run=True)
+
+        if result['candidates']:
+            c = result['candidates'][0]
+            assert c['tier'] == 2  # Default tier
+            assert 'convergence' not in c  # No convergence key when not detected

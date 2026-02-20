@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from strat.ticker_selection.config import TickerSelectionConfig
+from strat.ticker_selection.convergence import ConvergenceAnalyzer, ConvergenceMetadata
 from strat.ticker_selection.universe import UniverseManager
 from strat.ticker_selection.screener import SnapshotScreener, ScreenedStock
 from strat.ticker_selection.scorer import CandidateScorer, ScoredCandidate
@@ -176,14 +177,25 @@ class TickerSelectionPipeline:
             f"  Dedup: {len(scored)} scored -> {len(deduped)} unique symbols"
         )
 
-        # Sort by composite score descending, cap at max_candidates
-        deduped.sort(key=lambda c: c.composite_score, reverse=True)
-        final = deduped[:self.config.max_candidates]
+        # Convergence analysis on deduped symbols (~40, not 100)
+        convergence_map = self._analyze_convergence(deduped)
 
-        # Assign ranks
+        # Tier classification: T1 (convergence), T2 (standard), T3 (continuation)
+        self._classify_tiers(deduped, convergence_map)
+
+        # Tiered sort + per-tier caps
+        final = self._sort_and_cap_tiered(deduped, convergence_map)
+
+        # Assign ranks across all tiers
         for i, c in enumerate(final):
             c.rank = i + 1
 
+        tier_counts = {1: 0, 2: 0, 3: 0}
+        for c in final:
+            tier_counts[c.tier] = tier_counts.get(c.tier, 0) + 1
+        stats['tier1_count'] = tier_counts[1]
+        stats['tier2_count'] = tier_counts[2]
+        stats['tier3_count'] = tier_counts[3]
         stats['final_candidates'] = len(final)
         duration = time.time() - start
         stats['scan_duration_seconds'] = round(duration, 1)
@@ -241,6 +253,114 @@ class TickerSelectionPipeline:
             if existing is None or c.composite_score > existing.composite_score:
                 best[c.symbol] = c
         return list(best.values())
+
+    def _analyze_convergence(
+        self, candidates: List[ScoredCandidate],
+    ) -> Dict[str, ConvergenceMetadata]:
+        """Run multi-TF convergence analysis on deduped candidate symbols."""
+        symbols = [c.symbol for c in candidates]
+        prices = {c.symbol: c.current_price for c in candidates}
+
+        if not symbols:
+            return {}
+
+        try:
+            analyzer = ConvergenceAnalyzer(
+                alpaca_account=self.config.alpaca_account,
+            )
+            result = analyzer.analyze_batch(symbols, prices)
+            convergence_count = sum(
+                1 for m in result.values() if m.is_convergence
+            )
+            logger.info(
+                f"  Convergence: {len(result)} analyzed, "
+                f"{convergence_count} with multi-TF inside bars"
+            )
+            return result
+        except Exception as e:
+            logger.warning(f"Convergence analysis failed: {e}")
+            return {}
+
+    def _classify_tiers(
+        self,
+        candidates: List[ScoredCandidate],
+        convergence_map: Dict[str, ConvergenceMetadata],
+    ) -> None:
+        """
+        Assign tier 1/2/3 to each candidate in-place.
+
+        Tier 1: Multi-TF convergence (2+ inside bars across M/W/D)
+        Tier 2: Standard setups (default)
+        Tier 3: Continuation context (same-direction bar sequence + entry)
+        """
+        min_inside = self.config.convergence_min_inside_tfs
+
+        for c in candidates:
+            meta = convergence_map.get(c.symbol)
+            if meta is not None:
+                c.convergence = meta
+
+            # Tier 1: convergence detected
+            if meta is not None and meta.inside_bar_count >= min_inside:
+                c.tier = 1
+                continue
+
+            # Tier 3: true continuation
+            if self.scorer._is_continuation(c.pattern_type, c.direction):
+                c.tier = 3
+                continue
+
+            # Tier 2: everything else (default)
+            c.tier = 2
+
+    def _sort_and_cap_tiered(
+        self,
+        candidates: List[ScoredCandidate],
+        convergence_map: Dict[str, ConvergenceMetadata],
+    ) -> List[ScoredCandidate]:
+        """
+        Sort candidates within each tier and apply per-tier caps.
+
+        Tier 1: sorted by convergence_score desc, capped at max_tier1
+        Tier 2: sorted by composite_score desc, capped at max_tier2
+        Tier 3: sorted by composite_score desc, capped at max_tier3
+
+        Returns combined list: T1 first, then T2, then T3.
+        """
+        tier1 = [c for c in candidates if c.tier == 1]
+        tier2 = [c for c in candidates if c.tier == 2]
+        tier3 = [c for c in candidates if c.tier == 3]
+
+        # Tier 1: sort by convergence_score (structural quality)
+        tier1.sort(
+            key=lambda c: (
+                convergence_map.get(c.symbol, ConvergenceMetadata(
+                    inside_bar_count=0, inside_bar_timeframes=[],
+                    trigger_levels={}, convergence_score=0.0,
+                    bullish_trigger=None, bearish_trigger=None,
+                    trigger_spread_pct=0.0, prior_direction_alignment='mixed',
+                    is_convergence=False,
+                )).convergence_score
+            ),
+            reverse=True,
+        )
+
+        # Tier 2 and 3: sort by composite_score
+        tier2.sort(key=lambda c: c.composite_score, reverse=True)
+        tier3.sort(key=lambda c: c.composite_score, reverse=True)
+
+        # Apply caps
+        cfg = self.config
+        tier1 = tier1[:cfg.max_tier1_candidates]
+        tier2 = tier2[:cfg.max_tier2_candidates]
+        tier3 = tier3[:cfg.max_tier3_context]
+
+        logger.info(
+            f"  Tiers: T1={len(tier1)} T2={len(tier2)} T3={len(tier3)} "
+            f"(caps: {cfg.max_tier1_candidates}/{cfg.max_tier2_candidates}/{cfg.max_tier3_context})"
+        )
+
+        return tier1 + tier2 + tier3
 
     def _score_candidates(
         self,
@@ -308,7 +428,7 @@ class TickerSelectionPipeline:
         now = datetime.now(timezone.utc).isoformat()
 
         output = {
-            'version': '1.0',
+            'version': '2.0',
             'generated_at': now,
             'pipeline_stats': stats,
             'core_symbols': list(self.config.core_symbols),
@@ -320,6 +440,7 @@ class TickerSelectionPipeline:
                 'symbol': c.symbol,
                 'composite_score': c.composite_score,
                 'rank': c.rank,
+                'tier': c.tier,
                 'pattern': {
                     'type': c.pattern_type,
                     'base_type': c.base_pattern,
@@ -355,6 +476,8 @@ class TickerSelectionPipeline:
                     'atr_component': c.breakdown.atr_component,
                 },
             }
+            if c.convergence is not None:
+                entry['convergence'] = c.convergence.to_dict()
             if enrichment_map and c.symbol in enrichment_map:
                 entry['finviz'] = enrichment_map[c.symbol].to_dict()
             output['candidates'].append(entry)

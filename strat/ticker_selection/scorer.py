@@ -6,12 +6,17 @@ Scores 0-100 with configurable weights across four dimensions:
   Proximity to trigger (20%), ATR volatility (15%).
 """
 
+from __future__ import annotations
+
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 from strat.ticker_selection.config import TickerSelectionConfig
+
+if TYPE_CHECKING:
+    from strat.ticker_selection.convergence import ConvergenceMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +77,10 @@ class ScoredCandidate:
 
     # Scoring detail
     breakdown: ScoringBreakdown = field(default_factory=ScoringBreakdown)
+
+    # Convergence (populated post-scoring by pipeline)
+    convergence: Optional[ConvergenceMetadata] = None
+    tier: int = 2  # Default tier; set by pipeline tier classification
 
 
 class CandidateScorer:
