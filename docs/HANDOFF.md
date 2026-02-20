@@ -1,9 +1,41 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 19, 2026 (Session EQUITY-115)
+**Last Updated:** February 20, 2026 (Session EQUITY-116)
 **Current Branch:** `main`
-**Phase:** Morning Report Quality + Convergence Architecture Planning
-**Status:** EQUITY-115 COMPLETE - Dedup implemented, cascade/convergence concept defined
+**Phase:** Convergence Architecture Implemented
+**Status:** EQUITY-116 COMPLETE - Full 3-phase convergence system shipped
+
+---
+
+## Session EQUITY-116: Multi-TF Convergence Detection + Tiered Classification (COMPLETE)
+
+**Date:** February 20, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** COMPLETE - All 3 phases implemented, 224 tests passing, deployed to VPS
+
+### What Was Accomplished
+
+1. **Phase 1: Convergence Detection Engine** - New `convergence.py` module detects when M/W/D timeframes have simultaneous inside bars. Scoring: 50% inside count + 30% trigger proximity + 20% direction alignment. 31 tests.
+2. **Phase 2: Pipeline Integration + Tier Classification** - Wired convergence into pipeline between dedup and sort. Tier 1 (convergence, 2+ inside TFs), Tier 2 (standard), Tier 3 (continuation). Per-tier caps (4+8+4). candidates.json v2.0 schema. 11 new tests.
+3. **Phase 3: Tiered Morning Report + Discord** - Morning report groups by tier. Discord shows 3 sections: CONVERGENCE (trigger detail), STANDARD (existing), DIRECTIONAL CONTEXT (compact). Legacy v1 fallback. 12 new tests.
+4. **Code Review** - 3 parallel review agents caught proximity scoring bug (fixed), T2 overflow truncation (fixed), tier count assertion weakness (fixed) before commit.
+
+### Files Changed
+
+| File | Action |
+|------|--------|
+| `strat/ticker_selection/convergence.py` | CREATE - detection engine (260 lines) |
+| `strat/ticker_selection/config.py` | MODIFY - +4 convergence config fields |
+| `strat/ticker_selection/scorer.py` | MODIFY - +convergence, +tier fields |
+| `strat/ticker_selection/pipeline.py` | MODIFY - +3 methods, tiered sort, v2.0 |
+| `strat/signal_automation/coordinators/morning_report.py` | MODIFY - tier grouping |
+| `strat/signal_automation/alerters/discord_alerter.py` | MODIFY - 3 tiered sections |
+| `tests/test_ticker_selection/test_convergence.py` | CREATE - 31 tests |
+| `tests/test_ticker_selection/test_pipeline.py` | MODIFY - +11 tests |
+| `tests/test_signal_automation/test_morning_report_tiered.py` | CREATE - 12 tests |
+
+### Commit
+`5c372f8` - `feat: add multi-TF convergence detection and tiered candidate classification (EQUITY-116)`
 
 ---
 
