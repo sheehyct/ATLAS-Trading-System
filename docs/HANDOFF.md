@@ -1,13 +1,91 @@
 # HANDOFF - ATLAS Trading System Development
 
-**Last Updated:** February 19, 2026 (Session EQUITY-113)
+**Last Updated:** February 19, 2026 (Session EQUITY-115)
 **Current Branch:** `main`
-**Phase:** Daemon Bug Fixes + Morning Report Quality
-**Status:** EQUITY-113 IN PROGRESS - 6 daemon bugs fixed, deployed to VPS
+**Phase:** Morning Report Quality + Convergence Architecture Planning
+**Status:** EQUITY-115 COMPLETE - Dedup implemented, cascade/convergence concept defined
 
 ---
 
-## Session EQUITY-113: VPS Log Analysis + 6 Daemon Bug Fixes (IN PROGRESS)
+## Session EQUITY-115: Morning Report Dedup + Cascade Architecture Discussion (COMPLETE)
+
+**Date:** February 19, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** COMPLETE - Dedup implemented, major architectural concepts captured
+
+### What Was Accomplished
+
+1. **Morning Report Dedup (Priority 1)** - Added `_dedup_by_symbol()` to pipeline.py. Keeps highest-scoring candidate per symbol after scoring, before ranking. Prevents GOOGL x3, GOOG x3, TMUS x3 clutter. 6 new tests.
+2. **Earliest-Tradeable-Time Utility (Priority 2 partial)** - Added `_earliest_tradeable_time()` method. Not yet wired into output (may be deprioritized if 1H trading timeframe is dropped).
+3. **Pipeline Investigation** - Deployed Explore agent to trace full pipeline flow: 11,478 universe -> 500 screened -> 100 scanned -> ~83 TFC-qualified -> 12 candidates. Documented all stages, filters, scoring weights.
+4. **Multi-Timeframe Cascade Concept (MAJOR)** - Extended discussion with user about how inside bars (Type 1) on multiple higher timeframes create "coiled" setups where one intraday break cascades through all TFs simultaneously, flipping TFC from 1/4 to 4/4 in one bar.
+5. **"Where Is The Next 2" Concept** - STRAT saying that aligns with convergence detection. Morning report Tier 1 should answer: which symbols have Type 1 bars on multiple TFs, and what levels resolve them?
+
+### Key Architectural Decisions
+
+- **Hourly trades may be deprioritized** - User considering dropping 1H as trading timeframe. Hourly patterns better as context/precision entry for daily/weekly trades.
+- **Morning report tiered architecture:**
+  - Tier 1: Convergence Setups (coiled inside bars with converging levels)
+  - Tier 2: Standard Setups (current scored candidates)
+  - Tier 3: Continuation Context (higher TF directional sequences)
+- **Continuations as TFC context** - 2D-2D on higher TFs isn't a trade, it's proof lower TF trade has full alignment
+- **Intraday report refreshes** - Future: 2-3 lighter reports during the day with fresher data
+- **Plan mode recommended** for cascade/convergence implementation (multi-session effort)
+
+### Cascade/Convergence Example
+
+```
+Before trigger: 1M(2D-1) 1W(2D-1) 1D(3-2U-1) 1H(2U-1-?) = TFC ~1/4
+1H closes 2D -> triggers 2U-1-2D hourly
+  -> breaks prior day low -> 1D becomes 3-2U-2D
+  -> breaks prior week low -> 1W becomes 2D-2D (continuation)
+  -> breaks prior month low -> 1M becomes 2D-2D (continuation)
+After: TFC 4/4 bearish. All from one hourly bar.
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `strat/ticker_selection/pipeline.py` | `_dedup_by_symbol()`, `_earliest_tradeable_time()`, `unique_symbols` stat |
+| `strat/ticker_selection/scorer.py` | Cleaned up EQUITY-114 continuation/TFC logic |
+| `tests/test_ticker_selection/test_pipeline.py` | 6 new dedup tests |
+| `docs/SESSION_LOG.md` | EQUITY-115 entry |
+
+### OpenMemory References
+
+- `09d202cd` - Cascade/domino effect concept + system gap analysis
+- `733ee6f9` - Architectural decisions: trading preferences, convergence, morning report tiers
+- `a976dc56` - "Where is the next 2" concept + intraday report refreshes
+
+### Commits
+
+- `84e8814` - feat: add per-symbol dedup to ticker selection pipeline
+
+---
+
+## Session EQUITY-114: Morning Report Multi-Timeframe Fix (COMPLETE)
+
+**Date:** February 19, 2026
+**Environment:** Claude Code Desktop (Opus 4.6)
+**Status:** COMPLETE - 3 scorer bugs fixed, morning report now multi-timeframe
+
+### What Was Accomplished
+
+1. Investigated why morning report produced only 1H candidates (zero daily/weekly)
+2. Deployed 3-agent research team to trace pipeline, scoring, and pattern detection paths
+3. Ran empirical diagnostic proving 404 TFC-qualified patterns exist across all timeframes
+4. Fixed 3 scorer bugs: TFC normalization, continuation false positive, pattern name mismatch
+5. Morning report now shows multi-timeframe candidates: 5 weekly, 4 monthly, 3 hourly
+
+### Commits
+
+- `cf4e23d` - fix: normalize TFC scoring and correct continuation detection for daily/weekly candidates
+- `e158123` - fix: remove invalid 'name' kwarg from DiscordAlerter init
+
+---
+
+## Session EQUITY-113: VPS Log Analysis + 6 Daemon Bug Fixes (COMPLETE)
 
 **Date:** February 19, 2026
 **Environment:** Claude Code Desktop (Opus 4.6)
