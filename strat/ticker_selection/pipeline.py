@@ -67,6 +67,7 @@ class TickerSelectionPipeline:
             'screened_size': 0,
             'patterns_found': 0,
             'tfc_qualified': 0,
+            'unique_symbols': 0,
             'final_candidates': 0,
             'scan_duration_seconds': 0.0,
         }
@@ -168,9 +169,16 @@ class TickerSelectionPipeline:
         logger.info("Stage 4: Scoring and ranking...")
         scored = self._score_candidates(candidates_raw, screened_map)
 
+        # Dedup: keep highest-scoring candidate per symbol
+        deduped = self._dedup_by_symbol(scored)
+        stats['unique_symbols'] = len(deduped)
+        logger.info(
+            f"  Dedup: {len(scored)} scored -> {len(deduped)} unique symbols"
+        )
+
         # Sort by composite score descending, cap at max_candidates
-        scored.sort(key=lambda c: c.composite_score, reverse=True)
-        final = scored[:self.config.max_candidates]
+        deduped.sort(key=lambda c: c.composite_score, reverse=True)
+        final = deduped[:self.config.max_candidates]
 
         # Assign ranks
         for i, c in enumerate(final):
@@ -198,6 +206,41 @@ class TickerSelectionPipeline:
             self._send_discord_summary(final, stats, enrichment_map)
 
         return result
+
+    @staticmethod
+    def _earliest_tradeable_time(timeframe: str, pattern_type: str) -> str:
+        """Compute when a setup becomes tradeable based on timeframe and bar count.
+
+        Daily/Weekly/Monthly setups are tradeable at market open (09:30 ET)
+        because all bars are already closed. Hourly setups must wait for
+        today's bars to close:
+          2-bar patterns: 10:30 ET (first 1H bar closes)
+          3-bar patterns: 11:30 ET (second 1H bar closes)
+
+        Returns time string in "HH:MM ET" format.
+        """
+        if timeframe != '1H':
+            return '09:30 ET'
+
+        is_3bar = len(pattern_type.split('-')) >= 3
+        return '11:30 ET' if is_3bar else '10:30 ET'
+
+    @staticmethod
+    def _dedup_by_symbol(
+        scored: List[ScoredCandidate],
+    ) -> List[ScoredCandidate]:
+        """Keep only the highest-scoring candidate per symbol.
+
+        When a symbol has multiple setups (different timeframes or patterns),
+        only the best composite_score is retained. This prevents the morning
+        report from showing e.g. GOOGL x3 across 1H/1D/1W.
+        """
+        best: Dict[str, ScoredCandidate] = {}
+        for c in scored:
+            existing = best.get(c.symbol)
+            if existing is None or c.composite_score > existing.composite_score:
+                best[c.symbol] = c
+        return list(best.values())
 
     def _score_candidates(
         self,

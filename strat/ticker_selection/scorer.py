@@ -188,9 +188,7 @@ class CandidateScorer:
 
         Examples: "3-1-2U" -> "3-1-2", "2D-2U" -> "2-2", "2D-2D-?" -> "2-2"
         """
-        # Strip pending completion marker
-        clean = pattern_type.replace('-?', '')
-        return re.sub(r'(\d)[UD]', r'\1', clean)
+        return re.sub(r'(\d)[UD]|-\?', r'\1', pattern_type)
 
     @staticmethod
     def _is_continuation(pattern_type: str, direction: str = '') -> bool:
@@ -201,22 +199,26 @@ class CandidateScorer:
         when both the bar sequence AND the entry direction agree (e.g.,
         2D-2D PUT = bearish bars + bearish entry = true continuation).
         """
-        # Strip pending marker for analysis
-        clean = pattern_type.replace('-?', '')
-        segments = clean.split('-')
-        directions = [s[-1] for s in segments if s.endswith(('U', 'D')) and len(s) >= 2]
+        # Extract bar directions from pattern segments
+        clean_pattern = pattern_type.replace('-?', '')
+        segments = clean_pattern.split('-')
+        directions = [s[-1] for s in segments if s[-1:] in ('U', 'D')]
+
+        # Need at least 2 bars to determine continuity
         if len(directions) < 2:
             return False
-        # All bar directions must be the same
+
+        # All bars must be the same direction
         if len(set(directions)) != 1:
             return False
-        # If entry direction provided, check alignment
-        if direction:
-            bar_is_bullish = (directions[0] == 'U')
-            entry_is_bullish = direction.upper() in ('CALL', 'BULLISH')
-            if bar_is_bullish != entry_is_bullish:
-                return False  # Opposing direction = reversal, not continuation
-        return True
+
+        # If entry direction provided, must align with bar direction
+        if not direction:
+            return True
+
+        bar_is_bullish = directions[0] == 'U'
+        entry_is_bullish = direction.upper() in ('CALL', 'BULLISH')
+        return bar_is_bullish == entry_is_bullish
 
     @staticmethod
     def _score_tfc(tfc_score: int, timeframe: str = '1H') -> float:
@@ -233,9 +235,8 @@ class CandidateScorer:
         """
         _REQUIRED = {'1H': 4, '4H': 4, '1D': 3, '1W': 2, '1M': 1}
         required = _REQUIRED.get(timeframe, 4)
-        if required == 0:
-            return 0
-        ratio = tfc_score / required
+        ratio = tfc_score / required if required > 0 else 0
+
         if ratio >= 1.0:
             return 100
         elif ratio >= 0.75:

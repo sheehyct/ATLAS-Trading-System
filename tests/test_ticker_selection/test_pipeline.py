@@ -151,6 +151,98 @@ class TestPipelineOutput:
             assert 'passes_flexible' in t
 
 
+class TestDedupBySymbol:
+    """Test best-setup-per-symbol deduplication."""
+
+    def test_keeps_highest_score_per_symbol(self):
+        """When symbol has multiple setups, keep the highest scoring one."""
+        from strat.ticker_selection.scorer import ScoredCandidate
+
+        candidates = [
+            ScoredCandidate(symbol='GOOGL', composite_score=72.5, timeframe='1H'),
+            ScoredCandidate(symbol='GOOGL', composite_score=68.0, timeframe='1D'),
+            ScoredCandidate(symbol='GOOGL', composite_score=55.0, timeframe='1W'),
+            ScoredCandidate(symbol='AAPL', composite_score=80.0, timeframe='1D'),
+        ]
+
+        result = TickerSelectionPipeline._dedup_by_symbol(candidates)
+        symbols = {c.symbol for c in result}
+        assert symbols == {'GOOGL', 'AAPL'}
+        assert len(result) == 2
+
+        googl = [c for c in result if c.symbol == 'GOOGL'][0]
+        assert googl.composite_score == 72.5
+        assert googl.timeframe == '1H'
+
+    def test_no_duplicates_unchanged(self):
+        """When all symbols are unique, nothing is removed."""
+        from strat.ticker_selection.scorer import ScoredCandidate
+
+        candidates = [
+            ScoredCandidate(symbol='AAPL', composite_score=80.0),
+            ScoredCandidate(symbol='MSFT', composite_score=75.0),
+            ScoredCandidate(symbol='CRWD', composite_score=70.0),
+        ]
+
+        result = TickerSelectionPipeline._dedup_by_symbol(candidates)
+        assert len(result) == 3
+
+    def test_empty_input(self):
+        """Empty list returns empty list."""
+        result = TickerSelectionPipeline._dedup_by_symbol([])
+        assert result == []
+
+    def test_single_candidate(self):
+        """Single candidate passes through."""
+        from strat.ticker_selection.scorer import ScoredCandidate
+
+        candidates = [ScoredCandidate(symbol='SPY', composite_score=90.0)]
+        result = TickerSelectionPipeline._dedup_by_symbol(candidates)
+        assert len(result) == 1
+        assert result[0].symbol == 'SPY'
+
+    def test_tiebreak_uses_first_seen(self):
+        """When scores are equal, the later-seen candidate wins (dict overwrite)."""
+        from strat.ticker_selection.scorer import ScoredCandidate
+
+        candidates = [
+            ScoredCandidate(symbol='TMUS', composite_score=65.0, timeframe='1H'),
+            ScoredCandidate(symbol='TMUS', composite_score=65.0, timeframe='1D'),
+        ]
+
+        result = TickerSelectionPipeline._dedup_by_symbol(candidates)
+        assert len(result) == 1
+        # Equal scores: first one kept (> is strict, not >=)
+        assert result[0].timeframe == '1H'
+
+    def test_many_duplicates_realistic(self):
+        """Simulate the GOOGL x3, GOOG x3, TMUS x3 scenario from production."""
+        from strat.ticker_selection.scorer import ScoredCandidate
+
+        candidates = [
+            ScoredCandidate(symbol='GOOGL', composite_score=72.5, timeframe='1H'),
+            ScoredCandidate(symbol='GOOGL', composite_score=68.0, timeframe='1D'),
+            ScoredCandidate(symbol='GOOGL', composite_score=60.0, timeframe='1W'),
+            ScoredCandidate(symbol='GOOG', composite_score=72.5, timeframe='1H'),
+            ScoredCandidate(symbol='GOOG', composite_score=68.0, timeframe='1D'),
+            ScoredCandidate(symbol='GOOG', composite_score=60.0, timeframe='1W'),
+            ScoredCandidate(symbol='TMUS', composite_score=70.0, timeframe='1H'),
+            ScoredCandidate(symbol='TMUS', composite_score=65.0, timeframe='1D'),
+            ScoredCandidate(symbol='TMUS', composite_score=55.0, timeframe='1W'),
+            ScoredCandidate(symbol='AAPL', composite_score=80.0, timeframe='1D'),
+            ScoredCandidate(symbol='MSFT', composite_score=75.0, timeframe='1D'),
+        ]
+
+        result = TickerSelectionPipeline._dedup_by_symbol(candidates)
+        assert len(result) == 5  # GOOGL, GOOG, TMUS, AAPL, MSFT
+        scores = {c.symbol: c.composite_score for c in result}
+        assert scores['GOOGL'] == 72.5
+        assert scores['GOOG'] == 72.5
+        assert scores['TMUS'] == 70.0
+        assert scores['AAPL'] == 80.0
+        assert scores['MSFT'] == 75.0
+
+
 class TestDaemonCandidateLoading:
     """Test daemon's _load_candidates method."""
 
